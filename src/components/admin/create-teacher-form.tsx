@@ -1,0 +1,79 @@
+"use client";
+
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+export function CreateTeacherForm() {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setStatus(null);
+    setLoading(true);
+
+    const response = await fetch("/api/admin/invite-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fullName,
+        email,
+        role: "teacher",
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setStatus(data.error ?? "Failed to invite teacher.");
+      setLoading(false);
+      return;
+    }
+
+    setStatus("Invite sent.");
+    setFullName("");
+    setEmail("");
+    setLoading(false);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base text-navy">Invite teacher</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+          <div className="space-y-2">
+            <Label htmlFor="teacher-name">Full name</Label>
+            <Input
+              id="teacher-name"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="teacher-email">Email</Label>
+            <Input
+              id="teacher-email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </div>
+          {status ? <p className="text-sm text-muted">{status}</p> : null}
+          <Button type="submit" disabled={loading}>
+            {loading ? "Sending..." : "Send invite"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
