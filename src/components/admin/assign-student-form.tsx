@@ -53,12 +53,13 @@ export function AssignStudentForm({ teachers, students }: AssignStudentFormProps
         <CardTitle className="text-base text-navy">Assign student</CardTitle>
       </CardHeader>
       <CardContent>
-        <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-          <div className="space-y-2">
+        <form style={{ display: "flex", flexDirection: "column", gap: "12px" }} onSubmit={handleSubmit}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <Label htmlFor="teacher">Teacher</Label>
             <select
               id="teacher"
-              className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+              className="rounded-md border border-border bg-white px-3 text-sm"
+              style={{ height: "40px", width: "100%" }}
               value={teacherId}
               onChange={(event) => setTeacherId(event.target.value)}
               required
@@ -71,11 +72,12 @@ export function AssignStudentForm({ teachers, students }: AssignStudentFormProps
               ))}
             </select>
           </div>
-          <div className="space-y-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <Label htmlFor="student">Student/Parent</Label>
             <select
               id="student"
-              className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+              className="rounded-md border border-border bg-white px-3 text-sm"
+              style={{ height: "40px", width: "100%" }}
               value={studentId}
               onChange={(event) => setStudentId(event.target.value)}
               required

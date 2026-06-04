@@ -6,10 +6,11 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.TableHTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="w-full overflow-auto">
+  <div style={{ width: "100%", overflowX: "auto" }}>
     <table
       ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
+      className={cn("caption-bottom text-sm", className)}
+      style={{ width: "100%" }}
       {...props}
     />
   </div>
@@ -19,8 +20,13 @@ Table.displayName = "Table";
 const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn("border-b border-border", className)} {...props} />
+>(({ className, style, ...props }, ref) => (
+  <thead
+    ref={ref}
+    className={cn(className)}
+    style={{ borderBottom: "1px solid var(--color-border)", ...style }}
+    {...props}
+  />
 ));
 TableHeader.displayName = "TableHeader";
 
@@ -28,17 +34,18 @@ const TableBody = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <tbody ref={ref} className={cn("[&_tr:last-child]:border-0", className)} {...props} />
+  <tbody ref={ref} className={cn(className)} {...props} />
 ));
 TableBody.displayName = "TableBody";
 
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
->(({ className, ...props }, ref) => (
+>(({ className, style, ...props }, ref) => (
   <tr
     ref={ref}
-    className={cn("border-b border-border transition-colors hover:bg-soft", className)}
+    className={cn("transition-colors hover:bg-soft", className)}
+    style={{ borderBottom: "1px solid var(--color-border)", ...style }}
     {...props}
   />
 ));
@@ -67,8 +74,13 @@ TableCell.displayName = "TableCell";
 const TableCaption = React.forwardRef<
   HTMLTableCaptionElement,
   React.HTMLAttributes<HTMLTableCaptionElement>
->(({ className, ...props }, ref) => (
-  <caption ref={ref} className={cn("mt-4 text-sm text-muted", className)} {...props} />
+>(({ className, style, ...props }, ref) => (
+  <caption
+    ref={ref}
+    className={cn("text-sm text-muted", className)}
+    style={{ marginTop: "16px", ...style }}
+    {...props}
+  />
 ));
 TableCaption.displayName = "TableCaption";
 

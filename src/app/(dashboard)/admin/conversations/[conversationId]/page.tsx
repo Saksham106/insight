@@ -5,12 +5,13 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createServerClientWithBypass } from "@/lib/supabase/server";
 
 interface AdminConversationPageProps {
-  params: { conversationId: string };
+  params: Promise<{ conversationId: string }>;
 }
 
 export default async function AdminConversationPage({
   params,
 }: AdminConversationPageProps) {
+  const { conversationId } = await params;
   const profile = await requireRole(["admin"]);
   const supabase = await createServerClientWithBypass();
 
@@ -19,7 +20,7 @@ export default async function AdminConversationPage({
     .select(
       "id, assignment:assignment_id (id, teacher:teacher_id (id, full_name), student:student_id (id, full_name))",
     )
-    .eq("id", params.conversationId)
+    .eq("id", conversationId)
     .single();
 
   if (!conversation) {
@@ -29,7 +30,7 @@ export default async function AdminConversationPage({
   const { data: messages } = await supabase
     .from("messages")
     .select("id, body, created_at, sender_id, sender:sender_id (id, full_name)")
-    .eq("conversation_id", params.conversationId)
+    .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
 
   const assignment = Array.isArray(conversation.assignment)

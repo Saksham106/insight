@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,15 @@ export function TeachersTable({ teachers }: TeachersTableProps) {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 480px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const toggleUser = async (teacher: Teacher) => {
     setStatus(null);
@@ -54,14 +63,14 @@ export function TeachersTable({ teachers }: TeachersTableProps) {
   };
 
   return (
-    <div className="space-y-2">
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {status ? <p className="text-sm text-muted">{status}</p> : null}
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>Created</TableHead>
+            {!isMobile && <TableHead>Created</TableHead>}
             <TableHead className="text-right">Action</TableHead>
           </TableRow>
         </TableHeader>
@@ -74,9 +83,11 @@ export function TeachersTable({ teachers }: TeachersTableProps) {
                   {teacher.is_active ? "Active" : "Disabled"}
                 </Badge>
               </TableCell>
-              <TableCell>
-                {new Date(teacher.created_at).toLocaleDateString()}
-              </TableCell>
+              {!isMobile && (
+                <TableCell>
+                  {new Date(teacher.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                </TableCell>
+              )}
               <TableCell className="text-right">
                 <Button
                   variant="outline"

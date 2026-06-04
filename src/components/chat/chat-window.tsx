@@ -92,11 +92,14 @@ export function ChatWindow({
   };
 
   return (
-    <div className="flex h-[70vh] flex-col rounded-lg border border-border bg-surface">
-      <div className="border-b border-border px-6 py-4">
+    <div
+      className="rounded-lg border border-border bg-surface"
+      style={{ display: "flex", flexDirection: "column", height: "70vh" }}
+    >
+      <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--color-border)" }}>
         <h1 className="text-lg font-semibold text-navy">{title}</h1>
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
+      <div ref={scrollRef} className="px-6 py-4" style={{ flex: 1, overflowY: "auto" }}>
         {messages.length > 0 ? (
           <MessageList messages={messages} currentUserId={currentUserId} />
         ) : (
@@ -104,7 +107,7 @@ export function ChatWindow({
         )}
       </div>
       {readOnly ? null : (
-        <div className="border-t border-border px-6 py-4">
+        <div className="px-6 py-4" style={{ borderTop: "1px solid var(--color-border)" }}>
           <MessageInput onSend={handleSend} />
         </div>
       )}

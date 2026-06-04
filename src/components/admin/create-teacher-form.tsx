@@ -48,8 +48,8 @@ export function CreateTeacherForm() {
         <CardTitle className="text-base text-navy">Invite teacher</CardTitle>
       </CardHeader>
       <CardContent>
-        <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-          <div className="space-y-2">
+        <form style={{ display: "flex", flexDirection: "column", gap: "12px" }} onSubmit={handleSubmit}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <Label htmlFor="teacher-name">Full name</Label>
             <Input
               id="teacher-name"
@@ -58,7 +58,7 @@ export function CreateTeacherForm() {
               required
             />
           </div>
-          <div className="space-y-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <Label htmlFor="teacher-email">Email</Label>
             <Input
               id="teacher-email"

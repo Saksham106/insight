@@ -5,13 +5,14 @@ import { cn } from "@/lib/utils";
 const Textarea = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
->(({ className, ...props }, ref) => (
+>(({ className, style, ...props }, ref) => (
   <textarea
     ref={ref}
     className={cn(
-      "flex min-h-[80px] w-full rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate disabled:cursor-not-allowed disabled:opacity-50",
+      "rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate disabled:cursor-not-allowed disabled:opacity-50",
       className,
     )}
+    style={{ minHeight: "80px", width: "100%", ...style }}
     {...props}
   />
 ));

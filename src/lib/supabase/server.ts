@@ -15,7 +15,12 @@ export const createClient = async () => {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach((cookie) => cookieStore.set(cookie));
+          try {
+            cookiesToSet.forEach((cookie) => cookieStore.set(cookie));
+          } catch {
+            // Called from a Server Component — cookie writes aren't allowed here.
+            // Middleware handles token refresh instead.
+          }
         },
       },
     },

@@ -45,16 +45,16 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
   };
 
   return (
-    <form className="space-y-2" onSubmit={handleSubmit}>
+    <form style={{ display: "flex", flexDirection: "column", gap: "8px" }} onSubmit={handleSubmit}>
       <Textarea
         value={message}
         onChange={(event) => setMessage(event.target.value)}
         placeholder="Write a message..."
-        className="min-h-[96px]"
+        style={{ minHeight: "96px" }}
         disabled={disabled || sending}
       />
       {error ? <p className="text-sm text-error">{error}</p> : null}
-      <div className="flex justify-end">
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Button type="submit" disabled={disabled || sending}>
           {sending ? "Sending..." : "Send"}
         </Button>

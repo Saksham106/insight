@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+import { MonthCalendar } from "@/components/sessions/month-calendar";
+import { RequestSessionForm } from "@/components/sessions/request-session-form";
+import { SessionCard, type Session } from "@/components/sessions/session-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth/require-role";
@@ -9,6 +12,7 @@ interface AssignmentRow {
   id: string;
   teacher: { id: string; full_name: string } | null;
   conversation: { id: string }[] | null;
+  sessions: Session[];
 }
 
 export default async function StudentPage() {
@@ -17,23 +21,49 @@ export default async function StudentPage() {
 
   const { data } = await supabase
     .from("teacher_student_assignments")
-    .select("id, teacher:teacher_id (id, full_name), conversation:conversations (id)")
+    .select(
+      "id, teacher:teacher_id (id, full_name), conversation:conversations (id), sessions (id, assignment_id, scheduled_at, duration_minutes, notes, status, proposed_by)",
+    )
     .eq("student_id", profile.id)
     .order("created_at", { ascending: false });
 
-  const assignmentRaw = (data?.[0] ?? null) as AssignmentRow | null;
+  const assignmentRaw = (data?.[0] ?? null);
   const teacher = assignmentRaw
     ? Array.isArray(assignmentRaw.teacher)
       ? assignmentRaw.teacher[0]
       : assignmentRaw.teacher
     : null;
+  const rawConv = assignmentRaw?.conversation;
+  const conversation = Array.isArray(rawConv)
+    ? rawConv
+    : rawConv != null
+      ? [rawConv as { id: string }]
+      : null;
+  const sessions = ((assignmentRaw?.sessions ?? []) as Session[]).sort(
+    (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+  );
+
   const assignment = assignmentRaw
-    ? ({ ...assignmentRaw, teacher } as AssignmentRow)
+    ? ({ ...assignmentRaw, teacher, conversation, sessions } as AssignmentRow)
     : null;
+
   const conversationId = assignment?.conversation?.[0]?.id;
 
+  // Teacher-proposed sessions awaiting student confirmation
+  const pendingSessions = sessions.filter(
+    (s) => s.status === "proposed" && (s.proposed_by === null || s.proposed_by !== profile.id),
+  );
+  // Student's own pending requests awaiting teacher confirmation
+  const myRequests = sessions.filter(
+    (s) => s.status === "proposed" && s.proposed_by === profile.id,
+  );
+  const upcomingSessions = sessions.filter(
+    (s) => s.status === "confirmed" && new Date(s.scheduled_at) >= new Date(),
+  );
+  const calendarSessions = sessions.filter((s) => s.status !== "cancelled");
+
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
       <div>
         <h1 className="text-2xl font-semibold text-navy">Welcome back</h1>
         <p className="text-sm text-muted">
@@ -41,16 +71,17 @@ export default async function StudentPage() {
         </p>
       </div>
 
+      {/* Teacher card */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base text-navy">Assigned teacher</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
+        <CardContent style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <p className="text-lg font-medium">
             {assignment?.teacher?.full_name ?? "Not assigned yet"}
           </p>
           {conversationId ? (
-            <Button asChild className="w-fit">
+            <Button asChild style={{ width: "fit-content" }}>
               <Link href={`/chat/${conversationId}`}>Open chat</Link>
             </Button>
           ) : (
@@ -60,6 +91,59 @@ export default async function StudentPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Request a session */}
+      {assignment && (
+        <RequestSessionForm
+          assignmentId={assignment.id}
+          studentId={profile.id}
+          teacherName={assignment.teacher?.full_name ?? "your teacher"}
+        />
+      )}
+
+      {/* Student's own pending requests awaiting teacher confirmation */}
+      {myRequests.length > 0 && (
+        <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <h2 className="text-lg font-semibold text-navy">Your pending requests</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {myRequests.map((s) => (
+              <SessionCard key={s.id} session={s} currentUserId={profile.id} role="student" />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Teacher-proposed sessions awaiting student confirmation */}
+      {pendingSessions.length > 0 && (
+        <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <h2 className="text-lg font-semibold text-navy">
+            Sessions awaiting your confirmation
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {pendingSessions.map((s) => (
+              <SessionCard key={s.id} session={s} currentUserId={profile.id} role="student" />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Upcoming confirmed sessions */}
+      {upcomingSessions.length > 0 && (
+        <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <h2 className="text-lg font-semibold text-navy">Upcoming sessions</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {upcomingSessions.map((s) => (
+              <SessionCard key={s.id} session={s} currentUserId={profile.id} role="student" />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Calendar */}
+      <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <h2 className="text-lg font-semibold text-navy">Calendar</h2>
+        <MonthCalendar sessions={calendarSessions} currentUserId={profile.id} role="student" />
+      </section>
     </div>
   );
 }

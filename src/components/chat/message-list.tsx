@@ -15,28 +15,30 @@ interface MessageListProps {
 
 export function MessageList({ messages, currentUserId }: MessageListProps) {
   return (
-    <div className="space-y-3">
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       {messages.map((message) => {
         const isMine = message.sender_id === currentUserId;
         return (
           <div
             key={message.id}
-            className={cn("flex", isMine ? "justify-end" : "justify-start")}
+            style={{ display: "flex", justifyContent: isMine ? "flex-end" : "flex-start" }}
           >
             <div
               className={cn(
                 "max-w-[80%] rounded-lg px-4 py-3 text-sm",
-                isMine
-                  ? "bg-navy text-white"
-                  : "bg-soft text-foreground",
+                isMine ? "bg-navy text-white" : "bg-soft text-foreground",
               )}
             >
               <div className="text-xs opacity-80">
                 {message.sender?.full_name ?? "User"}
               </div>
-              <p className="mt-1 whitespace-pre-wrap">{message.body}</p>
-              <div className="mt-2 text-[11px] opacity-70">
-                {new Date(message.created_at).toLocaleString()}
+              <p className="whitespace-pre-wrap" style={{ marginTop: "4px" }}>
+                {message.body}
+              </p>
+              <div className="text-[11px] opacity-70" style={{ marginTop: "8px" }}>
+                {new Date(message.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                {" · "}
+                {new Date(message.created_at).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false })}
               </div>
             </div>
           </div>

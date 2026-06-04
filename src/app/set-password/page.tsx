@@ -85,8 +85,11 @@ export default function SetPasswordPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-6">
-      <Card className="w-full max-w-md">
+    <div
+      className="bg-background px-6"
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}
+    >
+      <Card style={{ width: "100%", maxWidth: "28rem" }}>
         <CardHeader>
           <CardTitle className="text-navy">Set your password</CardTitle>
         </CardHeader>
@@ -94,7 +97,7 @@ export default function SetPasswordPage() {
           {!ready ? (
             <p className="text-sm text-muted">Checking your invite link...</p>
           ) : !hasSession ? (
-            <div className="space-y-3 text-sm text-muted">
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }} className="text-sm text-muted">
               <p>
                 Please open the invite email link to set your password. This
                 page only works after accepting an invite.
@@ -104,33 +107,33 @@ export default function SetPasswordPage() {
               </Button>
             </div>
           ) : (
-            <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="password">New password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
-              <Input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                required
-              />
-            </div>
-            {error ? <p className="text-sm text-error">{error}</p> : null}
-            <Button type="submit" disabled={loading}>
-              {loading ? "Saving..." : "Save password"}
-            </Button>
+            <form style={{ display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={handleSubmit}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <Label htmlFor="password">New password</Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <Label htmlFor="confirmPassword">Confirm password</Label>
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                />
+              </div>
+              {error ? <p className="text-sm text-error">{error}</p> : null}
+              <Button type="submit" disabled={loading}>
+                {loading ? "Saving..." : "Save password"}
+              </Button>
             </form>
           )}
         </CardContent>

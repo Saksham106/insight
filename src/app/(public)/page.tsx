@@ -5,9 +5,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <main className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-6 py-16">
-        <section className="flex flex-col gap-4">
+    <div className="bg-background" style={{ minHeight: "100vh" }}>
+      <main
+        className="px-6 py-16"
+        style={{
+          marginLeft: "auto",
+          marginRight: "auto",
+          width: "100%",
+          maxWidth: "64rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "40px",
+        }}
+      >
+        <section style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate">
             Insight Tutors
           </p>
@@ -25,7 +36,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "16px" }}>
           {[
             {
               title: "Private messaging",

@@ -41,3 +41,23 @@ body {
   color: var(--color-foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui;
 }
+
+/* Responsive form grids — collapse to single column on mobile */
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .form-grid-3,
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}

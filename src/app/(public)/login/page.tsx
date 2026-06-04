@@ -102,14 +102,17 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-6">
-      <Card className="w-full max-w-md">
+    <div
+      className="bg-background px-6"
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}
+    >
+      <Card style={{ width: "100%", maxWidth: "28rem" }}>
         <CardHeader>
           <CardTitle className="text-navy">Log in</CardTitle>
         </CardHeader>
         <CardContent>
-          <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
+          <form style={{ display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={handleSubmit}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
@@ -121,7 +124,7 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
@@ -138,9 +141,12 @@ export default function LoginPage() {
               {loading ? "Signing in..." : "Log in"}
             </Button>
           </form>
-          <div className="mt-4 border-t border-border pt-4 text-sm text-muted">
+          <div
+            className="text-sm text-muted"
+            style={{ marginTop: "16px", borderTop: "1px solid var(--color-border)", paddingTop: "16px" }}
+          >
             <p>New user?</p>
-            <Button variant="outline" className="mt-2 w-full" asChild>
+            <Button variant="outline" style={{ marginTop: "8px", width: "100%" }} asChild>
               <a href="/set-password">Set your password from invite</a>
             </Button>
           </div>

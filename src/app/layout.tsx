@@ -27,7 +27,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="min-h-screen bg-background text-foreground">
+      <body className="bg-background text-foreground" style={{ minHeight: "100vh" }}>
         {children}
       </body>
     </html>

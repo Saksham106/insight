@@ -9,7 +9,7 @@ export default async function DashboardLayout({
   const profile = await requireUser();
 
   return (
-    <AppShell userName={profile.full_name} role={profile.role}>
+    <AppShell userName={profile.full_name} role={profile.role} userId={profile.id}>
       {children}
     </AppShell>
   );
