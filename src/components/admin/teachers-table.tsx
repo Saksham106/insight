@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Users } from "lucide-react";
+
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,6 +78,11 @@ export function TeachersTable({ teachers }: TeachersTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
+          {teachers.length === 0 && (
+            <tr><td colSpan={4} style={{ padding: "0", paddingTop: "8px" }}>
+              <EmptyState icon={Users} title="No teachers yet" description="Invite a teacher to get started." />
+            </td></tr>
+          )}
           {teachers.map((teacher) => (
             <TableRow key={teacher.id}>
               <TableCell className="font-medium">{teacher.full_name}</TableCell>

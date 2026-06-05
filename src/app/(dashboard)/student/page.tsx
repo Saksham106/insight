@@ -1,5 +1,8 @@
+import { CalendarDays } from "lucide-react";
+
 import { ChatButton } from "@/components/chat/chat-button";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
+import { EmptyState } from "@/components/ui/empty-state";
 import { RequestSessionForm } from "@/components/sessions/request-session-form";
 import { SessionCard, type Session } from "@/components/sessions/session-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -98,6 +101,15 @@ export default async function StudentPage() {
           assignmentId={assignment.id}
           studentId={profile.id}
           teacherName={assignment.teacher?.full_name ?? "your teacher"}
+        />
+      )}
+
+      {/* No sessions at all */}
+      {assignment && myRequests.length === 0 && pendingSessions.length === 0 && upcomingSessions.length === 0 && (
+        <EmptyState
+          icon={CalendarDays}
+          title="No sessions yet"
+          description="Your teacher will schedule your first session, or you can request one above."
         />
       )}
 

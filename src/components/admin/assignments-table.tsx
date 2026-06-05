@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Unlink } from "lucide-react";
 import { useRouter } from "next/navigation";
+
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { ChatDrawer } from "@/components/chat/chat-drawer";
 
@@ -98,6 +100,11 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
+          {assignments.length === 0 && (
+            <tr><td colSpan={isMobile ? 3 : 4} style={{ padding: "0", paddingTop: "8px" }}>
+              <EmptyState icon={Unlink} title="No assignments yet" description="Assign a student to a teacher to get started." />
+            </td></tr>
+          )}
           {assignments.map((assignment) => {
             const conversationId = assignment.conversation?.[0]?.id;
             return (

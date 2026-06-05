@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Users, CalendarDays } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { ChatDrawer } from "@/components/chat/chat-drawer";
@@ -9,6 +9,7 @@ import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { ScheduleSessionForm } from "@/components/sessions/schedule-session-form";
 import { SessionCard, type Session } from "@/components/sessions/session-card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -270,7 +271,7 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
         </h2>
 
         {assignments.length === 0 ? (
-          <p className="text-sm text-muted">No students assigned yet.</p>
+          <EmptyState icon={Users} title="No students assigned yet" description="Your coordinator will pair you with students soon." />
         ) : (
           <>
             {/* Chip row */}
@@ -374,7 +375,7 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
                 )}
 
                 {/* Upcoming sessions */}
-                {upcoming.length > 0 && (
+                {upcoming.length > 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                       Upcoming sessions
@@ -383,6 +384,8 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
                       <SessionCard key={s.id} session={s} currentUserId={teacherId} role="teacher" />
                     ))}
                   </div>
+                ) : (
+                  <EmptyState icon={CalendarDays} title="No upcoming sessions" description="Use the form below to schedule your first session." />
                 )}
 
                 {/* Past sessions */}
