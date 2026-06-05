@@ -111,6 +111,35 @@ export default function LandingPage() {
               pointerEvents: "none",
             }}
           />
+
+          {/* Floating emojis */}
+          {[
+            { emoji: "📚", top: "12%",  left: "72%", size: 64, delay: "0s",    duration: "6s"  },
+            { emoji: "💡", top: "60%",  left: "85%", size: 56, delay: "1.2s",  duration: "7s"  },
+            { emoji: "✏️", top: "25%",  left: "90%", size: 52, delay: "0.5s",  duration: "8s"  },
+            { emoji: "🎓", top: "75%",  left: "68%", size: 68, delay: "2s",    duration: "6.5s"},
+            { emoji: "📖", top: "70%",  left: "93%", size: 48, delay: "1.8s",  duration: "9s"  },
+            { emoji: "📐", top: "50%",  left: "78%", size: 52, delay: "0.8s",  duration: "7.5s"},
+            { emoji: "🔬", top: "38%",  left: "93%", size: 56, delay: "2.5s",  duration: "8.5s"},
+            { emoji: "📝", top: "85%",  left: "82%", size: 60, delay: "1.5s",  duration: "6s"  },
+          ].map(({ emoji, top, left, size, delay, duration }) => (
+            <div
+              key={emoji + top}
+              aria-hidden
+              style={{
+                position: "absolute",
+                top,
+                left,
+                fontSize: size,
+                opacity: 0.18,
+                pointerEvents: "none",
+                animation: `floatEmoji ${duration} ease-in-out ${delay} infinite`,
+                userSelect: "none",
+              }}
+            >
+              {emoji}
+            </div>
+          ))}
           <div style={{ maxWidth: "72rem", marginLeft: "auto", marginRight: "auto" }}>
           <div
             style={{
