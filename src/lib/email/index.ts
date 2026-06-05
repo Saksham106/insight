@@ -1,9 +1,5 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-
 export type SessionEmailEvent =
   | "proposed"    // new session created — notify other party
   | "confirmed"   // session confirmed — notify proposer
@@ -53,7 +49,8 @@ function sessionDetailsHtml(scheduledAt: string, durationMinutes: number, notes?
   `;
 }
 
-function layout(title: string, preheader: string, body: string, dashboardPath: string) {
+function layout(title: string, preheader: string, body: string, dashboardPath: string, appUrl: string) {
+  const APP_URL = appUrl;
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -122,6 +119,10 @@ const configs: Record<SessionEmailEvent, (o: SessionEmailOptions) => { subject: 
 export async function sendSessionEmail(options: SessionEmailOptions) {
   if (!process.env.RESEND_API_KEY) return; // silently skip if not configured
 
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
   const dashboardPath = options.role === "teacher" ? "/teacher" : "/student";
   const { subject, title, preheader, body } = configs[options.event](options);
 
@@ -129,6 +130,6 @@ export async function sendSessionEmail(options: SessionEmailOptions) {
     from: FROM,
     to: options.recipientEmail,
     subject,
-    html: layout(title, preheader, body, dashboardPath),
+    html: layout(title, preheader, body, dashboardPath, APP_URL),
   });
 }

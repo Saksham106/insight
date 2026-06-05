@@ -80,7 +80,7 @@ export default function LandingPage() {
             justifyContent: "space-between",
           }}
         >
-          <span className="text-base font-semibold text-navy">Insight Tutors</span>
+          <span className="text-base font-semibold text-navy">Insight Academy</span>
           <Button asChild size="sm">
             <Link href="/login">Log in</Link>
           </Button>
@@ -121,7 +121,7 @@ export default function LandingPage() {
             }}
           >
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate">
-              Insight Tutors
+              Insight Academy
             </p>
             <h1
               className="text-navy"
@@ -311,7 +311,7 @@ export default function LandingPage() {
             justifyContent: "space-between",
           }}
         >
-          <span className="text-sm font-medium text-navy">Insight Tutors</span>
+          <span className="text-sm font-medium text-navy">Insight Academy</span>
           <span className="text-sm text-muted">Private tutoring management</span>
         </div>
       </footer>

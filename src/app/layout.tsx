@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Insight Tutors",
+  title: "Insight Academy",
   description: "Private communication for your tutoring program",
 };
 

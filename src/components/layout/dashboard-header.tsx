@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { User } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { NotificationBell } from "@/components/layout/notification-bell";
@@ -122,12 +123,12 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
             justifyContent: "space-between",
           }}
         >
-          <div>
+          <Link href={`/${role}`} style={{ textDecoration: "none" }}>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate">
-              Insight Tutors
+              Insight Academy
             </p>
             <p className="text-lg font-semibold text-navy">Dashboard</p>
-          </div>
+          </Link>
 
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <NotificationBell userId={userId} />
