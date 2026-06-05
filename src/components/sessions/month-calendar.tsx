@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import type { Session } from "./session-card";
 
 type CalendarSession = Session & { studentName?: string; teacherName?: string };
@@ -101,19 +100,20 @@ function RescheduleModal({
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const supabase = createClient();
-    const { error: updateError } = await supabase
-      .from("sessions")
-      .update({
+    const res = await fetch(`/api/sessions/${session.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         scheduled_at: new Date(`${newDate}T${newTime}:00`).toISOString(),
         duration_minutes: parseInt(newDuration),
         notes: newNotes.trim() || null,
         status: "proposed",
         proposed_by: proposedBy,
-      })
-      .eq("id", session.id);
-    if (updateError) {
-      setError(updateError.message);
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error ?? "Something went wrong.");
       setLoading(false);
       return;
     }
@@ -229,14 +229,14 @@ export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role
   const updateSession = async (sessionId: string, status: "confirmed" | "cancelled") => {
     const action = status === "confirmed" ? "confirm" : "cancel";
     setActionLoading(action);
-    const supabase = createClient();
-    await supabase
-      .from("sessions")
-      .update({
+    await fetch(`/api/sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         status,
         ...(status === "cancelled" && currentUserId ? { cancelled_by: currentUserId } : {}),
-      })
-      .eq("id", sessionId);
+      }),
+    });
     setActionLoading(null);
     setPopover(null);
     setExpandedSessionId(null);

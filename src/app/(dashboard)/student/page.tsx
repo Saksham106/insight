@@ -1,9 +1,7 @@
-import Link from "next/link";
-
+import { ChatButton } from "@/components/chat/chat-button";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { RequestSessionForm } from "@/components/sessions/request-session-form";
 import { SessionCard, type Session } from "@/components/sessions/session-card";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth/require-role";
 import { createServerClientWithBypass } from "@/lib/supabase/server";
@@ -67,7 +65,7 @@ export default async function StudentPage() {
       <div>
         <h1 className="text-2xl font-semibold text-navy">Welcome back</h1>
         <p className="text-sm text-muted">
-          Your private tutoring conversation stays in one secure place.
+          Your tutoring sessions and conversations, all in one place.
         </p>
       </div>
 
@@ -81,9 +79,11 @@ export default async function StudentPage() {
             {assignment?.teacher?.full_name ?? "Not assigned yet"}
           </p>
           {conversationId ? (
-            <Button asChild style={{ width: "fit-content" }}>
-              <Link href={`/chat/${conversationId}`}>Open chat</Link>
-            </Button>
+            <ChatButton
+              conversationId={conversationId}
+              currentUserId={profile.id}
+              title={`Chat with ${assignment?.teacher?.full_name ?? "your teacher"}`}
+            />
           ) : (
             <p className="text-sm text-muted">
               Your admin will assign a teacher soon.

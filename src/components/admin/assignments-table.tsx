@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { MessageCircle } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+
+import { ChatDrawer } from "@/components/chat/chat-drawer";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,8 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [chatTitle, setChatTitle] = useState("");
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 480px)");
@@ -112,9 +115,12 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
                   <TableCell>{assignment.student?.full_name ?? "-"}</TableCell>
                   <TableCell>
                     {conversationId ? (
-                      <Link
-                        href={`/admin/conversations/${conversationId}`}
-                        onClick={(e) => e.stopPropagation()}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setChatConversationId(conversationId);
+                          setChatTitle(`${assignment.teacher?.full_name ?? "Teacher"} & ${assignment.student?.full_name ?? "Student"}`);
+                        }}
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
@@ -125,12 +131,13 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
                           color: "var(--color-navy)",
                           fontSize: "13px",
                           fontWeight: 500,
-                          textDecoration: "none",
+                          background: "none",
+                          cursor: "pointer",
                         }}
                       >
                         <MessageCircle size={13} />
                         View
-                      </Link>
+                      </button>
                     ) : (
                       <Badge variant="gold">Pending</Badge>
                     )}
@@ -199,6 +206,16 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
             </Button>
           </div>
         </Modal>
+      )}
+
+      {chatConversationId && (
+        <ChatDrawer
+          conversationId={chatConversationId}
+          currentUserId=""
+          title={chatTitle}
+          readOnly
+          onClose={() => setChatConversationId(null)}
+        />
       )}
     </>
   );

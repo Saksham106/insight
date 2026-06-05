@@ -1,0 +1,90 @@
+import { NextResponse } from "next/server";
+
+import { getUserProfile } from "@/lib/auth/get-user-profile";
+import { sendSessionEmail } from "@/lib/email";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+
+export async function POST(request: Request) {
+  const profile = await getUserProfile();
+  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await request.json();
+  const { assignment_id, scheduled_at, duration_minutes, notes, proposed_by } = body;
+
+  if (!assignment_id || !scheduled_at || !duration_minutes || !proposed_by) {
+    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  const supabase = await createClient();
+
+  // Insert the session
+  const { data: session, error: insertError } = await supabase
+    .from("sessions")
+    .insert({ assignment_id, scheduled_at, duration_minutes, notes: notes ?? null, proposed_by })
+    .select("id")
+    .single();
+
+  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+
+  // Send email to the other party — fire and forget
+  sendNotification("proposed", assignment_id, proposed_by, scheduled_at, duration_minutes, notes).catch(() => {});
+
+  return NextResponse.json({ sessionId: session.id });
+}
+
+async function sendNotification(
+  event: "proposed" | "confirmed" | "cancelled" | "rescheduled",
+  assignmentId: string,
+  actorId: string,
+  scheduledAt: string,
+  durationMinutes: number,
+  notes?: string | null,
+) {
+  const admin = createAdminClient();
+
+  // Get assignment with teacher + student profiles
+  const { data: assignment } = await admin
+    .from("teacher_student_assignments")
+    .select("teacher_id, student_id, teacher:teacher_id (full_name), student:student_id (full_name)")
+    .eq("id", assignmentId)
+    .single();
+
+  if (!assignment) return;
+
+  const teacher = Array.isArray(assignment.teacher) ? assignment.teacher[0] : assignment.teacher;
+  const student = Array.isArray(assignment.student) ? assignment.student[0] : assignment.student;
+
+  const teacherId = assignment.teacher_id as string;
+  const studentId = assignment.student_id as string;
+  const teacherName = (teacher as { full_name: string } | null)?.full_name ?? "Teacher";
+  const studentName = (student as { full_name: string } | null)?.full_name ?? "Student";
+
+  // Determine recipient (the OTHER party)
+  const actorIsTeacher = actorId === teacherId;
+  const recipientId = actorIsTeacher ? studentId : teacherId;
+  const recipientName = actorIsTeacher ? studentName : teacherName;
+  const actorName = actorIsTeacher ? teacherName : studentName;
+  const recipientRole: "teacher" | "student" = actorIsTeacher ? "student" : "teacher";
+
+  // For "confirmed" and "cancelled", notify the original proposer / other party respectively
+  // (actorId already reflects who did the action, so recipientId is always the other party)
+
+  const { data: authUser } = await admin.auth.admin.getUserById(recipientId);
+  const recipientEmail = authUser?.user?.email;
+  if (!recipientEmail) return;
+
+  await sendSessionEmail({
+    event,
+    recipientEmail,
+    recipientName,
+    actorName,
+    scheduledAt,
+    durationMinutes,
+    notes,
+    role: recipientRole,
+  });
+}
+
+// Export for reuse in the PATCH route
+export { sendNotification };

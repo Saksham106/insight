@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createClient } from "@/lib/supabase/client";
 
 interface RequestSessionFormProps {
   assignmentId: string;
@@ -33,17 +32,21 @@ function Form({ assignmentId, studentId, onSuccess }: { assignmentId: string; st
     setSuccess(false);
     setLoading(true);
 
-    const supabase = createClient();
-    const { error: insertError } = await supabase.from("sessions").insert({
-      assignment_id: assignmentId,
-      scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
-      duration_minutes: parseInt(duration),
-      notes: notes.trim() || null,
-      proposed_by: studentId,
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assignment_id: assignmentId,
+        scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
+        duration_minutes: parseInt(duration),
+        notes: notes.trim() || null,
+        proposed_by: studentId,
+      }),
     });
+    const data = await res.json();
 
-    if (insertError) {
-      setError(insertError.message);
+    if (!res.ok) {
+      setError(data.error ?? "Something went wrong.");
       setLoading(false);
       return;
     }

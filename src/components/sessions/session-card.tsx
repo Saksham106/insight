@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createClient } from "@/lib/supabase/client";
 
 export interface Session {
   id: string;
@@ -61,14 +60,14 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
   const update = async (status: "confirmed" | "cancelled") => {
     const action = status === "confirmed" ? "confirm" : "cancel";
     setLoading(action);
-    const supabase = createClient();
-    await supabase
-      .from("sessions")
-      .update({
+    await fetch(`/api/sessions/${session.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         status,
         ...(status === "cancelled" ? { cancelled_by: currentUserId } : {}),
-      })
-      .eq("id", session.id);
+      }),
+    });
     setLoading(null);
     router.refresh();
   };
@@ -77,19 +76,20 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
     e.preventDefault();
     setRescheduleError(null);
     setRescheduleLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("sessions")
-      .update({
+    const res = await fetch(`/api/sessions/${session.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         scheduled_at: new Date(`${newDate}T${newTime}:00`).toISOString(),
         duration_minutes: parseInt(newDuration),
         notes: newNotes.trim() || null,
         status: "proposed",
         proposed_by: currentUserId,
-      })
-      .eq("id", session.id);
-    if (error) {
-      setRescheduleError(error.message);
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setRescheduleError(data.error ?? "Something went wrong.");
       setRescheduleLoading(false);
       return;
     }

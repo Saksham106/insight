@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { ChatDrawer } from "@/components/chat/chat-drawer";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { ScheduleSessionForm } from "@/components/sessions/schedule-session-form";
 import { SessionCard, type Session } from "@/components/sessions/session-card";
@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createClient } from "@/lib/supabase/client";
 
 interface AssignmentRow {
   id: string;
@@ -61,16 +60,20 @@ function QuickScheduleModal({
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const supabase = createClient();
-    const { error: insertError } = await supabase.from("sessions").insert({
-      assignment_id: assignmentId,
-      scheduled_at: new Date(`${dateStr}T${time}:00`).toISOString(),
-      duration_minutes: parseInt(duration),
-      notes: notes.trim() || null,
-      proposed_by: proposedBy,
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assignment_id: assignmentId,
+        scheduled_at: new Date(`${dateStr}T${time}:00`).toISOString(),
+        duration_minutes: parseInt(duration),
+        notes: notes.trim() || null,
+        proposed_by: proposedBy,
+      }),
     });
-    if (insertError) {
-      setError(insertError.message);
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error ?? "Something went wrong.");
       setLoading(false);
       return;
     }
@@ -194,6 +197,8 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
   const [selectedId, setSelectedId] = useState<string>(assignments[0]?.id ?? "");
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date | null>(null);
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [chatTitle, setChatTitle] = useState("");
 
   const now = new Date();
   const selected = assignments.find((a) => a.id === selectedId) ?? null;
@@ -224,6 +229,7 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
   const conversationId = selected?.conversation?.[0]?.id;
 
   return (
+    <>
     <div style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
       {/* Welcome */}
       <div>
@@ -344,8 +350,14 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
                       {showSchedule ? "Close form" : "Schedule session"}
                     </Button>
                     {conversationId && (
-                      <Button asChild size="sm">
-                        <Link href={`/chat/${conversationId}`}>Open chat</Link>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setChatConversationId(conversationId);
+                          setChatTitle(`Chat with ${selected?.student?.full_name ?? "Student"}`);
+                        }}
+                      >
+                        Open chat
                       </Button>
                     )}
                   </div>
@@ -400,5 +412,14 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
         />
       )}
     </div>
+      {chatConversationId && (
+        <ChatDrawer
+          conversationId={chatConversationId}
+          currentUserId={teacherId}
+          title={chatTitle}
+          onClose={() => setChatConversationId(null)}
+        />
+      )}
+    </>
   );
 }
