@@ -55,7 +55,7 @@ export async function PATCH(
   else if (scheduled_at !== undefined) event = "rescheduled"; // reschedule = new time proposed
 
   if (event) {
-    sendNotification(event, existing.assignment_id, actorId, newScheduledAt, newDuration, newNotes).catch(() => {});
+    sendNotification(event, existing.assignment_id, actorId, newScheduledAt, newDuration, newNotes).catch((e) => console.error("[email] session update:", e));
   }
 
   return NextResponse.json({ success: true });

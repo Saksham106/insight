@@ -140,6 +140,13 @@ export default function LoginPage() {
             <Button type="submit" disabled={loading}>
               {loading ? "Signing in..." : "Log in"}
             </Button>
+            <a
+              href="/forgot-password"
+              className="text-sm text-muted"
+              style={{ textAlign: "center", textDecoration: "none" }}
+            >
+              Forgot your password?
+            </a>
           </form>
           <div
             className="text-sm text-muted"
