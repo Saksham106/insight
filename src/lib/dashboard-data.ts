@@ -100,7 +100,7 @@ export const getStudentDashboardData = cache(async function getStudentDashboardD
 
 const fetchAdminData = unstable_cache(
   async () => {
-    const supabase = await createAdminClient();
+    const supabase = createAdminClient();
     const [teachersResult, studentsResult, assignmentsResult, sessionsResult] = await Promise.all([
     supabase
       .from("profiles")

@@ -38,11 +38,16 @@ export function ChatDrawer({
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  // Close on Escape
+  // Close on Escape + lock body scroll
   useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", handler);
+    };
   }, [onClose]);
 
   // Fetch initial messages
@@ -113,7 +118,7 @@ export function ChatDrawer({
         style={{
           position: "fixed",
           inset: 0,
-          backgroundColor: "rgba(0,0,0,0.35)",
+          backgroundColor: isMobile ? "var(--color-background)" : "rgba(0,0,0,0.35)",
           zIndex: 40,
         }}
       />
@@ -124,8 +129,9 @@ export function ChatDrawer({
           position: "fixed",
           top: 0,
           right: 0,
-          bottom: 0,
           width: drawerWidth,
+          height: isMobile ? "100dvh" : undefined,
+          bottom: isMobile ? undefined : 0,
           zIndex: 50,
           backgroundColor: "var(--color-surface)",
           borderLeft: "1px solid var(--color-border)",
