@@ -7,10 +7,19 @@ interface ModalProps {
   title: string;
   description?: string;
   onClose: () => void;
+  showCloseButton?: boolean;
+  centeredHeader?: boolean;
   children: React.ReactNode;
 }
 
-export function Modal({ title, description, onClose, children }: ModalProps) {
+export function Modal({
+  title,
+  description,
+  onClose,
+  showCloseButton = true,
+  centeredHeader = false,
+  children,
+}: ModalProps) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", handler);
@@ -46,24 +55,43 @@ export function Modal({ title, description, onClose, children }: ModalProps) {
           gap: "16px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: centeredHeader ? "center" : "space-between",
+            gap: "12px",
+            textAlign: centeredHeader ? "center" : "left",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: centeredHeader ? "center" : "flex-start",
+              gap: "4px",
+              width: centeredHeader ? "100%" : "auto",
+            }}
+          >
             <h2 className="text-lg font-semibold text-navy">{title}</h2>
             {description && <p className="text-sm text-muted">{description}</p>}
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "2px",
-              color: "var(--color-muted)",
-              flexShrink: 0,
-            }}
-          >
-            <X size={18} />
-          </button>
+          {showCloseButton ? (
+            <button
+              onClick={onClose}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "2px",
+                color: "var(--color-muted)",
+                flexShrink: 0,
+              }}
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          ) : null}
         </div>
         {children}
       </div>

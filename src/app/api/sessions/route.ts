@@ -91,6 +91,3 @@ async function sendNotification(
     recipientTimezone: (recipientProfile as { timezone?: string | null } | null)?.timezone,
   });
 }
-
-// Export for reuse in the PATCH route
-export { sendNotification };

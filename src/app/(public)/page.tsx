@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CalendarCheck, MessageCircle, Shield, Users, Bell, FileText } from "lucide-react";
 
+import { JoinInterestModal } from "@/components/landing/join-interest-modal";
 import { Button } from "@/components/ui/button";
 
 const features = [
@@ -151,8 +152,9 @@ export default function LandingPage() {
             <p className="text-muted" style={{ fontSize: "18px", lineHeight: 1.7, maxWidth: "540px", margin: 0 }}>
               Schedule sessions, chat privately, and share files with your teacher or student — all in one place.
             </p>
-            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-              <Button asChild size="lg">
+            <div style={{ display: "flex", gap: "12px", alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+              <JoinInterestModal />
+              <Button asChild size="lg" variant="outline">
                 <Link href="/login">Log in to your account</Link>
               </Button>
             </div>
@@ -326,15 +328,21 @@ export default function LandingPage() {
               Ready to get started?
             </h2>
             <p style={{ fontSize: "16px", color: "rgba(255,255,255,0.7)", margin: 0, maxWidth: "440px" }}>
-              Already have an account? Log in below. New here? Your coordinator will send you an invite link.
+              Already have an account? Log in below. New here? Let us know you&apos;re interested and we&apos;ll follow up.
             </p>
-            <Button
-              asChild
-              size="lg"
-              style={{ backgroundColor: "white", color: "var(--color-navy)" }}
-            >
-              <Link href="/login">Log in</Link>
-            </Button>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+              <JoinInterestModal
+                buttonStyle={{ backgroundColor: "white", color: "var(--color-navy)" }}
+              />
+              <Button
+                asChild
+                size="lg"
+                variant="outline"
+                style={{ backgroundColor: "transparent", color: "white", borderColor: "rgba(255,255,255,0.35)" }}
+              >
+                <Link href="/login">Log in</Link>
+              </Button>
+            </div>
           </div>
         </section>
       </main>
