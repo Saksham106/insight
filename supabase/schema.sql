@@ -30,10 +30,25 @@ create table if not exists public.messages (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.join_interest_requests (
+  id uuid primary key default gen_random_uuid(),
+  full_name text,
+  role text not null check (role in ('teacher', 'student')),
+  email text,
+  phone text,
+  message text,
+  source text not null default 'landing_page',
+  status text not null default 'new' check (status in ('new', 'contacted', 'invited', 'closed')),
+  created_at timestamptz not null default now(),
+  constraint join_interest_requests_contact_check check (email is not null or phone is not null)
+);
+
 create index if not exists idx_assignments_teacher_id on public.teacher_student_assignments (teacher_id);
 create index if not exists idx_assignments_student_id on public.teacher_student_assignments (student_id);
 create index if not exists idx_messages_conversation_id on public.messages (conversation_id);
 create index if not exists idx_messages_created_at on public.messages (created_at);
+create index if not exists idx_join_interest_requests_created_at on public.join_interest_requests (created_at desc);
+create index if not exists idx_join_interest_requests_status on public.join_interest_requests (status);
 
 create or replace function public.create_conversation_for_assignment()
 returns trigger
@@ -80,6 +95,7 @@ alter table public.profiles enable row level security;
 alter table public.teacher_student_assignments enable row level security;
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
+alter table public.join_interest_requests enable row level security;
 
 -- Profiles
 create policy profiles_select_self on public.profiles
@@ -130,6 +146,40 @@ using (
 );
 
 create policy profiles_update_admin on public.profiles
+for update
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+      and p.is_active = true
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+      and p.is_active = true
+  )
+);
+
+-- Join interest requests
+create policy join_interest_requests_admin_select on public.join_interest_requests
+for select
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+      and p.is_active = true
+  )
+);
+
+create policy join_interest_requests_admin_update on public.join_interest_requests
 for update
 using (
   exists (
