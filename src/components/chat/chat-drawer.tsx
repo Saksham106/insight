@@ -28,8 +28,10 @@ export function ChatDrawer({
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
 
-  // Responsive width
+  // Detect mobile
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
     setIsMobile(mq.matches);
@@ -38,7 +40,33 @@ export function ChatDrawer({
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  // Close on Escape + lock body scroll
+  // Sync panel + backdrop to visualViewport so iOS keyboard can't expose the page behind
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const update = () => {
+      const panel = panelRef.current;
+      const backdrop = backdropRef.current;
+      if (!panel || !backdrop) return;
+      const top = vv.offsetTop;
+      const height = vv.height;
+      panel.style.top = `${top}px`;
+      panel.style.height = `${height}px`;
+      backdrop.style.top = `${top}px`;
+      backdrop.style.height = `${height}px`;
+    };
+
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  // Lock body scroll + close on Escape
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -108,16 +136,18 @@ export function ChatDrawer({
     return error ? error.message : null;
   };
 
-  const drawerWidth = isMobile ? "100vw" : "420px";
-
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — solid on mobile so nothing bleeds through */}
       <div
+        ref={backdropRef}
         onClick={onClose}
         style={{
           position: "fixed",
-          inset: 0,
+          top: 0,
+          left: 0,
+          right: 0,
+          height: "100dvh",
           backgroundColor: isMobile ? "var(--color-background)" : "rgba(0,0,0,0.35)",
           zIndex: 40,
         }}
@@ -125,16 +155,16 @@ export function ChatDrawer({
 
       {/* Panel */}
       <div
+        ref={panelRef}
         style={{
           position: "fixed",
           top: 0,
           right: 0,
-          width: drawerWidth,
-          height: isMobile ? "100dvh" : undefined,
-          bottom: isMobile ? undefined : 0,
+          width: isMobile ? "100%" : "420px",
+          height: "100dvh",
           zIndex: 50,
           backgroundColor: "var(--color-surface)",
-          borderLeft: "1px solid var(--color-border)",
+          borderLeft: isMobile ? "none" : "1px solid var(--color-border)",
           boxShadow: "-4px 0 24px rgba(0,0,0,0.1)",
           display: "flex",
           flexDirection: "column",
