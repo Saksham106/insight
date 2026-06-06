@@ -34,6 +34,10 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
+  const [showRemindersModal, setShowRemindersModal] = useState(false);
+  const [reminder24h, setReminder24h] = useState(true);
+  const [reminder3h, setReminder3h] = useState(true);
+  const [reminderSaving, setReminderSaving] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
@@ -47,6 +51,23 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [dropdownOpen]);
+
+  // Load reminder preferences
+  useEffect(() => {
+    const load = async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("profiles")
+        .select("reminder_24h, reminder_3h")
+        .eq("id", userId)
+        .single();
+      if (data) {
+        setReminder24h(data.reminder_24h ?? true);
+        setReminder3h(data.reminder_3h ?? true);
+      }
+    };
+    void load();
+  }, [userId]);
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -103,6 +124,24 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
     setNewPassword("");
     setConfirmPassword("");
     setShowResetModal(true);
+  };
+
+  const openReminders = () => {
+    setDropdownOpen(false);
+    setShowRemindersModal(true);
+  };
+
+  const handleReminderToggle = async (field: "reminder_24h" | "reminder_3h", value: boolean) => {
+    if (field === "reminder_24h") setReminder24h(value);
+    else setReminder3h(value);
+
+    setReminderSaving(true);
+    await fetch("/api/user/reminders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    }).catch(() => {});
+    setReminderSaving(false);
   };
 
   return (
@@ -173,6 +212,23 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                   }}
                 >
                   <button
+                    onClick={openReminders}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: "11px 16px",
+                      textAlign: "left",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      color: "var(--color-foreground)",
+                      borderBottom: "1px solid var(--color-border)",
+                    }}
+                  >
+                    Reminders
+                  </button>
+                  <button
                     onClick={openReset}
                     style={{
                       display: "block",
@@ -211,6 +267,103 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
           </div>
         </div>
       </header>
+
+      {/* Reminders modal */}
+      {showRemindersModal && (
+        <Modal
+          title="Email reminders"
+          description="Choose when to receive email reminders for upcoming sessions."
+          onClose={() => setShowRemindersModal(false)}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            {/* 24h toggle */}
+            <label
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", padding: "14px 16px", border: "1px solid var(--color-border)", borderRadius: "10px", background: "var(--color-soft)" }}
+            >
+              <div>
+                <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "var(--color-navy)" }}>24 hours before</p>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--color-muted)" }}>Reminder sent the day before your session</p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={reminder24h}
+                disabled={reminderSaving}
+                onClick={() => void handleReminderToggle("reminder_24h", !reminder24h)}
+                style={{
+                  width: "44px",
+                  height: "24px",
+                  borderRadius: "9999px",
+                  border: "none",
+                  cursor: reminderSaving ? "not-allowed" : "pointer",
+                  background: reminder24h ? "var(--color-navy)" : "var(--color-border)",
+                  position: "relative",
+                  flexShrink: 0,
+                  transition: "background 0.2s",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "2px",
+                    left: reminder24h ? "22px" : "2px",
+                    width: "20px",
+                    height: "20px",
+                    borderRadius: "50%",
+                    background: "#fff",
+                    transition: "left 0.2s",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  }}
+                />
+              </button>
+            </label>
+
+            {/* 3h toggle */}
+            <label
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", padding: "14px 16px", border: "1px solid var(--color-border)", borderRadius: "10px", background: "var(--color-soft)" }}
+            >
+              <div>
+                <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "var(--color-navy)" }}>3 hours before</p>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--color-muted)" }}>Reminder sent a few hours before your session</p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={reminder3h}
+                disabled={reminderSaving}
+                onClick={() => void handleReminderToggle("reminder_3h", !reminder3h)}
+                style={{
+                  width: "44px",
+                  height: "24px",
+                  borderRadius: "9999px",
+                  border: "none",
+                  cursor: reminderSaving ? "not-allowed" : "pointer",
+                  background: reminder3h ? "var(--color-navy)" : "var(--color-border)",
+                  position: "relative",
+                  flexShrink: 0,
+                  transition: "background 0.2s",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "2px",
+                    left: reminder3h ? "22px" : "2px",
+                    width: "20px",
+                    height: "20px",
+                    borderRadius: "50%",
+                    background: "#fff",
+                    transition: "left 0.2s",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  }}
+                />
+              </button>
+            </label>
+
+            <p style={{ margin: 0, fontSize: "12px", color: "var(--color-muted)" }}>
+              {reminderSaving ? "Saving…" : "Changes are saved automatically."}
+            </p>
+          </div>
+        </Modal>
+      )}
 
       {/* Reset password modal */}
       {showResetModal && (

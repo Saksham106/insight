@@ -119,6 +119,41 @@ const configs: Record<SessionEmailEvent, (o: SessionEmailOptions) => { subject: 
   }),
 };
 
+interface ReminderEmailOptions {
+  recipientEmail: string;
+  recipientName: string;
+  otherPartyName: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  hoursUntil: 24 | 3;
+  role: "teacher" | "student";
+  recipientTimezone?: string | null;
+}
+
+export async function sendReminderEmail(options: ReminderEmailOptions) {
+  if (!process.env.RESEND_API_KEY) return;
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+  const label = options.hoursUntil === 24 ? "tomorrow" : "in 3 hours";
+  const subject = `Reminder: session ${label} with ${options.otherPartyName}`;
+  const dashboardPath = options.role === "teacher" ? "/teacher" : "/student";
+
+  const body = `<p style="margin:16px 0;color:#374151;">Hi ${options.recipientName},</p>
+    <p style="margin:0 0 4px;color:#374151;">This is a reminder that you have a session with <strong>${options.otherPartyName}</strong> ${label}.</p>
+    ${sessionDetailsHtml(options.scheduledAt, options.durationMinutes, null, options.recipientTimezone)}
+    <p style="color:#374151;">We'll see you then!</p>`;
+
+  await resend.emails.send({
+    from: FROM,
+    to: options.recipientEmail,
+    subject,
+    html: layout("Upcoming session reminder", subject, body, dashboardPath, APP_URL),
+  });
+}
+
 export async function sendSessionEmail(options: SessionEmailOptions) {
   if (!process.env.RESEND_API_KEY) return; // silently skip if not configured
 
