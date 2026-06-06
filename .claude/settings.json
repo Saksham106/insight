@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__supabase__list_tables",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__get_project_url",
+      "mcp__supabase__execute_sql",
+      "mcp__Claude_Preview__preview_screenshot",
+      "Bash(npm run lint)",
+      "Bash(npx tsc --noEmit)"
+    ]
+  }
+}

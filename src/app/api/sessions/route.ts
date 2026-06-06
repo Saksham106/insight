@@ -16,6 +16,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  if (new Date(scheduled_at) <= new Date()) {
+    return NextResponse.json({ error: "Cannot schedule a session in the past." }, { status: 400 });
+  }
+
   const supabase = await createClient();
 
   // Insert the session
@@ -67,10 +71,11 @@ async function sendNotification(
   const actorName = actorIsTeacher ? teacherName : studentName;
   const recipientRole: "teacher" | "student" = actorIsTeacher ? "student" : "teacher";
 
-  // For "confirmed" and "cancelled", notify the original proposer / other party respectively
-  // (actorId already reflects who did the action, so recipientId is always the other party)
+  const [{ data: authUser }, { data: recipientProfile }] = await Promise.all([
+    admin.auth.admin.getUserById(recipientId),
+    admin.from("profiles").select("timezone").eq("id", recipientId).single(),
+  ]);
 
-  const { data: authUser } = await admin.auth.admin.getUserById(recipientId);
   const recipientEmail = authUser?.user?.email;
   if (!recipientEmail) return;
 
@@ -83,6 +88,7 @@ async function sendNotification(
     durationMinutes,
     notes,
     role: recipientRole,
+    recipientTimezone: (recipientProfile as { timezone?: string | null } | null)?.timezone,
   });
 }
 

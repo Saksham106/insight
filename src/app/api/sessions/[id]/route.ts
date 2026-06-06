@@ -27,6 +27,10 @@ export async function PATCH(
 
   if (!existing) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
+  if (scheduled_at !== undefined && new Date(scheduled_at) <= new Date()) {
+    return NextResponse.json({ error: "Cannot reschedule a session to a past date." }, { status: 400 });
+  }
+
   // Build update payload
   const updatePayload: Record<string, unknown> = {};
   if (status !== undefined) updatePayload.status = status;
@@ -93,7 +97,11 @@ async function sendNotification(
   const actorName = actorIsTeacher ? teacherName : studentName;
   const recipientRole: "teacher" | "student" = actorIsTeacher ? "student" : "teacher";
 
-  const { data: authUser } = await admin.auth.admin.getUserById(recipientId);
+  const [{ data: authUser }, { data: recipientProfile }] = await Promise.all([
+    admin.auth.admin.getUserById(recipientId),
+    admin.from("profiles").select("timezone").eq("id", recipientId).single(),
+  ]);
+
   const recipientEmail = authUser?.user?.email;
   if (!recipientEmail) return;
 
@@ -106,5 +114,6 @@ async function sendNotification(
     durationMinutes,
     notes,
     role: recipientRole,
+    recipientTimezone: (recipientProfile as { timezone?: string | null } | null)?.timezone,
   });
 }

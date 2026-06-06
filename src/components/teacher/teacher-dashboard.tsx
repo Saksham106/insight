@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, X, Users, CalendarDays } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -10,9 +10,9 @@ import { ScheduleSessionForm } from "@/components/sessions/schedule-session-form
 import { SessionCard, type Session } from "@/components/sessions/session-card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TimePicker } from "@/components/ui/time-picker";
 
 interface AssignmentRow {
   id: string;
@@ -51,7 +51,7 @@ function QuickScheduleModal({
   });
 
   const [assignmentId, setAssignmentId] = useState(assignments[0]?.id ?? "");
-  const [time, setTime] = useState("");
+  const [time, setTime] = useState("09:00");
   const [duration, setDuration] = useState("60");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
@@ -60,13 +60,20 @@ function QuickScheduleModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const scheduledAt = new Date(`${dateStr}T${time}:00`);
+    if (scheduledAt <= new Date()) {
+      setError("Please choose a time in the future.");
+      return;
+    }
+
     setLoading(true);
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         assignment_id: assignmentId,
-        scheduled_at: new Date(`${dateStr}T${time}:00`).toISOString(),
+        scheduled_at: scheduledAt.toISOString(),
         duration_minutes: parseInt(duration),
         notes: notes.trim() || null,
         proposed_by: proposedBy,
@@ -143,12 +150,7 @@ function QuickScheduleModal({
           <div className="form-grid-2">
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <Label>Time</Label>
-              <Input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                required
-              />
+              <TimePicker value={time} onChange={setTime} required />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <Label>Duration</Label>
@@ -200,6 +202,24 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
   const [scheduleDate, setScheduleDate] = useState<Date | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [chatTitle, setChatTitle] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 480px)");
+    setIsNarrow(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsNarrow(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const now = new Date();
   const selected = assignments.find((a) => a.id === selectedId) ?? null;
@@ -209,6 +229,13 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
       .filter((s) => s.status !== "cancelled")
       .map((s) => ({ ...s, studentName: a.student?.full_name ?? undefined })),
   );
+
+  const thisWeek = calendarSessions
+    .filter((s) => {
+      const d = new Date(s.scheduled_at);
+      return d >= now && d <= new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    })
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
 
   // Sessions proposed by students awaiting teacher confirmation
   const pendingRequests = assignments.flatMap((a) =>
@@ -240,14 +267,65 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
         </p>
       </div>
 
-      {/* Calendar — double-click any date to schedule */}
-      <section>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "12px" }}>
-          <h2 className="text-lg font-semibold text-navy">Schedule</h2>
-          <p className="text-xs text-muted">Double-click a date to schedule a session</p>
-        </div>
-        <MonthCalendar sessions={calendarSessions} onDateDoubleClick={setScheduleDate} currentUserId={teacherId} role="teacher" />
-      </section>
+      {/* This week — mobile only (replaces calendar on small screens) */}
+      {isMobile && thisWeek.length > 0 && (
+        <section style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <h2 className="text-lg font-semibold text-navy">This week</h2>
+          {thisWeek.map((s) => {
+            const start = new Date(s.scheduled_at);
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const tomorrowStart = new Date(todayStart.getTime() + 86400000);
+            const sessionDayStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+            const dayLbl =
+              sessionDayStart.getTime() === todayStart.getTime() ? "Today" :
+              sessionDayStart.getTime() === tomorrowStart.getTime() ? "Tomorrow" :
+              start.toLocaleDateString("en-US", { weekday: "short" });
+            const timeStr = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+            const dur = s.duration_minutes >= 120 && s.duration_minutes % 60 === 0
+              ? `${s.duration_minutes / 60}h` : `${s.duration_minutes}m`;
+            return (
+              <div
+                key={s.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  padding: "10px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid var(--color-border)",
+                  backgroundColor: "var(--color-surface)",
+                }}
+              >
+                <span style={{ fontSize: "13px", fontWeight: 700, minWidth: isNarrow ? "32px" : "48px", color: dayLbl === "Today" ? "var(--color-navy)" : "var(--color-foreground)" }}>
+                  {dayLbl}
+                </span>
+                <span className="text-sm text-muted" style={{ whiteSpace: "nowrap" }} suppressHydrationWarning>{timeStr}</span>
+                <span className="text-sm text-muted" style={{ whiteSpace: "nowrap" }}>· {dur}</span>
+                {s.studentName && (
+                  <span className="text-sm font-medium text-foreground" style={{ marginLeft: "auto" }}>{s.studentName}</span>
+                )}
+                <span style={{
+                  display: "inline-flex", borderRadius: "9999px", padding: "2px 10px",
+                  fontSize: "11px", fontWeight: 600, border: "1px solid",
+                  ...(s.status === "confirmed"
+                    ? { backgroundColor: "#eaf2f8", color: "#12304a", borderColor: "#b3cfe0" }
+                    : { backgroundColor: "#f6e8c8", color: "#b7791f", borderColor: "#e2c47a" }),
+                }}>
+                  {s.status === "confirmed" ? "Confirmed" : "Pending"}
+                </span>
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {/* Calendar — desktop only */}
+      {!isMobile && (
+        <section>
+          <h2 className="text-lg font-semibold text-navy" style={{ marginBottom: "12px" }}>Schedule</h2>
+          <MonthCalendar sessions={calendarSessions} onDateDoubleClick={setScheduleDate} currentUserId={teacherId} role="teacher" hint="Double-click a date to schedule a session" />
+        </section>
+      )}
 
       {/* Pending session requests from students */}
       {pendingRequests.length > 0 && (
@@ -336,7 +414,7 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
                 style={{ marginTop: "14px", padding: "24px", display: "flex", flexDirection: "column", gap: "20px", borderRadius: "16px" }}
               >
                 {/* Panel header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? "10px" : undefined }}>
                   <h3 className="text-base font-semibold text-navy">
                     {selected.student?.full_name ?? "Student"}
                   </h3>

@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TimePicker } from "@/components/ui/time-picker";
 
 export interface Session {
   id: string;
@@ -32,6 +33,11 @@ interface SessionCardProps {
   role: "teacher" | "student" | "admin";
 }
 
+function todayDateString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function SessionCard({ session, currentUserId, role }: SessionCardProps) {
   const router = useRouter();
   const [loading, setLoading] = useState<"confirm" | "cancel" | null>(null);
@@ -42,8 +48,8 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
   const start = new Date(session.scheduled_at);
   const end = new Date(start.getTime() + session.duration_minutes * 60 * 1000);
   const dateStr = start.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  const startTime = start.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false });
-  const endTime = end.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const startTime = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  const endTime = end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
   const initialDate = [
     start.getFullYear(),
@@ -76,11 +82,19 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
     e.preventDefault();
     setRescheduleError(null);
     setRescheduleLoading(true);
+
+    const scheduledAt = new Date(`${newDate}T${newTime}:00`);
+    if (scheduledAt <= new Date()) {
+      setRescheduleError("Please choose a date and time in the future.");
+      setRescheduleLoading(false);
+      return;
+    }
+
     const res = await fetch(`/api/sessions/${session.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        scheduled_at: new Date(`${newDate}T${newTime}:00`).toISOString(),
+        scheduled_at: scheduledAt.toISOString(),
         duration_minutes: parseInt(newDuration),
         notes: newNotes.trim() || null,
         status: "proposed",
@@ -124,10 +138,9 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
 
           if (session.status === "proposed") {
             if (iAmProposer) {
-              // I proposed it — teacher gets reschedule+cancel, student just gets cancel
               return (
                 <div style={{ display: "flex", gap: "8px" }}>
-                  {role === "teacher" && (
+                  {role !== "admin" && (
                     <Button size="sm" variant="outline" style={{ width: "fit-content" }} onClick={() => setShowReschedule((v) => !v)}>
                       {showReschedule ? "Close" : "Reschedule"}
                     </Button>
@@ -155,11 +168,9 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
           if (session.status === "confirmed" && role !== "admin") {
             return (
               <div style={{ display: "flex", gap: "8px" }}>
-                {role === "teacher" && (
-                  <Button size="sm" variant="outline" style={{ width: "fit-content" }} onClick={() => setShowReschedule((v) => !v)}>
-                    {showReschedule ? "Close" : "Reschedule"}
-                  </Button>
-                )}
+                <Button size="sm" variant="outline" style={{ width: "fit-content" }} onClick={() => setShowReschedule((v) => !v)}>
+                  {showReschedule ? "Close" : "Reschedule"}
+                </Button>
                 <Button size="sm" variant="outline" style={{ width: "fit-content" }} onClick={() => update("cancelled")} disabled={loading !== null}>
                   {loading === "cancel" ? "Cancelling..." : "Cancel session"}
                 </Button>
@@ -190,11 +201,11 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
             <div className="form-grid-3">
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <Label>Date</Label>
-                <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} required />
+                <Input type="date" value={newDate} min={todayDateString()} onChange={(e) => setNewDate(e.target.value)} required suppressHydrationWarning />
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <Label>Time</Label>
-                <Input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} required />
+                <TimePicker value={newTime} onChange={setNewTime} required />
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <Label>Duration</Label>
@@ -223,7 +234,9 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
             </div>
             {rescheduleError && <p className="text-sm text-error">{rescheduleError}</p>}
             <p className="text-xs text-muted">
-              The student will be asked to re-confirm the new time.
+              {role === "student"
+                ? "Your teacher will be asked to re-confirm the new time."
+                : "The student will be asked to re-confirm the new time."}
             </p>
             <div style={{ display: "flex", gap: "8px" }}>
               <Button type="submit" size="sm" disabled={rescheduleLoading}>

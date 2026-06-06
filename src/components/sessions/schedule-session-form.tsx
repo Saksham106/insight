@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TimePicker } from "@/components/ui/time-picker";
 
 interface ScheduleSessionFormProps {
   assignmentId: string;
@@ -16,10 +17,15 @@ interface ScheduleSessionFormProps {
   onSuccess?: () => void;
 }
 
+function todayDateString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function ScheduleSessionForm({ assignmentId, studentName, proposedBy, onSuccess }: ScheduleSessionFormProps) {
   const router = useRouter();
   const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
+  const [time, setTime] = useState("09:00");
   const [duration, setDuration] = useState("60");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,12 +38,19 @@ export function ScheduleSessionForm({ assignmentId, studentName, proposedBy, onS
     setSuccess(false);
     setLoading(true);
 
+    const scheduledAt = new Date(`${date}T${time}:00`);
+    if (scheduledAt <= new Date()) {
+      setError("Please choose a date and time in the future.");
+      setLoading(false);
+      return;
+    }
+
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         assignment_id: assignmentId,
-        scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
+        scheduled_at: scheduledAt.toISOString(),
         duration_minutes: parseInt(duration),
         notes: notes.trim() || null,
         proposed_by: proposedBy,
@@ -53,7 +66,7 @@ export function ScheduleSessionForm({ assignmentId, studentName, proposedBy, onS
 
     setSuccess(true);
     setDate("");
-    setTime("");
+    setTime("09:00");
     setDuration("60");
     setNotes("");
     setLoading(false);
@@ -82,17 +95,18 @@ export function ScheduleSessionForm({ assignmentId, studentName, proposedBy, onS
                 id={`date-${assignmentId}`}
                 type="date"
                 value={date}
+                min={todayDateString()}
                 onChange={(e) => setDate(e.target.value)}
                 required
+                suppressHydrationWarning
               />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <Label htmlFor={`time-${assignmentId}`}>Time</Label>
-              <Input
+              <TimePicker
                 id={`time-${assignmentId}`}
-                type="time"
                 value={time}
-                onChange={(e) => setTime(e.target.value)}
+                onChange={setTime}
                 required
               />
             </div>

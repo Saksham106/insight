@@ -15,21 +15,24 @@ interface SessionEmailOptions {
   durationMinutes: number;
   notes?: string | null;
   role: "teacher" | "student"; // recipient's role (determines dashboard link)
+  recipientTimezone?: string | null;
 }
 
 const NAVY = "#1b3560";
 const MUTED = "#6b7280";
 const BORDER = "#e5e7eb";
 
-function formatDateTime(iso: string) {
+function formatDateTime(iso: string, timezone?: string | null) {
   const d = new Date(iso);
-  const date = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-  const time = d.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false });
-  return { date, time };
+  const tz = timezone ?? "UTC";
+  const date = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: tz });
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: tz });
+  const tzAbbr = d.toLocaleTimeString("en-US", { timeZoneName: "short", timeZone: tz }).split(" ").pop() ?? tz;
+  return { date, time: `${time} ${tzAbbr}` };
 }
 
-function sessionDetailsHtml(scheduledAt: string, durationMinutes: number, notes?: string | null) {
-  const { date, time } = formatDateTime(scheduledAt);
+function sessionDetailsHtml(scheduledAt: string, durationMinutes: number, notes?: string | null, timezone?: string | null) {
+  const { date, time } = formatDateTime(scheduledAt, timezone);
   return `
     <table style="width:100%;border-collapse:collapse;margin:20px 0;background:#f9fafb;border-radius:8px;border:1px solid ${BORDER};">
       <tr>
@@ -84,7 +87,7 @@ const configs: Record<SessionEmailEvent, (o: SessionEmailOptions) => { subject: 
     preheader: `${o.actorName} wants to schedule a session with you.`,
     body: `<p style="margin:16px 0;color:#374151;">Hi ${o.recipientName},</p>
            <p style="margin:0 0 4px;color:#374151;"><strong>${o.actorName}</strong> has proposed a tutoring session.</p>
-           ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes)}
+           ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes, o.recipientTimezone)}
            <p style="color:#374151;">Please log in to confirm or suggest a different time.</p>`,
   }),
   confirmed: (o) => ({
@@ -93,7 +96,7 @@ const configs: Record<SessionEmailEvent, (o: SessionEmailOptions) => { subject: 
     preheader: `${o.actorName} confirmed your session.`,
     body: `<p style="margin:16px 0;color:#374151;">Hi ${o.recipientName},</p>
            <p style="margin:0 0 4px;color:#374151;"><strong>${o.actorName}</strong> has confirmed your session.</p>
-           ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes)}
+           ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes, o.recipientTimezone)}
            <p style="color:#374151;">The session is locked in. See you then!</p>`,
   }),
   cancelled: (o) => ({
@@ -102,7 +105,7 @@ const configs: Record<SessionEmailEvent, (o: SessionEmailOptions) => { subject: 
     preheader: `${o.actorName} cancelled a session.`,
     body: `<p style="margin:16px 0;color:#374151;">Hi ${o.recipientName},</p>
            <p style="margin:0 0 4px;color:#374151;"><strong>${o.actorName}</strong> has cancelled the following session.</p>
-           ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes)}
+           ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes, o.recipientTimezone)}
            <p style="color:#374151;">You can log in to schedule a new session if needed.</p>`,
   }),
   rescheduled: (o) => ({
@@ -111,7 +114,7 @@ const configs: Record<SessionEmailEvent, (o: SessionEmailOptions) => { subject: 
     preheader: `${o.actorName} proposed a new time for your session.`,
     body: `<p style="margin:16px 0;color:#374151;">Hi ${o.recipientName},</p>
            <p style="margin:0 0 4px;color:#374151;"><strong>${o.actorName}</strong> has proposed a new time for your session.</p>
-           ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes)}
+           ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes, o.recipientTimezone)}
            <p style="color:#374151;">Please log in to confirm or suggest a different time.</p>`,
   }),
 };

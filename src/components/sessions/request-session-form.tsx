@@ -9,17 +9,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TimePicker } from "@/components/ui/time-picker";
 
 interface RequestSessionFormProps {
   assignmentId: string;
   studentId: string;
   teacherName: string;
+  embedded?: boolean;
+  onSuccess?: () => void;
+}
+
+function todayDateString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function Form({ assignmentId, studentId, onSuccess }: { assignmentId: string; studentId: string; onSuccess: () => void }) {
   const router = useRouter();
   const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
+  const [time, setTime] = useState("09:00");
   const [duration, setDuration] = useState("60");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,12 +40,19 @@ function Form({ assignmentId, studentId, onSuccess }: { assignmentId: string; st
     setSuccess(false);
     setLoading(true);
 
+    const scheduledAt = new Date(`${date}T${time}:00`);
+    if (scheduledAt <= new Date()) {
+      setError("Please choose a date and time in the future.");
+      setLoading(false);
+      return;
+    }
+
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         assignment_id: assignmentId,
-        scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
+        scheduled_at: scheduledAt.toISOString(),
         duration_minutes: parseInt(duration),
         notes: notes.trim() || null,
         proposed_by: studentId,
@@ -53,7 +68,7 @@ function Form({ assignmentId, studentId, onSuccess }: { assignmentId: string; st
 
     setSuccess(true);
     setDate("");
-    setTime("");
+    setTime("09:00");
     setDuration("60");
     setNotes("");
     setLoading(false);
@@ -75,17 +90,18 @@ function Form({ assignmentId, studentId, onSuccess }: { assignmentId: string; st
             id="req-date"
             type="date"
             value={date}
+            min={todayDateString()}
             onChange={(e) => setDate(e.target.value)}
             required
+            suppressHydrationWarning
           />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           <Label htmlFor="req-time">Time</Label>
-          <Input
+          <TimePicker
             id="req-time"
-            type="time"
             value={time}
-            onChange={(e) => setTime(e.target.value)}
+            onChange={setTime}
             required
           />
         </div>
@@ -125,8 +141,18 @@ function Form({ assignmentId, studentId, onSuccess }: { assignmentId: string; st
   );
 }
 
-export function RequestSessionForm({ assignmentId, studentId, teacherName }: RequestSessionFormProps) {
+export function RequestSessionForm({ assignmentId, studentId, teacherName, embedded = false, onSuccess }: RequestSessionFormProps) {
   const [show, setShow] = useState(false);
+
+  if (embedded) {
+    return (
+      <Form
+        assignmentId={assignmentId}
+        studentId={studentId}
+        onSuccess={() => onSuccess?.()}
+      />
+    );
+  }
 
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>

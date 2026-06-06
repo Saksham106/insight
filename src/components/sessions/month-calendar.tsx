@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TimePicker } from "@/components/ui/time-picker";
 import { cn } from "@/lib/utils";
 import type { Session } from "./session-card";
 
@@ -18,6 +19,7 @@ interface MonthCalendarProps {
   onDateDoubleClick?: (date: Date) => void;
   currentUserId?: string;
   role?: "teacher" | "student" | "admin";
+  hint?: string;
 }
 
 const DAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -70,6 +72,11 @@ interface PopoverState {
   left: number;
 }
 
+function todayDateString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function RescheduleModal({
   session,
   onClose,
@@ -100,11 +107,19 @@ function RescheduleModal({
     e.preventDefault();
     setError(null);
     setLoading(true);
+
+    const scheduledAt = new Date(`${newDate}T${newTime}:00`);
+    if (scheduledAt <= new Date()) {
+      setError("Please choose a date and time in the future.");
+      setLoading(false);
+      return;
+    }
+
     const res = await fetch(`/api/sessions/${session.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        scheduled_at: new Date(`${newDate}T${newTime}:00`).toISOString(),
+        scheduled_at: scheduledAt.toISOString(),
         duration_minutes: parseInt(newDuration),
         notes: newNotes.trim() || null,
         status: "proposed",
@@ -161,11 +176,11 @@ function RescheduleModal({
           <div className="form-grid-3">
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <Label>Date</Label>
-              <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} required />
+              <Input type="date" value={newDate} min={todayDateString()} onChange={(e) => setNewDate(e.target.value)} required suppressHydrationWarning />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <Label>Time</Label>
-              <Input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} required />
+              <TimePicker value={newTime} onChange={setNewTime} required />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <Label>Duration</Label>
@@ -206,7 +221,7 @@ function RescheduleModal({
   );
 }
 
-export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role }: MonthCalendarProps) {
+export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role, hint }: MonthCalendarProps) {
   const router = useRouter();
   const [viewDate, setViewDate] = useState(() => {
     const d = new Date();
@@ -301,6 +316,9 @@ export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
         <h3 className="text-xl font-bold text-navy">{monthLabel}</h3>
+        {!isMobile && hint && (
+          <p className="text-xs text-muted">{hint}</p>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           <Button size="sm" variant="outline" onClick={() => setViewDate(new Date(year, month - 1, 1))}>
             <ChevronLeft className="h-4 w-4" />
@@ -339,15 +357,15 @@ export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role
                   {daySessions.map((s, si) => {
                     const sStart = new Date(s.scheduled_at);
                     const sEnd = new Date(sStart.getTime() + s.duration_minutes * 60_000);
-                    const timeStr = sStart.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false });
-                    const endStr = sEnd.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false });
+                    const timeStr = sStart.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+                    const endStr = sEnd.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
                     const isExpanded = expandedSessionId === s.id;
                     const iAmProposer = currentUserId
                       ? (s.proposed_by !== null ? s.proposed_by === currentUserId : role === "teacher")
                       : false;
-                    const label = s.teacherName
-                      ? `${s.teacherName} → ${s.studentName ?? "Student"}`
-                      : s.studentName ?? null;
+                    const label = s.teacherName && s.studentName
+                      ? `${s.teacherName} → ${s.studentName}`
+                      : s.teacherName ?? s.studentName ?? null;
                     return (
                       <div key={s.id} style={{ borderBottom: si < daySessions.length - 1 ? BORDER_BOTTOM : undefined, opacity: isPastDay ? 0.65 : 1 }}>
                         <button
@@ -357,7 +375,7 @@ export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role
                           <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
                             <span style={{ height: "8px", width: "8px", borderRadius: "50%", flexShrink: 0, backgroundColor: statusDot[s.status] }} />
                             <div style={{ minWidth: 0 }}>
-                              <p className="text-sm font-semibold text-navy">{timeStr} – {endStr} · {s.duration_minutes} min</p>
+                              <p className="text-sm font-semibold text-navy" suppressHydrationWarning>{timeStr} – {endStr} · {s.duration_minutes} min</p>
                               {label && <p className="text-xs text-muted" style={{ marginTop: "2px" }}>{label}</p>}
                             </div>
                           </div>
@@ -502,10 +520,10 @@ export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role
                   {/* Event pills */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                     {visible.map((s) => {
-                      const time = new Date(s.scheduled_at).toLocaleTimeString("en-CA", {
-                        hour: "2-digit",
+                      const time = new Date(s.scheduled_at).toLocaleTimeString("en-US", {
+                        hour: "numeric",
                         minute: "2-digit",
-                        hour12: false,
+                        hour12: true,
                       });
                       return (
                         <button
@@ -535,12 +553,12 @@ export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role
                               backgroundColor: statusDot[s.status],
                             }}
                           />
-                          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--color-foreground)", flexShrink: 0 }}>
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--color-foreground)", flexShrink: 0 }} suppressHydrationWarning>
                             {time}
                           </span>
-                          {s.studentName && (
+                          {(s.studentName ?? s.teacherName) && (
                             <span style={{ fontSize: "11px", color: "var(--color-muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {s.studentName}
+                              {s.studentName ?? s.teacherName}
                             </span>
                           )}
                         </button>
@@ -584,9 +602,9 @@ export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ height: "12px", width: "12px", borderRadius: "50%", flexShrink: 0, marginTop: "2px", backgroundColor: statusDot[popover.session.status] }} />
                 <p className="font-semibold text-navy">
-                  {popover.session.teacherName
-                    ? `${popover.session.teacherName} → ${popover.session.studentName ?? "Student"}`
-                    : (popover.session.studentName ?? "Session")}
+                  {popover.session.teacherName && popover.session.studentName
+                    ? `${popover.session.teacherName} → ${popover.session.studentName}`
+                    : popover.session.teacherName ?? popover.session.studentName ?? "Session"}
                 </p>
               </div>
               <button onClick={() => setPopover(null)} className="text-muted transition-colors hover:text-foreground">
@@ -600,10 +618,10 @@ export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role
                   weekday: "long", month: "long", day: "numeric",
                 })}
               </p>
-              <p className="text-muted">
-                {new Date(popover.session.scheduled_at).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false })}
+              <p className="text-muted" suppressHydrationWarning>
+                {new Date(popover.session.scheduled_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
                 {" – "}
-                {new Date(new Date(popover.session.scheduled_at).getTime() + popover.session.duration_minutes * 60_000).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false })}
+                {new Date(new Date(popover.session.scheduled_at).getTime() + popover.session.duration_minutes * 60_000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
                 <span className="ml-2 text-muted">· {popover.session.duration_minutes} min</span>
               </p>
               {popover.session.notes && <p className="text-foreground">{popover.session.notes}</p>}
@@ -617,57 +635,56 @@ export function MonthCalendar({ sessions, onDateDoubleClick, currentUserId, role
               </div>
 
               {/* Session actions */}
-              {currentUserId && role && popover.session.status === "proposed" && role === "student" && (
-                <div style={{ display: "flex", gap: "8px", paddingTop: "4px" }}>
-                  <Button
-                    size="sm"
-                    onClick={() => updateSession(popover.session.id, "confirmed")}
-                    disabled={actionLoading !== null}
-                  >
-                    {actionLoading === "confirm" ? "Confirming..." : "Confirm"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => updateSession(popover.session.id, "cancelled")}
-                    disabled={actionLoading !== null}
-                  >
-                    {actionLoading === "cancel" ? "Declining..." : "Decline"}
-                  </Button>
-                </div>
-              )}
-              {currentUserId && role && popover.session.status === "confirmed" && role !== "admin" && (
-                <div style={{ display: "flex", gap: "8px", paddingTop: "4px" }}>
-                  {role === "teacher" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => { setRescheduleTarget(popover.session); setPopover(null); }}
-                    >
-                      Reschedule
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => updateSession(popover.session.id, "cancelled")}
-                    disabled={actionLoading !== null}
-                  >
-                    {actionLoading === "cancel" ? "Cancelling..." : "Cancel session"}
-                  </Button>
-                </div>
-              )}
-              {currentUserId && role === "teacher" && popover.session.status === "proposed" && (
-                <div style={{ paddingTop: "4px" }}>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => { setRescheduleTarget(popover.session); setPopover(null); }}
-                  >
-                    Reschedule
-                  </Button>
-                </div>
-              )}
+              {currentUserId && role && role !== "admin" && (() => {
+                const iAmProposer = popover.session.proposed_by !== null
+                  ? popover.session.proposed_by === currentUserId
+                  : role === "teacher";
+
+                if (popover.session.status === "proposed") {
+                  if (iAmProposer) {
+                    return (
+                      <div style={{ display: "flex", gap: "8px", paddingTop: "4px" }}>
+                        {role === "teacher" && (
+                          <Button size="sm" variant="outline" onClick={() => { setRescheduleTarget(popover.session); setPopover(null); }}>
+                            Reschedule
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => updateSession(popover.session.id, "cancelled")} disabled={actionLoading !== null}>
+                          {actionLoading === "cancel" ? "Cancelling..." : "Cancel"}
+                        </Button>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div style={{ display: "flex", gap: "8px", paddingTop: "4px" }}>
+                        <Button size="sm" onClick={() => updateSession(popover.session.id, "confirmed")} disabled={actionLoading !== null}>
+                          {actionLoading === "confirm" ? "Confirming..." : "Confirm"}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => updateSession(popover.session.id, "cancelled")} disabled={actionLoading !== null}>
+                          {actionLoading === "cancel" ? "Declining..." : "Decline"}
+                        </Button>
+                      </div>
+                    );
+                  }
+                }
+
+                if (popover.session.status === "confirmed") {
+                  return (
+                    <div style={{ display: "flex", gap: "8px", paddingTop: "4px" }}>
+                      {role === "teacher" && (
+                        <Button size="sm" variant="outline" onClick={() => { setRescheduleTarget(popover.session); setPopover(null); }}>
+                          Reschedule
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => updateSession(popover.session.id, "cancelled")} disabled={actionLoading !== null}>
+                        {actionLoading === "cancel" ? "Cancelling..." : "Cancel session"}
+                      </Button>
+                    </div>
+                  );
+                }
+
+                return null;
+              })()}
             </div>
           </div>
         </>

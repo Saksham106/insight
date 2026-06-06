@@ -97,56 +97,46 @@ export default function LandingPage() {
             padding: "96px 24px 80px",
           }}
         >
-          {/* Subtle background gradient blob */}
+          {/* Blue tint — centered oval, fades to nothing at edges */}
           <div
             aria-hidden
             style={{
               position: "absolute",
-              top: "-80px",
-              right: "-120px",
-              width: "600px",
-              height: "600px",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: "1600px",
+              height: "560px",
               borderRadius: "50%",
-              background: "radial-gradient(circle, rgba(27,53,96,0.07) 0%, transparent 70%)",
+              background: "radial-gradient(ellipse, rgba(18,48,74,0.165) 0%, transparent 68%)",
+              pointerEvents: "none",
+            }}
+          />
+          {/* Line grid — same oval mask so it fades out at the edges */}
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage: "linear-gradient(rgba(18,48,74,0.13) 1px, transparent 1px), linear-gradient(90deg, rgba(18,48,74,0.13) 1px, transparent 1px)",
+              backgroundSize: "44px 44px",
+              maskImage: "radial-gradient(ellipse 62% 78% at 50% 48%, black 35%, transparent 75%)",
+              WebkitMaskImage: "radial-gradient(ellipse 62% 78% at 50% 48%, black 35%, transparent 75%)",
               pointerEvents: "none",
             }}
           />
 
-          {/* Floating emojis */}
-          {[
-            { emoji: "📚", top: "12%",  left: "72%", size: 64, delay: "0s",    duration: "6s"  },
-            { emoji: "💡", top: "60%",  left: "85%", size: 56, delay: "1.2s",  duration: "7s"  },
-            { emoji: "✏️", top: "25%",  left: "90%", size: 52, delay: "0.5s",  duration: "8s"  },
-            { emoji: "🎓", top: "75%",  left: "68%", size: 68, delay: "2s",    duration: "6.5s"},
-            { emoji: "📖", top: "70%",  left: "93%", size: 48, delay: "1.8s",  duration: "9s"  },
-            { emoji: "📐", top: "50%",  left: "78%", size: 52, delay: "0.8s",  duration: "7.5s"},
-            { emoji: "🔬", top: "38%",  left: "93%", size: 56, delay: "2.5s",  duration: "8.5s"},
-            { emoji: "📝", top: "85%",  left: "82%", size: 60, delay: "1.5s",  duration: "6s"  },
-          ].map(({ emoji, top, left, size, delay, duration }) => (
-            <div
-              key={emoji + top}
-              aria-hidden
-              style={{
-                position: "absolute",
-                top,
-                left,
-                fontSize: size,
-                opacity: 0.18,
-                pointerEvents: "none",
-                animation: `floatEmoji ${duration} ease-in-out ${delay} infinite`,
-                userSelect: "none",
-              }}
-            >
-              {emoji}
-            </div>
-          ))}
-          <div style={{ maxWidth: "72rem", marginLeft: "auto", marginRight: "auto" }}>
+          <div style={{ maxWidth: "72rem", marginLeft: "auto", marginRight: "auto", position: "relative", zIndex: 1 }}>
           <div
             style={{
               maxWidth: "680px",
+              marginLeft: "auto",
+              marginRight: "auto",
               display: "flex",
               flexDirection: "column",
               gap: "24px",
+              alignItems: "center",
+              textAlign: "center",
             }}
           >
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate">
@@ -165,6 +155,33 @@ export default function LandingPage() {
               <Button asChild size="lg">
                 <Link href="/login">Log in to your account</Link>
               </Button>
+            </div>
+            {/* Feature chips */}
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center", marginTop: "4px" }}>
+              {[
+                { icon: CalendarCheck, label: "Session scheduling" },
+                { icon: MessageCircle, label: "Private messaging" },
+                { icon: FileText, label: "File sharing" },
+              ].map(({ icon: Icon, label }) => (
+                <span
+                  key={label}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 14px",
+                    borderRadius: "9999px",
+                    border: "1px solid var(--color-border)",
+                    backgroundColor: "rgba(255,255,255,0.75)",
+                    fontSize: "13px",
+                    color: "var(--color-slate)",
+                    fontWeight: 500,
+                  }}
+                >
+                  <Icon size={13} strokeWidth={2.2} />
+                  {label}
+                </span>
+              ))}
             </div>
           </div>
           </div>
