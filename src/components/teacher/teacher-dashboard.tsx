@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, X, Users, CalendarDays } from "lucide-react";
+import { useState } from "react";
+import { CalendarDays, CheckCircle, Plus, UserRound, Users, X } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { ChatDrawer } from "@/components/chat/chat-drawer";
@@ -13,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TimePicker } from "@/components/ui/time-picker";
+import { useMediaQuery } from "@/lib/use-media-query";
 
 interface AssignmentRow {
   id: string;
@@ -24,6 +26,95 @@ interface AssignmentRow {
 interface TeacherDashboardProps {
   assignments: AssignmentRow[];
   teacherId: string;
+  view?: TeacherDashboardView;
+}
+
+type TeacherDashboardView = "overview" | "schedule" | "requests" | "students";
+
+const viewCopy: Record<TeacherDashboardView, { title: string; description: string }> = {
+  overview: {
+    title: "Teacher overview",
+    description: "A quick look at your schedule, requests, and assigned students.",
+  },
+  schedule: {
+    title: "Schedule",
+    description: "Review upcoming sessions and double-click a date to propose a new one.",
+  },
+  requests: {
+    title: "Session requests",
+    description: "Confirm or decline times proposed by your students.",
+  },
+  students: {
+    title: "Students",
+    description: "Open chats, schedule sessions, and review session history by student.",
+  },
+};
+
+function WorkflowLinks({
+  pendingCount,
+  studentCount,
+}: {
+  pendingCount: number;
+  studentCount: number;
+}) {
+  const links = [
+    {
+      href: "/teacher/schedule",
+      icon: CalendarDays,
+      title: "Schedule",
+      description: "Calendar view and quick session scheduling.",
+    },
+    {
+      href: "/teacher/requests",
+      icon: CheckCircle,
+      title: "Requests",
+      description: `${pendingCount} student request${pendingCount === 1 ? "" : "s"} waiting.`,
+    },
+    {
+      href: "/teacher/students",
+      icon: UserRound,
+      title: "Students",
+      description: `${studentCount} assigned student${studentCount === 1 ? "" : "s"}.`,
+    },
+  ];
+
+  return (
+    <section className="form-grid-3" style={{ gap: "16px" }}>
+      {links.map(({ href, icon: Icon, title, description }) => (
+        <Link
+          key={href}
+          href={href}
+          className="border border-border bg-surface"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+            padding: "20px",
+            borderRadius: "12px",
+            textDecoration: "none",
+          }}
+        >
+          <div
+            style={{
+              width: "38px",
+              height: "38px",
+              borderRadius: "10px",
+              backgroundColor: "rgba(27,53,96,0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon size={18} color="var(--color-navy)" />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <p className="text-sm font-semibold text-navy">{title}</p>
+            <p className="text-sm text-muted" style={{ lineHeight: 1.55 }}>{description}</p>
+          </div>
+        </Link>
+      ))}
+    </section>
+  );
 }
 
 function QuickScheduleModal({
@@ -196,30 +287,14 @@ function QuickScheduleModal({
   );
 }
 
-export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardProps) {
+export function TeacherDashboard({ assignments, teacherId, view = "overview" }: TeacherDashboardProps) {
   const [selectedId, setSelectedId] = useState<string>(assignments[0]?.id ?? "");
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [chatTitle, setChatTitle] = useState("");
-  const [isMobile, setIsMobile] = useState(false);
-  const [isNarrow, setIsNarrow] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 480px)");
-    setIsNarrow(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsNarrow(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const isNarrow = useMediaQuery("(max-width: 480px)");
 
   const now = new Date();
   const selected = assignments.find((a) => a.id === selectedId) ?? null;
@@ -255,20 +330,25 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
     .slice(0, 3);
 
   const conversationId = selected?.conversation?.[0]?.id;
+  const copy = viewCopy[view];
 
   return (
     <>
     <div style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
       {/* Welcome */}
       <div>
-        <h1 className="text-2xl font-semibold text-navy">Welcome back</h1>
+        <h1 className="text-2xl font-semibold text-navy">{copy.title}</h1>
         <p className="text-sm text-muted" style={{ marginTop: "4px" }}>
-          Here are your assigned students and sessions.
+          {copy.description}
         </p>
       </div>
 
+      {view === "overview" && (
+        <WorkflowLinks pendingCount={pendingRequests.length} studentCount={assignments.length} />
+      )}
+
       {/* This week — mobile only (replaces calendar on small screens) */}
-      {isMobile && thisWeek.length > 0 && (
+      {(view === "overview" || view === "schedule") && isMobile && thisWeek.length > 0 && (
         <section style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <h2 className="text-lg font-semibold text-navy">This week</h2>
           {thisWeek.map((s) => {
@@ -319,8 +399,12 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
         </section>
       )}
 
+      {view === "schedule" && isMobile && thisWeek.length === 0 && (
+        <EmptyState icon={CalendarDays} title="No sessions this week" description="Use the students page to schedule a new session." />
+      )}
+
       {/* Calendar — desktop only */}
-      {!isMobile && (
+      {view === "schedule" && !isMobile && (
         <section>
           <h2 className="text-lg font-semibold text-navy" style={{ marginBottom: "12px" }}>Schedule</h2>
           <MonthCalendar sessions={calendarSessions} onDateDoubleClick={setScheduleDate} currentUserId={teacherId} role="teacher" hint="Double-click a date to schedule a session" />
@@ -328,22 +412,26 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
       )}
 
       {/* Pending session requests from students */}
-      {pendingRequests.length > 0 && (
+      {(view === "requests" || (view === "overview" && pendingRequests.length > 0)) && (
         <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <h2 className="text-lg font-semibold text-navy">Session requests from students</h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {pendingRequests.map((s) => (
-              <div key={s.id} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <p className="text-xs font-medium text-muted">{s.studentName}</p>
-                <SessionCard session={s} currentUserId={teacherId} role="teacher" />
-              </div>
-            ))}
-          </div>
+          {pendingRequests.length === 0 ? (
+            <EmptyState icon={CheckCircle} title="No pending requests" description="Student requests will appear here when they propose session times." />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {pendingRequests.map((s) => (
+                <div key={s.id} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <p className="text-xs font-medium text-muted">{s.studentName}</p>
+                  <SessionCard session={s} currentUserId={teacherId} role="teacher" />
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
       {/* Student selector + detail panel */}
-      <section>
+      {view === "students" && <section>
         <h2 className="text-lg font-semibold text-navy" style={{ marginBottom: "10px" }}>
           Students
         </h2>
@@ -481,7 +569,7 @@ export function TeacherDashboard({ assignments, teacherId }: TeacherDashboardPro
             )}
           </>
         )}
-      </section>
+      </section>}
 
       {/* Quick-schedule modal — triggered by double-clicking a calendar date */}
       {scheduleDate && (

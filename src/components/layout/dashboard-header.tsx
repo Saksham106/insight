@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { User } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { Modal } from "@/components/ui/modal";
@@ -24,8 +24,30 @@ const roleLabels: Record<DashboardHeaderProps["role"], string> = {
   student: "Student/Parent",
 };
 
+const roleNav: Record<DashboardHeaderProps["role"], { href: string; label: string }[]> = {
+  admin: [
+    { href: "/admin", label: "Overview" },
+    { href: "/admin/users", label: "Users" },
+    { href: "/admin/assignments", label: "Assignments" },
+    { href: "/admin/sessions", label: "Sessions" },
+  ],
+  teacher: [
+    { href: "/teacher", label: "Overview" },
+    { href: "/teacher/schedule", label: "Schedule" },
+    { href: "/teacher/requests", label: "Requests" },
+    { href: "/teacher/students", label: "Students" },
+  ],
+  student: [
+    { href: "/student", label: "Overview" },
+    { href: "/student/schedule", label: "Schedule" },
+    { href: "/student/requests", label: "Proposals" },
+    { href: "/student/teachers", label: "Teachers" },
+  ],
+};
+
 export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -146,121 +168,157 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
         className="bg-surface"
         style={{ position: "sticky", top: 0, zIndex: 30, borderBottom: "1px solid var(--color-border)" }}
       >
-        <div
-          className="px-6 py-4"
-          style={{
-            marginLeft: "auto",
-            marginRight: "auto",
-            width: "100%",
-            maxWidth: "72rem",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Link href={`/${role}`} style={{ textDecoration: "none" }}>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate">
-              Insight Academy
-            </p>
-            <p className="text-lg font-semibold text-navy">Dashboard</p>
-          </Link>
+        <div style={{ marginLeft: "auto", marginRight: "auto", width: "100%", maxWidth: "72rem" }}>
+          <div
+            className="px-6 py-4"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "16px",
+            }}
+          >
+            <Link href={`/${role}`} style={{ textDecoration: "none" }}>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate">
+                Insight Academy
+              </p>
+              <p className="text-lg font-semibold text-navy">Dashboard</p>
+            </Link>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <NotificationBell userId={userId} />
-            <div className="text-right">
-              <p className="text-sm font-medium text-foreground">{userName}</p>
-              <p className="text-xs text-muted">{roleLabels[role]}</p>
-            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <NotificationBell userId={userId} />
+              <div className="text-right">
+                <p className="text-sm font-medium text-foreground">{userName}</p>
+                <p className="text-xs text-muted">{roleLabels[role]}</p>
+              </div>
 
-            {/* Profile icon + dropdown */}
-            <div ref={dropdownRef} style={{ position: "relative" }}>
-              <button
-                onClick={() => setDropdownOpen((v) => !v)}
-                style={{
-                  width: "38px",
-                  height: "38px",
-                  borderRadius: "50%",
-                  border: "1px solid var(--color-border)",
-                  backgroundColor: dropdownOpen ? "var(--color-soft)" : "var(--color-surface)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-navy)",
-                }}
-              >
-                <User size={17} />
-              </button>
-
-              {dropdownOpen && (
-                <div
+              {/* Profile icon + dropdown */}
+              <div ref={dropdownRef} style={{ position: "relative" }}>
+                <button
+                  onClick={() => setDropdownOpen((v) => !v)}
                   style={{
-                    position: "absolute",
-                    top: "calc(100% + 8px)",
-                    right: 0,
-                    minWidth: "160px",
-                    backgroundColor: "var(--color-surface)",
+                    width: "38px",
+                    height: "38px",
+                    borderRadius: "50%",
                     border: "1px solid var(--color-border)",
-                    borderRadius: "10px",
-                    boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
-                    overflow: "hidden",
-                    zIndex: 50,
+                    backgroundColor: dropdownOpen ? "var(--color-soft)" : "var(--color-surface)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--color-navy)",
                   }}
                 >
-                  <button
-                    onClick={openReminders}
+                  <User size={17} />
+                </button>
+
+                {dropdownOpen && (
+                  <div
                     style={{
-                      display: "block",
-                      width: "100%",
-                      padding: "11px 16px",
-                      textAlign: "left",
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      color: "var(--color-foreground)",
-                      borderBottom: "1px solid var(--color-border)",
+                      position: "absolute",
+                      top: "calc(100% + 8px)",
+                      right: 0,
+                      minWidth: "160px",
+                      backgroundColor: "var(--color-surface)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "10px",
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+                      overflow: "hidden",
+                      zIndex: 50,
                     }}
                   >
-                    Reminders
-                  </button>
-                  <button
-                    onClick={openReset}
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      padding: "11px 16px",
-                      textAlign: "left",
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      color: "var(--color-foreground)",
-                      borderBottom: "1px solid var(--color-border)",
-                    }}
-                  >
-                    Reset password
-                  </button>
-                  <button
-                    onClick={handleLogout}
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      padding: "11px 16px",
-                      textAlign: "left",
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      color: "#dc2626",
-                    }}
-                  >
-                    Log out
-                  </button>
-                </div>
-              )}
+                    <button
+                      onClick={openReminders}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "11px 16px",
+                        textAlign: "left",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        color: "var(--color-foreground)",
+                        borderBottom: "1px solid var(--color-border)",
+                      }}
+                    >
+                      Reminders
+                    </button>
+                    <button
+                      onClick={openReset}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "11px 16px",
+                        textAlign: "left",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        color: "var(--color-foreground)",
+                        borderBottom: "1px solid var(--color-border)",
+                      }}
+                    >
+                      Reset password
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "11px 16px",
+                        textAlign: "left",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        color: "#dc2626",
+                      }}
+                    >
+                      Log out
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
+          <nav
+            className="px-6"
+            aria-label="Dashboard sections"
+            style={{
+              display: "flex",
+              gap: "8px",
+              overflowX: "auto",
+              paddingBottom: "12px",
+            }}
+          >
+            {roleNav[role].map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    height: "34px",
+                    padding: "0 14px",
+                    borderRadius: "9999px",
+                    border: `1px solid ${active ? "var(--color-navy)" : "var(--color-border)"}`,
+                    backgroundColor: active ? "var(--color-navy)" : "var(--color-surface)",
+                    color: active ? "white" : "var(--color-slate)",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
       </header>
 
