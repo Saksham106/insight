@@ -1,10 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Paperclip, X } from "lucide-react";
+import { Paperclip, Send, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { containsContactInfo } from "@/lib/validators/contact-info";
 import { createClient } from "@/lib/supabase/client";
 
@@ -20,7 +18,7 @@ interface MessageInputProps {
   disabled?: boolean;
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED = ["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"];
 
 export function MessageInput({ conversationId, onSend, disabled }: MessageInputProps) {
@@ -29,6 +27,18 @@ export function MessageInput({ conversationId, onSend, disabled }: MessageInputP
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const canSend = message.trim().length > 0 || !!file;
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setMessage(e.target.value);
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 120) + "px";
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = e.target.files?.[0] ?? null;
@@ -43,14 +53,11 @@ export function MessageInput({ conversationId, onSend, disabled }: MessageInputP
     }
     setError(null);
     setFile(picked);
-    // Reset so same file can be re-selected
     e.target.value = "";
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = async () => {
     setError(null);
-
     const trimmed = message.trim();
     if (!trimmed && !file) return;
 
@@ -62,24 +69,16 @@ export function MessageInput({ conversationId, onSend, disabled }: MessageInputP
     setSending(true);
 
     let attachment: FileAttachment | null = null;
-
     if (file) {
       const supabase = createClient();
       const path = `${conversationId}/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("chat-attachments")
-        .upload(path, file);
-
+      const { error: uploadError } = await supabase.storage.from("chat-attachments").upload(path, file);
       if (uploadError) {
         setError("Failed to upload file: " + uploadError.message);
         setSending(false);
         return;
       }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("chat-attachments")
-        .getPublicUrl(path);
-
+      const { data: { publicUrl } } = supabase.storage.from("chat-attachments").getPublicUrl(path);
       attachment = { url: publicUrl, name: file.name, type: file.type };
     }
 
@@ -93,96 +92,124 @@ export function MessageInput({ conversationId, onSend, disabled }: MessageInputP
 
     setMessage("");
     setFile(null);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
   };
 
   const isImage = file?.type.startsWith("image/");
 
   return (
-    <form style={{ display: "flex", flexDirection: "column", gap: "8px" }} onSubmit={handleSubmit}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {/* File preview */}
       {file && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "8px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--color-border)",
-            backgroundColor: "var(--color-background)",
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", borderRadius: "12px", border: "1px solid var(--color-border)", backgroundColor: "var(--color-background)" }}>
           {isImage ? (
-            <img
-              src={URL.createObjectURL(file)}
-              alt={file.name}
-              style={{ width: "40px", height: "40px", objectFit: "cover", borderRadius: "4px", flexShrink: 0 }}
-            />
+            <img src={URL.createObjectURL(file)} alt={file.name} style={{ width: "40px", height: "40px", objectFit: "cover", borderRadius: "4px", flexShrink: 0 }} />
           ) : (
             <div style={{ width: "40px", height: "40px", borderRadius: "4px", backgroundColor: "var(--color-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--color-navy)" }}>PDF</span>
             </div>
           )}
-          <span className="text-sm text-foreground" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {file.name}
-          </span>
-          <button
-            type="button"
-            onClick={() => setFile(null)}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", color: "var(--color-muted)", flexShrink: 0 }}
-          >
+          <span className="text-sm text-foreground" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
+          <button type="button" onClick={() => setFile(null)} style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", color: "var(--color-muted)", flexShrink: 0 }}>
             <X size={16} />
           </button>
         </div>
       )}
 
-      <Textarea
-        value={message}
-        onChange={(event) => setMessage(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
-          }
+      {/* Pill input row */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: "8px 8px 8px 16px",
+          border: "1px solid var(--color-border)",
+          borderRadius: "22px",
+          backgroundColor: "var(--color-background)",
         }}
-        placeholder="Write a message…"
-        style={{ minHeight: "96px", resize: "none" }}
-        disabled={disabled || sending}
-      />
-
-      {error && <p className="text-sm text-error">{error}</p>}
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        {/* Attach button */}
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
+      >
+        <textarea
+          ref={textareaRef}
+          value={message}
+          onChange={handleTextChange}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void handleSubmit();
+            }
+          }}
+          placeholder="Message…"
+          rows={1}
           disabled={disabled || sending}
           style={{
-            background: "none",
+            flex: 1,
             border: "none",
-            cursor: "pointer",
-            padding: "6px",
-            color: "var(--color-muted)",
-            display: "flex",
-            alignItems: "center",
+            outline: "none",
+            background: "transparent",
+            resize: "none",
+            fontSize: "16px",
+            lineHeight: "24px",
+            padding: 0,
+            maxHeight: "120px",
+            overflowY: "auto",
+            color: "var(--color-foreground)",
+            fontFamily: "inherit",
           }}
-          title="Attach file"
-        >
-          <Paperclip size={18} />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".png,.jpg,.jpeg,.gif,.webp,.pdf"
-          style={{ display: "none" }}
-          onChange={handleFileChange}
         />
 
-        <Button type="submit" disabled={disabled || sending || (!message.trim() && !file)}>
-          {sending ? "Sending…" : "Send"}
-        </Button>
+        <div style={{ flexShrink: 0 }}>
+          {canSend ? (
+            <button
+              type="button"
+              onClick={() => void handleSubmit()}
+              disabled={disabled || sending}
+              style={{
+                width: "34px",
+                height: "34px",
+                borderRadius: "50%",
+                border: "none",
+                padding: 0,
+                lineHeight: 0,
+                backgroundColor: "var(--color-navy)",
+                color: "#fff",
+                cursor: disabled || sending ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: sending ? 0.6 : 1,
+              }}
+            >
+              <Send size={15} style={{ transform: "translate(-1px, 1px)" }} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || sending}
+              style={{
+                width: "34px",
+                height: "34px",
+                borderRadius: "50%",
+                border: "none",
+                background: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--color-muted)",
+              }}
+            >
+              <Paperclip size={19} />
+            </button>
+          )}
+        </div>
       </div>
-    </form>
+
+      <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf" style={{ display: "none" }} onChange={handleFileChange} />
+
+      {error && <p className="text-sm text-error" style={{ paddingLeft: "4px" }}>{error}</p>}
+    </div>
   );
 }

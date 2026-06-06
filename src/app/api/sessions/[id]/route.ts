@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
@@ -46,6 +47,8 @@ export async function PATCH(
     .eq("id", id);
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+
+  revalidateTag("dashboard", "max");
 
   // Determine what event happened and who to notify
   const newScheduledAt = scheduled_at ?? existing.scheduled_at;

@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { User } from "lucide-react";
+import { Menu, User, X as XIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-import { NotificationBell } from "@/components/layout/notification-bell";
+import { useMediaQuery } from "@/lib/use-media-query";
+
+import { NotificationBell, NotificationList } from "@/components/layout/notification-bell";
 import { Modal } from "@/components/ui/modal";
+import { useNotifications } from "@/lib/use-notifications";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +31,6 @@ const roleNav: Record<DashboardHeaderProps["role"], { href: string; label: strin
   admin: [
     { href: "/admin", label: "Overview" },
     { href: "/admin/users", label: "Users" },
-    { href: "/admin/assignments", label: "Assignments" },
     { href: "/admin/sessions", label: "Sessions" },
   ],
   teacher: [
@@ -59,6 +61,10 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
   const [showRemindersModal, setShowRemindersModal] = useState(false);
   const [reminder24h, setReminder24h] = useState(true);
   const [reminderSaving, setReminderSaving] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const { notifications, unreadCount, markAllRead } = useNotifications(userId);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
@@ -72,6 +78,9 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [dropdownOpen]);
+
+  // Close mobile menu on navigation
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   // Load reminder preferences
   useEffect(() => {
@@ -151,6 +160,12 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
     setShowRemindersModal(true);
   };
 
+  const openNotifications = () => {
+    setDropdownOpen(false);
+    void markAllRead();
+    setShowNotificationsModal(true);
+  };
+
   const handleReminderToggle = async (value: boolean) => {
     setReminder24h(value);
     setReminderSaving(true);
@@ -170,23 +185,83 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
       >
         <div style={{ marginLeft: "auto", marginRight: "auto", width: "100%", maxWidth: "72rem" }}>
           <div
-            className="px-6 py-4"
+            className="px-6 py-3"
             style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
               gap: "16px",
             }}
           >
-            <Link href={`/${role}`} style={{ textDecoration: "none" }}>
+            {/* Left: branding */}
+            <Link href={`/${role}`} style={{ textDecoration: "none", flexShrink: 0 }}>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate">
                 Insight Academy
               </p>
               <p className="text-lg font-semibold text-navy">Dashboard</p>
             </Link>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <NotificationBell userId={userId} />
+            {/* Center: nav tabs (desktop only) */}
+            {!isMobile && (
+              <nav style={{ display: "flex", gap: "6px", flex: 1, justifyContent: "center" }}>
+                {roleNav[role].map((item) => {
+                  const active = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        height: "34px",
+                        padding: "0 14px",
+                        borderRadius: "9999px",
+                        border: `1px solid ${active ? "var(--color-navy)" : "var(--color-border)"}`,
+                        backgroundColor: active ? "var(--color-navy)" : "var(--color-surface)",
+                        color: active ? "white" : "var(--color-slate)",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        textDecoration: "none",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+            )}
+
+            {/* Spacer on mobile */}
+            {isMobile && <div style={{ flex: 1 }} />}
+
+            {/* Right: mobile menu + bell + name + profile */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+              {/* Mobile hamburger */}
+              {isMobile && (
+                <button
+                  onClick={() => setMenuOpen((v) => !v)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "4px",
+                    color: "var(--color-navy)",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  aria-label="Toggle navigation menu"
+                >
+                  {menuOpen ? <XIcon size={20} /> : <Menu size={20} />}
+                </button>
+              )}
+
+              {!isMobile && (
+                <NotificationBell
+                  notifications={notifications}
+                  unreadCount={unreadCount}
+                  onOpen={markAllRead}
+                />
+              )}
               <div className="text-right">
                 <p className="text-sm font-medium text-foreground">{userName}</p>
                 <p className="text-xs text-muted">{roleLabels[role]}</p>
@@ -197,6 +272,7 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                 <button
                   onClick={() => setDropdownOpen((v) => !v)}
                   style={{
+                    position: "relative",
                     width: "38px",
                     height: "38px",
                     borderRadius: "50%",
@@ -210,6 +286,28 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                   }}
                 >
                   <User size={17} />
+                  {isMobile && unreadCount > 0 && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: "-4px",
+                        right: "-4px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        height: "18px",
+                        width: "18px",
+                        borderRadius: "50%",
+                        backgroundColor: "var(--color-navy)",
+                        color: "#fff",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        border: "2px solid var(--color-surface)",
+                      }}
+                    >
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
                 </button>
 
                 {dropdownOpen && (
@@ -227,6 +325,46 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                       zIndex: 50,
                     }}
                   >
+                    {isMobile && (
+                      <button
+                        onClick={openNotifications}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          width: "100%",
+                          padding: "11px 16px",
+                          textAlign: "left",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          color: "var(--color-foreground)",
+                          borderBottom: "1px solid var(--color-border)",
+                        }}
+                      >
+                        <span>Notifications</span>
+                        {unreadCount > 0 && (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              height: "20px",
+                              minWidth: "20px",
+                              padding: "0 4px",
+                              borderRadius: "9999px",
+                              backgroundColor: "var(--color-navy)",
+                              color: "#fff",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {unreadCount > 9 ? "9+" : unreadCount}
+                          </span>
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={openReminders}
                       style={{
@@ -283,44 +421,49 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
             </div>
           </div>
 
-          <nav
-            className="px-6"
-            aria-label="Dashboard sections"
-            style={{
-              display: "flex",
-              gap: "8px",
-              overflowX: "auto",
-              paddingBottom: "12px",
-            }}
-          >
-            {roleNav[role].map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    height: "34px",
-                    padding: "0 14px",
-                    borderRadius: "9999px",
-                    border: `1px solid ${active ? "var(--color-navy)" : "var(--color-border)"}`,
-                    backgroundColor: active ? "var(--color-navy)" : "var(--color-surface)",
-                    color: active ? "white" : "var(--color-slate)",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+          {/* Mobile dropdown menu */}
+          {isMobile && menuOpen && (
+            <nav
+              style={{
+                borderTop: "1px solid var(--color-border)",
+                padding: "8px 0",
+              }}
+            >
+              {roleNav[role].map((item) => {
+                const active = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    style={{
+                      display: "block",
+                      padding: "12px 24px",
+                      fontSize: "14px",
+                      fontWeight: active ? 600 : 500,
+                      color: active ? "var(--color-navy)" : "var(--color-slate)",
+                      backgroundColor: active ? "rgba(27,53,96,0.06)" : "transparent",
+                      textDecoration: "none",
+                      borderLeft: active ? "3px solid var(--color-navy)" : "3px solid transparent",
+                    }}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
         </div>
       </header>
+
+      {/* Notifications modal (mobile only) */}
+      {showNotificationsModal && (
+        <Modal
+          title="Notifications"
+          onClose={() => setShowNotificationsModal(false)}
+        >
+          <NotificationList notifications={notifications} />
+        </Modal>
+      )}
 
       {/* Reminders modal */}
       {showRemindersModal && (

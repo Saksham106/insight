@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
@@ -30,6 +31,8 @@ export async function POST(request: Request) {
     .single();
 
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+
+  revalidateTag("dashboard", "max");
 
   // Send email to the other party — fire and forget
   sendNotification("proposed", assignment_id, proposed_by, scheduled_at, duration_minutes, notes).catch(() => {});

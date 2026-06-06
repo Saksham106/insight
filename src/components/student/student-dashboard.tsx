@@ -345,8 +345,8 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
           <WorkflowLinks pendingCount={pendingFromTeachers.length} teacherCount={assignments.length} />
         )}
 
-        {/* This week — mobile only (replaces calendar on small screens) */}
-        {(view === "overview" || view === "schedule") && isMobile && thisWeek.length > 0 && (
+        {/* This week — always on overview, mobile-only on schedule */}
+        {((view === "overview") || (view === "schedule" && isMobile)) && thisWeek.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <h2 className="text-lg font-semibold text-navy">This week</h2>
             {thisWeek.map((s) => {
@@ -397,14 +397,10 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
           </section>
         )}
 
-        {view === "schedule" && isMobile && thisWeek.length === 0 && (
-          <EmptyState icon={CalendarDays} title="No sessions this week" description="Use the teachers page to request a new session." />
-        )}
-
-        {/* Calendar — desktop only */}
-        {view === "schedule" && !isMobile && (
+        {/* Calendar — desktop and mobile (MonthCalendar handles its own responsive view) */}
+        {view === "schedule" && (
           <section>
-            <h2 className="text-lg font-semibold text-navy" style={{ marginBottom: "12px" }}>Schedule</h2>
+            {!isMobile && <h2 className="text-lg font-semibold text-navy" style={{ marginBottom: "12px" }}>Schedule</h2>}
             <MonthCalendar
               sessions={calendarSessions}
               onDateDoubleClick={setRequestDate}

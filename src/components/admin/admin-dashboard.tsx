@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, GitBranch, UserPlus } from "lucide-react";
+import { CalendarDays, UserPlus } from "lucide-react";
 
 import { AdminFormsGrid } from "@/components/admin/admin-forms-grid";
 import { AdminSessionsSection } from "@/components/admin/admin-sessions-section";
@@ -16,7 +16,7 @@ import type {
   ProfileRow,
 } from "@/lib/dashboard-data";
 
-export type AdminDashboardView = "overview" | "users" | "assignments" | "sessions";
+export type AdminDashboardView = "overview" | "users" | "sessions";
 
 interface AdminDashboardProps {
   view: AdminDashboardView;
@@ -33,11 +33,7 @@ const viewCopy: Record<AdminDashboardView, { title: string; description: string 
   },
   users: {
     title: "Users",
-    description: "Invite teachers and students, then manage account access.",
-  },
-  assignments: {
-    title: "Assignments",
-    description: "Pair students with teachers and open existing conversations.",
+    description: "Invite teachers and students, create pairings, and manage access.",
   },
   sessions: {
     title: "Sessions",
@@ -50,13 +46,7 @@ const overviewLinks = [
     href: "/admin/users",
     icon: UserPlus,
     title: "Users",
-    description: "Invite and manage teachers and students.",
-  },
-  {
-    href: "/admin/assignments",
-    icon: GitBranch,
-    title: "Assignments",
-    description: "Create pairings and monitor conversations.",
+    description: "Invite teachers and students, and create pairings.",
   },
   {
     href: "/admin/sessions",
@@ -154,11 +144,7 @@ export function AdminDashboard({
             <h2 className="text-lg font-semibold text-navy">Students/Parents</h2>
             <StudentsTable students={students} />
           </section>
-        </>
-      )}
 
-      {view === "assignments" && (
-        <>
           <AssignStudentForm teachers={teachers} students={students} />
 
           <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>

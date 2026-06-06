@@ -1,6 +1,9 @@
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
+
 import type { Session } from "@/components/sessions/session-card";
 import { requireRole } from "@/lib/auth/require-role";
-import { createServerClientWithBypass } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface TeacherAssignmentRow {
   id: string;
@@ -34,70 +37,71 @@ export interface AdminAssignmentRow {
 
 export type AdminSession = Session & { teacherName: string; studentName: string };
 
-export async function getTeacherDashboardData() {
+const fetchTeacherAssignments = (teacherId: string) =>
+  unstable_cache(
+    async () => {
+      const supabase = createAdminClient();
+      const { data } = await supabase
+        .from("teacher_student_assignments")
+        .select(
+          "id, student:student_id (id, full_name), conversation:conversations (id), sessions (id, assignment_id, scheduled_at, duration_minutes, notes, status, proposed_by)",
+        )
+        .eq("teacher_id", teacherId)
+        .order("created_at", { ascending: false });
+      return (data ?? []).map((assignment) => {
+        const student = Array.isArray(assignment.student) ? assignment.student[0] : assignment.student;
+        const rawConv = assignment.conversation;
+        const conversation = Array.isArray(rawConv) ? rawConv : rawConv != null ? [rawConv as { id: string }] : null;
+        const sessions = (assignment.sessions ?? []) as Session[];
+        return { ...assignment, student, conversation, sessions } as TeacherAssignmentRow;
+      });
+    },
+    [`teacher-assignments-${teacherId}`],
+    { revalidate: 60, tags: ["dashboard", `user-${teacherId}`] },
+  )();
+
+export const getTeacherDashboardData = cache(async function getTeacherDashboardData() {
   const profile = await requireRole(["teacher"]);
-  const supabase = await createServerClientWithBypass();
-
-  const { data } = await supabase
-    .from("teacher_student_assignments")
-    .select(
-      "id, student:student_id (id, full_name), conversation:conversations (id), sessions (id, assignment_id, scheduled_at, duration_minutes, notes, status, proposed_by)",
-    )
-    .eq("teacher_id", profile.id)
-    .order("created_at", { ascending: false });
-
-  const assignments = (data ?? []).map((assignment) => {
-    const student = Array.isArray(assignment.student)
-      ? assignment.student[0]
-      : assignment.student;
-    const rawConv = assignment.conversation;
-    const conversation = Array.isArray(rawConv)
-      ? rawConv
-      : rawConv != null
-        ? [rawConv as { id: string }]
-        : null;
-    const sessions = (assignment.sessions ?? []) as Session[];
-    return { ...assignment, student, conversation, sessions } as TeacherAssignmentRow;
-  });
-
+  const assignments = await fetchTeacherAssignments(profile.id);
   return { profile, assignments };
-}
+});
 
-export async function getStudentDashboardData() {
+const fetchStudentAssignments = (studentId: string) =>
+  unstable_cache(
+    async () => {
+      const supabase = createAdminClient();
+      const { data } = await supabase
+        .from("teacher_student_assignments")
+        .select(
+          "id, teacher:teacher_id (id, full_name), conversation:conversations (id), sessions (id, assignment_id, scheduled_at, duration_minutes, notes, status, proposed_by)",
+        )
+        .eq("student_id", studentId)
+        .eq("is_active", true)
+        .order("created_at", { ascending: true });
+      return (data ?? []).map((row) => {
+        const teacher = Array.isArray(row.teacher) ? row.teacher[0] : row.teacher;
+        const rawConv = row.conversation;
+        const conversation = Array.isArray(rawConv) ? rawConv : rawConv != null ? [rawConv as { id: string }] : null;
+        const sessions = ((row.sessions ?? []) as Session[]).sort(
+          (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+        );
+        return { ...row, teacher, conversation, sessions } as StudentAssignmentRow;
+      });
+    },
+    [`student-assignments-${studentId}`],
+    { revalidate: 60, tags: ["dashboard", `user-${studentId}`] },
+  )();
+
+export const getStudentDashboardData = cache(async function getStudentDashboardData() {
   const profile = await requireRole(["student"]);
-  const supabase = await createServerClientWithBypass();
-
-  const { data } = await supabase
-    .from("teacher_student_assignments")
-    .select(
-      "id, teacher:teacher_id (id, full_name), conversation:conversations (id), sessions (id, assignment_id, scheduled_at, duration_minutes, notes, status, proposed_by)",
-    )
-    .eq("student_id", profile.id)
-    .eq("is_active", true)
-    .order("created_at", { ascending: true });
-
-  const assignments = (data ?? []).map((row) => {
-    const teacher = Array.isArray(row.teacher) ? row.teacher[0] : row.teacher;
-    const rawConv = row.conversation;
-    const conversation = Array.isArray(rawConv)
-      ? rawConv
-      : rawConv != null
-        ? [rawConv as { id: string }]
-        : null;
-    const sessions = ((row.sessions ?? []) as Session[]).sort(
-      (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
-    );
-    return { ...row, teacher, conversation, sessions } as StudentAssignmentRow;
-  });
-
+  const assignments = await fetchStudentAssignments(profile.id);
   return { profile, assignments };
-}
+});
 
-export async function getAdminDashboardData() {
-  await requireRole(["admin"]);
-  const supabase = await createServerClientWithBypass();
-
-  const [teachersResult, studentsResult, assignmentsResult, sessionsResult] = await Promise.all([
+const fetchAdminData = unstable_cache(
+  async () => {
+    const supabase = await createAdminClient();
+    const [teachersResult, studentsResult, assignmentsResult, sessionsResult] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, full_name, is_active, created_at")
@@ -162,5 +166,13 @@ export async function getAdminDashboardData() {
     } as AdminSession;
   });
 
-  return { teachers, students, assignments, sessions };
-}
+    return { teachers, students, assignments, sessions };
+  },
+  ["admin-dashboard"],
+  { revalidate: 60, tags: ["dashboard", "admin-dashboard"] },
+);
+
+export const getAdminDashboardData = cache(async function getAdminDashboardData() {
+  await requireRole(["admin"]);
+  return fetchAdminData();
+});

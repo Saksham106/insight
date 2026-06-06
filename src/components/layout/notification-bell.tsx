@@ -1,63 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Bell } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/client";
+import type { Notification } from "@/lib/use-notifications";
 
-interface Notification {
-  id: string;
-  title: string;
-  body: string;
-  is_read: boolean;
-  created_at: string;
+interface NotificationBellProps {
+  notifications: Notification[];
+  unreadCount: number;
+  onOpen?: () => void;
 }
 
-export function NotificationBell({ userId }: { userId: string }) {
-  const supabase = useMemo(() => createClient(), []);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+export function NotificationBell({ notifications, unreadCount, onOpen }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, right: 0 });
-
-  const load = async () => {
-    const { data } = await supabase
-      .from("notifications")
-      .select("id, title, body, is_read, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    setNotifications(data ?? []);
-  };
-
-  useEffect(() => {
-    void load();
-
-    const channel = supabase
-      .channel(`notifications-${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${userId}`,
-        },
-        () => void load(),
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [userId]);
-
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
-
-  const markAsRead = async (ids: string[]) => {
-    if (ids.length === 0) return;
-    await supabase.from("notifications").update({ is_read: true }).in("id", ids);
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-  };
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (open) {
@@ -67,7 +23,7 @@ export function NotificationBell({ userId }: { userId: string }) {
     const rect = e.currentTarget.getBoundingClientRect();
     setPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
     setOpen(true);
-    void markAsRead(notifications.filter((n) => !n.is_read).map((n) => n.id));
+    onOpen?.();
   };
 
   return (
@@ -124,36 +80,35 @@ export function NotificationBell({ userId }: { userId: string }) {
             <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--color-border)" }}>
               <p className="text-sm font-semibold text-navy">Notifications</p>
             </div>
-            <div style={{ maxHeight: "320px", overflowY: "auto" }}>
-              {notifications.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-muted">
-                  No notifications yet
-                </p>
-              ) : (
-                notifications.map((n, index) => (
-                  <div
-                    key={n.id}
-                    className={`px-4 py-3 ${n.is_read ? "opacity-60" : ""}`}
-                    style={{
-                      borderBottom:
-                        index < notifications.length - 1
-                          ? "1px solid var(--color-border)"
-                          : undefined,
-                    }}
-                  >
-                    <p className="text-sm font-medium text-foreground">{n.title}</p>
-                    <p className="text-xs text-muted">{n.body}</p>
-                    <p className="text-[10px] text-muted" style={{ marginTop: "4px" }}>
-                      {new Date(n.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                      {" · "}
-                      {new Date(n.created_at).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false })}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
+            <NotificationList notifications={notifications} />
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+export function NotificationList({ notifications }: { notifications: Notification[] }) {
+  return (
+    <div style={{ maxHeight: "320px", overflowY: "auto" }}>
+      {notifications.length === 0 ? (
+        <p className="px-4 py-8 text-center text-sm text-muted">No notifications yet</p>
+      ) : (
+        notifications.map((n, index) => (
+          <div
+            key={n.id}
+            className={`px-4 py-3 ${n.is_read ? "opacity-60" : ""}`}
+            style={{ borderBottom: index < notifications.length - 1 ? "1px solid var(--color-border)" : undefined }}
+          >
+            <p className="text-sm font-medium text-foreground">{n.title}</p>
+            <p className="text-xs text-muted">{n.body}</p>
+            <p className="text-[10px] text-muted" style={{ marginTop: "4px" }}>
+              {new Date(n.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              {" · "}
+              {new Date(n.created_at).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false })}
+            </p>
+          </div>
+        ))
       )}
     </div>
   );

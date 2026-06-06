@@ -347,8 +347,8 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
         <WorkflowLinks pendingCount={pendingRequests.length} studentCount={assignments.length} />
       )}
 
-      {/* This week — mobile only (replaces calendar on small screens) */}
-      {(view === "overview" || view === "schedule") && isMobile && thisWeek.length > 0 && (
+      {/* This week — always on overview, mobile-only on schedule */}
+      {((view === "overview") || (view === "schedule" && isMobile)) && thisWeek.length > 0 && (
         <section style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <h2 className="text-lg font-semibold text-navy">This week</h2>
           {thisWeek.map((s) => {
@@ -399,14 +399,10 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
         </section>
       )}
 
-      {view === "schedule" && isMobile && thisWeek.length === 0 && (
-        <EmptyState icon={CalendarDays} title="No sessions this week" description="Use the students page to schedule a new session." />
-      )}
-
-      {/* Calendar — desktop only */}
-      {view === "schedule" && !isMobile && (
+      {/* Calendar — desktop and mobile (MonthCalendar handles its own responsive view) */}
+      {view === "schedule" && (
         <section>
-          <h2 className="text-lg font-semibold text-navy" style={{ marginBottom: "12px" }}>Schedule</h2>
+          {!isMobile && <h2 className="text-lg font-semibold text-navy" style={{ marginBottom: "12px" }}>Schedule</h2>}
           <MonthCalendar sessions={calendarSessions} onDateDoubleClick={setScheduleDate} currentUserId={teacherId} role="teacher" hint="Double-click a date to schedule a session" />
         </section>
       )}
