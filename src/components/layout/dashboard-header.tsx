@@ -36,7 +36,6 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
   const [resetSuccess, setResetSuccess] = useState(false);
   const [showRemindersModal, setShowRemindersModal] = useState(false);
   const [reminder24h, setReminder24h] = useState(true);
-  const [reminder3h, setReminder3h] = useState(true);
   const [reminderSaving, setReminderSaving] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -58,12 +57,11 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
       const supabase = createClient();
       const { data } = await supabase
         .from("profiles")
-        .select("reminder_24h, reminder_3h")
+        .select("reminder_24h")
         .eq("id", userId)
         .single();
       if (data) {
         setReminder24h(data.reminder_24h ?? true);
-        setReminder3h(data.reminder_3h ?? true);
       }
     };
     void load();
@@ -131,15 +129,13 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
     setShowRemindersModal(true);
   };
 
-  const handleReminderToggle = async (field: "reminder_24h" | "reminder_3h", value: boolean) => {
-    if (field === "reminder_24h") setReminder24h(value);
-    else setReminder3h(value);
-
+  const handleReminderToggle = async (value: boolean) => {
+    setReminder24h(value);
     setReminderSaving(true);
     await fetch("/api/user/reminders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [field]: value }),
+      body: JSON.stringify({ reminder_24h: value }),
     }).catch(() => {});
     setReminderSaving(false);
   };
@@ -288,7 +284,7 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                 role="switch"
                 aria-checked={reminder24h}
                 disabled={reminderSaving}
-                onClick={() => void handleReminderToggle("reminder_24h", !reminder24h)}
+                onClick={() => void handleReminderToggle(!reminder24h)}
                 style={{
                   width: "44px",
                   height: "24px",
@@ -306,47 +302,6 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                     position: "absolute",
                     top: "2px",
                     left: reminder24h ? "22px" : "2px",
-                    width: "20px",
-                    height: "20px",
-                    borderRadius: "50%",
-                    background: "#fff",
-                    transition: "left 0.2s",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                  }}
-                />
-              </button>
-            </label>
-
-            {/* 3h toggle */}
-            <label
-              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", padding: "14px 16px", border: "1px solid var(--color-border)", borderRadius: "10px", background: "var(--color-soft)" }}
-            >
-              <div>
-                <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "var(--color-navy)" }}>3 hours before</p>
-                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--color-muted)" }}>Reminder sent a few hours before your session</p>
-              </div>
-              <button
-                role="switch"
-                aria-checked={reminder3h}
-                disabled={reminderSaving}
-                onClick={() => void handleReminderToggle("reminder_3h", !reminder3h)}
-                style={{
-                  width: "44px",
-                  height: "24px",
-                  borderRadius: "9999px",
-                  border: "none",
-                  cursor: reminderSaving ? "not-allowed" : "pointer",
-                  background: reminder3h ? "var(--color-navy)" : "var(--color-border)",
-                  position: "relative",
-                  flexShrink: 0,
-                  transition: "background 0.2s",
-                }}
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    top: "2px",
-                    left: reminder3h ? "22px" : "2px",
                     width: "20px",
                     height: "20px",
                     borderRadius: "50%",
