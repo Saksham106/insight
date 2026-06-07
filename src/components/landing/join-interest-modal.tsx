@@ -12,11 +12,16 @@ import { Textarea } from "@/components/ui/textarea";
 type Role = "student" | "teacher";
 
 interface JoinInterestModalProps {
+  buttonLabel?: string;
   buttonStyle?: React.CSSProperties;
   buttonVariant?: ButtonProps["variant"];
 }
 
-export function JoinInterestModal({ buttonStyle, buttonVariant = "default" }: JoinInterestModalProps) {
+export function JoinInterestModal({
+  buttonLabel = "I'm interested in joining",
+  buttonStyle,
+  buttonVariant = "default",
+}: JoinInterestModalProps) {
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<Role>("student");
   const [fullName, setFullName] = useState("");
@@ -69,7 +74,7 @@ export function JoinInterestModal({ buttonStyle, buttonVariant = "default" }: Jo
     <>
       <Button size="lg" variant={buttonVariant} style={buttonStyle} onClick={() => setOpen(true)}>
         <MailPlus size={17} />
-        I&apos;m interested in joining
+        {buttonLabel}
       </Button>
 
       {open ? (

@@ -102,74 +102,87 @@ export default function SetPasswordPage() {
 
   return (
     <div
-      className="bg-background px-6"
-      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}
+      className="bg-background"
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", padding: "24px" }}
     >
-      <Card style={{ width: "100%", maxWidth: "28rem" }}>
-        <CardHeader>
-          <CardTitle className="text-navy">Set your password</CardTitle>
-          {fullName ? (
-            <p className="text-sm text-muted" style={{ margin: 0 }}>
-              Hi {fullName}, finish setting up your account.
+      <div aria-hidden style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "900px", height: "700px", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(18,48,74,0.165) 0%, transparent 68%)", pointerEvents: "none" }} />
+      <div aria-hidden style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(18,48,74,0.13) 1px, transparent 1px), linear-gradient(90deg, rgba(18,48,74,0.13) 1px, transparent 1px)", backgroundSize: "44px 44px", maskImage: "radial-gradient(ellipse 62% 78% at 50% 50%, black 35%, transparent 75%)", WebkitMaskImage: "radial-gradient(ellipse 62% 78% at 50% 50%, black 35%, transparent 75%)", pointerEvents: "none" }} />
+
+      <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "26rem" }}>
+        <Card>
+          <CardHeader style={{ padding: "36px 32px 0", textAlign: "center", alignItems: "center" }}>
+            <p style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--color-slate)", margin: "0 0 10px" }}>
+              Insight Academy
             </p>
-          ) : null}
-        </CardHeader>
-        <CardContent>
-          {!ready ? (
-            <p className="text-sm text-muted">Checking your invite link...</p>
-          ) : !hasSession ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }} className="text-sm text-muted">
-              <p>
-                Please open the invite email link to set your password. This
-                page only works after accepting an invite.
-              </p>
-              <Button variant="outline" onClick={() => router.push("/login")}>
-                Back to login
-              </Button>
-            </div>
-          ) : (
-            <form style={{ display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={handleSubmit}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <Label htmlFor="accountEmail">Email</Label>
-                <Input
-                  id="accountEmail"
-                  name="accountEmail"
-                  type="email"
-                  value={accountEmail}
-                  disabled
-                  aria-readonly="true"
-                />
+            <CardTitle className="text-navy" style={{ fontSize: "22px", lineHeight: 1.2 }}>
+              Set your password
+            </CardTitle>
+            <p className="text-sm text-muted" style={{ margin: "6px 0 0" }}>
+              {fullName ? `Hi ${fullName}, finish setting up your account.` : "Finish setting up your account."}
+            </p>
+          </CardHeader>
+          <CardContent style={{ padding: "28px 32px 32px" }}>
+            {!ready ? (
+              <p className="text-sm text-muted" style={{ textAlign: "center" }}>Checking your invite link...</p>
+            ) : !hasSession ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }} className="text-sm text-muted">
+                <p style={{ margin: 0, textAlign: "center" }}>
+                  Please open the invite email link to set your password. This
+                  page only works after accepting an invite.
+                </p>
+                <Button variant="outline" onClick={() => router.push("/login")}>
+                  Back to login
+                </Button>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <Label htmlFor="password">New password</Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <Label htmlFor="confirmPassword">Confirm password</Label>
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  required
-                />
-              </div>
-              {error ? <p className="text-sm text-error">{error}</p> : null}
-              <Button type="submit" disabled={loading}>
-                {loading ? "Saving..." : "Save password"}
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <form style={{ display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={handleSubmit}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <Label htmlFor="accountEmail">Email</Label>
+                  <Input
+                    id="accountEmail"
+                    name="accountEmail"
+                    type="email"
+                    value={accountEmail}
+                    disabled
+                    aria-readonly="true"
+                    style={{ borderRadius: "8px" }}
+                  />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <Label htmlFor="password">New password</Label>
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    style={{ borderRadius: "8px" }}
+                    required
+                  />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <Label htmlFor="confirmPassword">Confirm password</Label>
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    style={{ borderRadius: "8px" }}
+                    required
+                  />
+                </div>
+                {error ? <p className="text-sm text-error">{error}</p> : null}
+                <Button type="submit" disabled={loading} style={{ marginTop: "8px", borderRadius: "8px" }}>
+                  {loading ? "Saving..." : "Save password"}
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

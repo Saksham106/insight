@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { JoinInterestModal } from "@/components/landing/join-interest-modal";
 import { createClient } from "@/lib/supabase/client";
 
 const roleRedirects: Record<string, string> = {
@@ -190,14 +191,14 @@ export default function LoginPage() {
 
             {/* New user section */}
             <div style={{ marginTop: "24px", paddingTop: "20px", borderTop: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: "12px" }}>
-              <p style={{ textAlign: "center", fontSize: "13px", color: "var(--color-muted)" }}>New user?</p>
-              <Button
-                variant="outline"
-                style={{ width: "100%", borderRadius: "8px", borderColor: "var(--color-navy)", color: "var(--color-navy)", fontWeight: 600 }}
-                asChild
-              >
-                <a href="/set-password">Set your password from invite</a>
-              </Button>
+              <p style={{ textAlign: "center", fontSize: "13px", color: "var(--color-muted)", margin: 0 }}>
+                New users need an invite email before setting a password.
+              </p>
+              <JoinInterestModal
+                buttonLabel="Request an invite"
+                buttonVariant="outline"
+                buttonStyle={{ width: "100%", borderRadius: "8px", borderColor: "var(--color-navy)", color: "var(--color-navy)", fontWeight: 600 }}
+              />
             </div>
 
           </CardContent>
