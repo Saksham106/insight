@@ -15,7 +15,8 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/login?error=auth`);
     }
 
-    if (type === "invite" || type === "recovery") {
+    // Supabase invite callbacks use this configured URL without a type marker.
+    if (!type || type === "invite" || type === "recovery") {
       return NextResponse.redirect(`${origin}/set-password`);
     }
 
