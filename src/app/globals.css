@@ -60,6 +60,10 @@ body {
   .form-grid-2 {
     grid-template-columns: 1fr;
   }
+
+  .settings-layout {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 @keyframes skeleton-pulse {
@@ -71,4 +75,3 @@ body {
   background-color: var(--color-border);
   animation: skeleton-pulse 1.5s ease-in-out infinite;
 }
-

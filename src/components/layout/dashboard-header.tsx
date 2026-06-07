@@ -10,15 +10,13 @@ import { useMediaQuery } from "@/lib/use-media-query";
 import { NotificationBell, NotificationList } from "@/components/layout/notification-bell";
 import { Modal } from "@/components/ui/modal";
 import { useNotifications } from "@/lib/use-notifications";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 
 interface DashboardHeaderProps {
   userName: string;
   role: "admin" | "teacher" | "student";
   userId: string;
+  avatarUrl?: string | null;
 }
 
 const roleLabels: Record<DashboardHeaderProps["role"], string> = {
@@ -47,20 +45,10 @@ const roleNav: Record<DashboardHeaderProps["role"], { href: string; label: strin
   ],
 };
 
-export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps) {
+export function DashboardHeader({ userName, role, userId, avatarUrl }: DashboardHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetError, setResetError] = useState<string | null>(null);
-  const [resetSuccess, setResetSuccess] = useState(false);
-  const [showRemindersModal, setShowRemindersModal] = useState(false);
-  const [reminder24h, setReminder24h] = useState(true);
-  const [reminderSaving, setReminderSaving] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)");
@@ -79,102 +67,21 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
     return () => document.removeEventListener("mousedown", handler);
   }, [dropdownOpen]);
 
-  // Close mobile menu on navigation
-  useEffect(() => { setMenuOpen(false); }, [pathname]);
-
-  // Load reminder preferences
-  useEffect(() => {
-    const load = async () => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("profiles")
-        .select("reminder_24h")
-        .eq("id", userId)
-        .single();
-      if (data) {
-        setReminder24h(data.reminder_24h ?? true);
-      }
-    };
-    void load();
-  }, [userId]);
-
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
     router.replace("/login");
   };
 
-  const handleResetPassword = async (e: React.SyntheticEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setResetError(null);
-    if (newPassword.length < 6) {
-      setResetError("Password must be at least 6 characters.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setResetError("Passwords don't match.");
-      return;
-    }
-    setResetLoading(true);
-    const supabase = createClient();
-
-    // Verify current password by re-authenticating
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData.user?.email;
-    if (!email) {
-      setResetError("Could not retrieve your account details.");
-      setResetLoading(false);
-      return;
-    }
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
-    if (signInError) {
-      setResetError("Current password is incorrect.");
-      setResetLoading(false);
-      return;
-    }
-
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setResetLoading(false);
-    if (error) {
-      setResetError(error.message);
-      return;
-    }
-    setResetSuccess(true);
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-  };
-
-  const openReset = () => {
+  const openSettings = () => {
     setDropdownOpen(false);
-    setResetSuccess(false);
-    setResetError(null);
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setShowResetModal(true);
-  };
-
-  const openReminders = () => {
-    setDropdownOpen(false);
-    setShowRemindersModal(true);
+    router.push("/settings");
   };
 
   const openNotifications = () => {
     setDropdownOpen(false);
     void markAllRead();
     setShowNotificationsModal(true);
-  };
-
-  const handleReminderToggle = async (value: boolean) => {
-    setReminder24h(value);
-    setReminderSaving(true);
-    await fetch("/api/user/reminders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reminder_24h: value }),
-    }).catch(() => {});
-    setReminderSaving(false);
   };
 
   return (
@@ -271,6 +178,7 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
               <div ref={dropdownRef} style={{ position: "relative" }}>
                 <button
                   onClick={() => setDropdownOpen((v) => !v)}
+                  aria-label="Open profile menu"
                   style={{
                     position: "relative",
                     width: "38px",
@@ -285,7 +193,16 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                     color: "var(--color-navy)",
                   }}
                 >
-                  <User size={17} />
+                  {avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={avatarUrl}
+                      alt=""
+                      style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <User size={17} />
+                  )}
                   {isMobile && unreadCount > 0 && (
                     <span
                       style={{
@@ -366,7 +283,7 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                       </button>
                     )}
                     <button
-                      onClick={openReminders}
+                      onClick={openSettings}
                       style={{
                         display: "block",
                         width: "100%",
@@ -380,24 +297,7 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                         borderBottom: "1px solid var(--color-border)",
                       }}
                     >
-                      Reminders
-                    </button>
-                    <button
-                      onClick={openReset}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        padding: "11px 16px",
-                        textAlign: "left",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        color: "var(--color-foreground)",
-                        borderBottom: "1px solid var(--color-border)",
-                      }}
-                    >
-                      Reset password
+                      Settings
                     </button>
                     <button
                       onClick={handleLogout}
@@ -435,6 +335,7 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={() => setMenuOpen(false)}
                     style={{
                       display: "block",
                       padding: "12px 24px",
@@ -462,120 +363,6 @@ export function DashboardHeader({ userName, role, userId }: DashboardHeaderProps
           onClose={() => setShowNotificationsModal(false)}
         >
           <NotificationList notifications={notifications} />
-        </Modal>
-      )}
-
-      {/* Reminders modal */}
-      {showRemindersModal && (
-        <Modal
-          title="Email reminders"
-          description="Choose when to receive email reminders for upcoming sessions."
-          onClose={() => setShowRemindersModal(false)}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            {/* 24h toggle */}
-            <label
-              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", padding: "14px 16px", border: "1px solid var(--color-border)", borderRadius: "10px", background: "var(--color-soft)" }}
-            >
-              <div>
-                <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "var(--color-navy)" }}>24 hours before</p>
-                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--color-muted)" }}>Reminder sent the day before your session</p>
-              </div>
-              <button
-                role="switch"
-                aria-checked={reminder24h}
-                disabled={reminderSaving}
-                onClick={() => void handleReminderToggle(!reminder24h)}
-                style={{
-                  width: "44px",
-                  height: "24px",
-                  borderRadius: "9999px",
-                  border: "none",
-                  cursor: reminderSaving ? "not-allowed" : "pointer",
-                  background: reminder24h ? "var(--color-navy)" : "var(--color-border)",
-                  position: "relative",
-                  flexShrink: 0,
-                  transition: "background 0.2s",
-                }}
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    top: "2px",
-                    left: reminder24h ? "22px" : "2px",
-                    width: "20px",
-                    height: "20px",
-                    borderRadius: "50%",
-                    background: "#fff",
-                    transition: "left 0.2s",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                  }}
-                />
-              </button>
-            </label>
-
-            <p style={{ margin: 0, fontSize: "12px", color: "var(--color-muted)" }}>
-              {reminderSaving ? "Saving…" : "Changes are saved automatically."}
-            </p>
-          </div>
-        </Modal>
-      )}
-
-      {/* Reset password modal */}
-      {showResetModal && (
-        <Modal
-          title="Reset password"
-          description="Choose a new password for your account."
-          onClose={() => setShowResetModal(false)}
-        >
-          {resetSuccess ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <p className="text-sm" style={{ color: "#16a34a" }}>Password updated successfully.</p>
-              <Button onClick={() => setShowResetModal(false)} style={{ width: "100%", justifyContent: "center" }}>
-                Done
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleResetPassword} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <Label htmlFor="current-password">Current password</Label>
-                <Input
-                  id="current-password"
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="Enter current password"
-                  required
-                />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <Label htmlFor="new-password">New password</Label>
-                <Input
-                  id="new-password"
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="At least 6 characters"
-                  required
-                />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <Label htmlFor="confirm-password">Confirm password</Label>
-                <Input
-                  id="confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repeat new password"
-                  required
-                />
-              </div>
-              {resetError && <p className="text-sm text-error">{resetError}</p>}
-              <Button type="submit" disabled={resetLoading} style={{ width: "100%", justifyContent: "center" }}>
-                {resetLoading ? "Updating…" : "Update password"}
-              </Button>
-            </form>
-          )}
         </Modal>
       )}
     </>

@@ -8,15 +8,16 @@ interface AppShellProps {
   userName: string;
   role: "admin" | "teacher" | "student";
   userId: string;
+  avatarUrl?: string | null;
   children: React.ReactNode;
 }
 
-export function AppShell({ userName, role, userId, children }: AppShellProps) {
+export function AppShell({ userName, role, userId, avatarUrl, children }: AppShellProps) {
   return (
     <div className="bg-background" style={{ minHeight: "100vh" }}>
       <NavigationProgress />
       <TimezoneSync />
-      <DashboardHeader userName={userName} role={role} userId={userId} />
+      <DashboardHeader userName={userName} role={role} userId={userId} avatarUrl={avatarUrl} />
       <ContactModal />
       <PageMain>{children}</PageMain>
     </div>

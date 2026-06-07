@@ -19,14 +19,29 @@ export async function requireUser(): Promise<UserProfile> {
 
   if (!profile && devBypass && devRole) {
     const supabase = createAdminClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
-      .select("id, full_name, role, is_active")
+      .select("id, full_name, role, is_active, avatar_url")
       .eq("role", devRole)
       .eq("is_active", true)
       .order("created_at", { ascending: true })
       .limit(1)
       .single();
+
+    if (error && error.message.includes("avatar_url")) {
+      const { data: fallbackData } = await supabase
+        .from("profiles")
+        .select("id, full_name, role, is_active")
+        .eq("role", devRole)
+        .eq("is_active", true)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .single();
+
+      if (fallbackData) {
+        return { ...fallbackData, avatar_url: null } as UserProfile;
+      }
+    }
 
     if (data) {
       return data as UserProfile;

@@ -7,6 +7,7 @@ export interface UserProfile {
   full_name: string;
   role: UserRole;
   is_active: boolean;
+  avatar_url: string | null;
 }
 
 export async function getUserProfile(): Promise<UserProfile | null> {
@@ -19,9 +20,23 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, full_name, role, is_active")
+    .select("id, full_name, role, is_active, avatar_url")
     .eq("id", userData.user.id)
     .single();
+
+  if (error && error.message.includes("avatar_url")) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("profiles")
+      .select("id, full_name, role, is_active")
+      .eq("id", userData.user.id)
+      .single();
+
+    if (fallbackError || !fallbackData) {
+      return null;
+    }
+
+    return { ...fallbackData, avatar_url: null } as UserProfile;
+  }
 
   if (error || !data) {
     return null;
