@@ -7,13 +7,14 @@ import { ChatDrawer } from "@/components/chat/chat-drawer";
 
 interface ChatButtonProps {
   conversationId: string;
+  name: string;
   currentUserId: string;
-  title: string;
   readOnly?: boolean;
 }
 
-export function ChatButton({ conversationId, currentUserId, title, readOnly }: ChatButtonProps) {
+export function ChatButton({ conversationId, name, currentUserId, readOnly }: ChatButtonProps) {
   const [open, setOpen] = useState(false);
+  const contacts = [{ conversationId, name }];
 
   return (
     <>
@@ -22,9 +23,9 @@ export function ChatButton({ conversationId, currentUserId, title, readOnly }: C
       </Button>
       {open && (
         <ChatDrawer
-          conversationId={conversationId}
+          contacts={contacts}
+          initialConversationId={conversationId}
           currentUserId={currentUserId}
-          title={title}
           readOnly={readOnly}
           onClose={() => setOpen(false)}
         />

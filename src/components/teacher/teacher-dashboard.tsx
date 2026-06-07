@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TimePicker } from "@/components/ui/time-picker";
 import { useMediaQuery } from "@/lib/use-media-query";
+import { useUnreadCounts } from "@/lib/use-unread-counts";
 
 interface AssignmentRow {
   id: string;
@@ -29,7 +30,7 @@ interface TeacherDashboardProps {
   view?: TeacherDashboardView;
 }
 
-type TeacherDashboardView = "overview" | "schedule" | "requests" | "students";
+type TeacherDashboardView = "overview" | "schedule" | "requests" | "students" | "chats";
 
 const viewCopy: Record<TeacherDashboardView, { title: string; description: string }> = {
   overview: {
@@ -38,7 +39,7 @@ const viewCopy: Record<TeacherDashboardView, { title: string; description: strin
   },
   schedule: {
     title: "Schedule",
-    description: "Review upcoming sessions and double-click a date to propose a new one.",
+    description: "",
   },
   requests: {
     title: "Session requests",
@@ -47,6 +48,10 @@ const viewCopy: Record<TeacherDashboardView, { title: string; description: strin
   students: {
     title: "Students",
     description: "Open chats, schedule sessions, and review session history by student.",
+  },
+  chats: {
+    title: "Chats",
+    description: "Your conversations with students.",
   },
 };
 
@@ -291,8 +296,7 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
   const [selectedId, setSelectedId] = useState<string>(assignments[0]?.id ?? "");
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date | null>(null);
-  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
-  const [chatTitle, setChatTitle] = useState("");
+  const [chatInitialId, setChatInitialId] = useState<string | null>(null);
   const isMobile = useMediaQuery("(max-width: 768px)");
   const isNarrow = useMediaQuery("(max-width: 480px)");
 
@@ -330,6 +334,10 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
     .slice(0, 3);
 
   const conversationId = selected?.conversation?.[0]?.id;
+  const chatContacts = assignments
+    .filter((a) => a.conversation?.[0]?.id)
+    .map((a) => ({ conversationId: a.conversation![0].id, name: a.student?.full_name ?? "Student" }));
+  const { unread: chatUnread, total: totalUnread } = useUnreadCounts(chatContacts, teacherId);
   const copy = viewCopy[view];
 
   return (
@@ -338,13 +346,43 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
       {/* Welcome */}
       <div>
         <h1 className="text-2xl font-semibold text-navy">{copy.title}</h1>
-        <p className="text-sm text-muted" style={{ marginTop: "4px" }}>
-          {copy.description}
-        </p>
+        {copy.description && (
+          <p className="text-sm text-muted" style={{ marginTop: "4px" }}>
+            {copy.description}
+          </p>
+        )}
       </div>
 
       {view === "overview" && (
         <WorkflowLinks pendingCount={pendingRequests.length} studentCount={assignments.length} />
+      )}
+
+      {/* Overview unread messages card */}
+      {view === "overview" && totalUnread > 0 && (
+        <section
+          className="border border-border bg-surface"
+          style={{ borderRadius: "12px", padding: "20px", display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: "14px" }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <p className="text-sm font-semibold text-navy">
+              {totalUnread} unread message{totalUnread !== 1 ? "s" : ""}
+            </p>
+            <p className="text-sm text-muted">You have new messages from your student{chatContacts.length !== 1 ? "s" : ""}.</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              const firstUnread = chatContacts.find((c) => (chatUnread[c.conversationId] ?? 0) > 0);
+              if (firstUnread) setChatInitialId(firstUnread.conversationId);
+            }}
+            style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "6px" }}
+          >
+            Open chat
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+              {totalUnread > 99 ? "99+" : totalUnread}
+            </span>
+          </Button>
+        </section>
       )}
 
       {/* This week — always on overview, mobile-only on schedule */}
@@ -354,11 +392,9 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
           {thisWeek.map((s) => {
             const start = new Date(s.scheduled_at);
             const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            const tomorrowStart = new Date(todayStart.getTime() + 86400000);
             const sessionDayStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
             const dayLbl =
               sessionDayStart.getTime() === todayStart.getTime() ? "Today" :
-              sessionDayStart.getTime() === tomorrowStart.getTime() ? "Tomorrow" :
               start.toLocaleDateString("en-US", { weekday: "short" });
             const timeStr = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
             const dur = s.duration_minutes >= 120 && s.duration_minutes % 60 === 0
@@ -399,18 +435,10 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
         </section>
       )}
 
-      {/* Calendar — desktop and mobile (MonthCalendar handles its own responsive view) */}
-      {view === "schedule" && (
-        <section>
-          {!isMobile && <h2 className="text-lg font-semibold text-navy" style={{ marginBottom: "12px" }}>Schedule</h2>}
-          <MonthCalendar sessions={calendarSessions} onDateDoubleClick={setScheduleDate} currentUserId={teacherId} role="teacher" hint="Double-click a date to schedule a session" />
-        </section>
-      )}
-
-      {/* Pending session requests from students */}
-      {(view === "requests" || (view === "overview" && pendingRequests.length > 0)) && (
+      {/* Pending session requests from students — on schedule tab (if any) and overview (if any) and standalone requests view */}
+      {(view === "requests" || (view === "overview" && pendingRequests.length > 0) || (view === "schedule" && pendingRequests.length > 0)) && (
         <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <h2 className="text-lg font-semibold text-navy">Session requests from students</h2>
+          <h2 className="text-lg font-semibold text-navy">Requests from students</h2>
           {pendingRequests.length === 0 ? (
             <EmptyState icon={CheckCircle} title="No pending requests" description="Student requests will appear here when they propose session times." />
           ) : (
@@ -423,6 +451,13 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {/* Calendar — desktop and mobile */}
+      {view === "schedule" && (
+        <section>
+          <MonthCalendar sessions={calendarSessions} onDateDoubleClick={setScheduleDate} currentUserId={teacherId} role="teacher" hint="Double-click a date to schedule a session" />
         </section>
       )}
 
@@ -443,6 +478,8 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
                   (s) => s.status !== "cancelled" && new Date(s.scheduled_at) >= now,
                 ).length;
                 const isSelected = a.id === selectedId;
+                const convId = a.conversation?.[0]?.id;
+                const chipUnread = convId ? (chatUnread[convId] ?? 0) : 0;
 
                 return (
                   <button
@@ -468,22 +505,13 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
                   >
                     {a.student?.full_name ?? "Student"}
                     {upcomingCount > 0 && (
-                      <span
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          minWidth: "20px",
-                          height: "20px",
-                          borderRadius: "9999px",
-                          padding: "0 4px",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          backgroundColor: isSelected ? "rgba(255,255,255,0.2)" : "var(--color-soft)",
-                          color: isSelected ? "#ffffff" : "var(--color-navy)",
-                        }}
-                      >
+                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: "20px", height: "20px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: isSelected ? "rgba(255,255,255,0.2)" : "var(--color-soft)", color: isSelected ? "#ffffff" : "var(--color-navy)" }}>
                         {upcomingCount}
+                      </span>
+                    )}
+                    {chipUnread > 0 && (
+                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: "20px", height: "20px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                        {chipUnread > 99 ? "99+" : chipUnread}
                       </span>
                     )}
                   </button>
@@ -515,12 +543,15 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
                     {conversationId && (
                       <Button
                         size="sm"
-                        onClick={() => {
-                          setChatConversationId(conversationId);
-                          setChatTitle(`Chat with ${selected?.student?.full_name ?? "Student"}`);
-                        }}
+                        onClick={() => setChatInitialId(conversationId)}
+                        style={{ display: "flex", alignItems: "center", gap: "6px" }}
                       >
                         Open chat
+                        {(chatUnread[conversationId] ?? 0) > 0 && (
+                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                            {(chatUnread[conversationId] ?? 0) > 99 ? "99+" : chatUnread[conversationId]}
+                          </span>
+                        )}
                       </Button>
                     )}
                   </div>
@@ -567,6 +598,52 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
         )}
       </section>}
 
+      {/* Chats view */}
+      {view === "chats" && (
+        <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {chatContacts.length === 0 ? (
+            <EmptyState icon={Users} title="No conversations yet" description="Once you're paired with a student, your chat will appear here." />
+          ) : (
+            chatContacts.map((contact) => {
+              const count = chatUnread[contact.conversationId] ?? 0;
+              const initials = contact.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+              return (
+                <div
+                  key={contact.conversationId}
+                  className="border border-border bg-surface"
+                  style={{ borderRadius: "12px", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px" }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    <div style={{ position: "relative", flexShrink: 0 }}>
+                      <div style={{ width: "40px", height: "40px", borderRadius: "50%", backgroundColor: "var(--color-navy)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: 600 }}>
+                        {initials}
+                      </div>
+                      {count > 0 && (
+                        <span style={{ position: "absolute", top: "-3px", right: "-3px", backgroundColor: "#ef4444", color: "white", fontSize: "10px", fontWeight: 700, borderRadius: "999px", minWidth: "17px", height: "17px", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
+                          {count > 99 ? "99+" : count}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-navy">{contact.name}</p>
+                      {count > 0 && <p className="text-xs text-muted" style={{ marginTop: "2px" }}>{count} unread message{count !== 1 ? "s" : ""}</p>}
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={() => setChatInitialId(contact.conversationId)} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "6px" }}>
+                    Open chat
+                    {count > 0 && (
+                      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                        {count > 99 ? "99+" : count}
+                      </span>
+                    )}
+                  </Button>
+                </div>
+              );
+            })
+          )}
+        </section>
+      )}
+
       {/* Quick-schedule modal — triggered by double-clicking a calendar date */}
       {scheduleDate && (
         <QuickScheduleModal
@@ -577,12 +654,12 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
         />
       )}
     </div>
-      {chatConversationId && (
+      {chatInitialId && chatContacts.length > 0 && (
         <ChatDrawer
-          conversationId={chatConversationId}
+          contacts={chatContacts}
+          initialConversationId={chatInitialId}
           currentUserId={teacherId}
-          title={chatTitle}
-          onClose={() => setChatConversationId(null)}
+          onClose={() => setChatInitialId(null)}
         />
       )}
     </>

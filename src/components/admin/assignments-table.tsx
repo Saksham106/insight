@@ -41,7 +41,8 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
-  const [chatTitle, setChatTitle] = useState("");
+  const [chatContactName, setChatContactName] = useState("");
+  const [chatTeacherId, setChatTeacherId] = useState("");
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 480px)");
@@ -126,7 +127,8 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
                         onClick={(e) => {
                           e.stopPropagation();
                           setChatConversationId(conversationId);
-                          setChatTitle(`${assignment.teacher?.full_name ?? "Teacher"} & ${assignment.student?.full_name ?? "Student"}`);
+                          setChatTeacherId(assignment.teacher?.id ?? "");
+                          setChatContactName(`${assignment.teacher?.full_name ?? "Teacher"} & ${assignment.student?.full_name ?? "Student"}`);
                         }}
                         style={{
                           display: "inline-flex",
@@ -217,11 +219,12 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
 
       {chatConversationId && (
         <ChatDrawer
-          conversationId={chatConversationId}
-          currentUserId=""
-          title={chatTitle}
+          contacts={[{ conversationId: chatConversationId, name: chatContactName }]}
+          initialConversationId={chatConversationId}
+          currentUserId={chatTeacherId}
           readOnly
-          onClose={() => setChatConversationId(null)}
+          adminView
+          onClose={() => { setChatConversationId(null); setChatTeacherId(""); }}
         />
       )}
     </>

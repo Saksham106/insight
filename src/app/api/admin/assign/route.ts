@@ -29,5 +29,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const { error: convError } = await supabase
+    .from("conversations")
+    .insert({ assignment_id: data.id });
+
+  if (convError) {
+    return NextResponse.json({ error: convError.message }, { status: 500 });
+  }
+
   return NextResponse.json({ assignmentId: data.id });
 }

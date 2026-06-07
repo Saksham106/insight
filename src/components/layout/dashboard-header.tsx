@@ -10,6 +10,7 @@ import { useMediaQuery } from "@/lib/use-media-query";
 import { NotificationBell, NotificationList } from "@/components/layout/notification-bell";
 import { Modal } from "@/components/ui/modal";
 import { useNotifications } from "@/lib/use-notifications";
+import { useChatUnreadTotal } from "@/lib/use-chat-unread-total";
 import { createClient } from "@/lib/supabase/client";
 
 interface DashboardHeaderProps {
@@ -35,14 +36,14 @@ const roleNav: Record<DashboardHeaderProps["role"], { href: string; label: strin
   teacher: [
     { href: "/teacher", label: "Overview" },
     { href: "/teacher/schedule", label: "Schedule" },
-    { href: "/teacher/requests", label: "Requests" },
     { href: "/teacher/students", label: "Students" },
+    { href: "/teacher/chats", label: "Chats" },
   ],
   student: [
     { href: "/student", label: "Overview" },
     { href: "/student/schedule", label: "Schedule" },
-    { href: "/student/requests", label: "Proposals" },
     { href: "/student/teachers", label: "Teachers" },
+    { href: "/student/chats", label: "Chats" },
   ],
 };
 
@@ -54,6 +55,7 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { notifications, unreadCount, markAllRead } = useNotifications(userId);
+  const chatUnread = useChatUnreadTotal(userId, role);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
@@ -89,7 +91,7 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
     <>
       <header
         className="bg-surface"
-        style={{ position: "sticky", top: 0, zIndex: 30, borderBottom: "1px solid var(--color-border)" }}
+        style={{ position: "sticky", top: 0, zIndex: 30, borderBottom: "1px solid var(--color-border)", overflow: "visible" }}
       >
         <div style={{ marginLeft: "auto", marginRight: "auto", width: "100%", maxWidth: "72rem" }}>
           <div
@@ -110,9 +112,10 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
 
             {/* Center: nav tabs (desktop only) */}
             {!isMobile && (
-              <nav style={{ display: "flex", gap: "6px", flex: 1, justifyContent: "center" }}>
+              <nav style={{ display: "flex", gap: "0", flex: 1, justifyContent: "center" }}>
                 {roleNav[role].map((item) => {
                   const active = pathname === item.href;
+                  const isChats = item.label === "Chats";
                   return (
                     <Link
                       key={item.href}
@@ -120,19 +123,26 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        height: "34px",
+                        gap: "6px",
+                        height: "40px",
                         padding: "0 14px",
-                        borderRadius: "9999px",
-                        border: `1px solid ${active ? "var(--color-navy)" : "var(--color-border)"}`,
-                        backgroundColor: active ? "var(--color-navy)" : "var(--color-surface)",
-                        color: active ? "white" : "var(--color-slate)",
+                        color: active ? "var(--color-navy)" : "var(--color-slate)",
                         fontSize: "13px",
-                        fontWeight: 600,
-                        textDecoration: "none",
+                        fontWeight: active ? 600 : 500,
+                        textDecorationLine: active ? "underline" : "none",
+                        textDecorationColor: "var(--color-navy)",
+                        textDecorationThickness: "2px",
+                        textUnderlineOffset: "6px",
                         whiteSpace: "nowrap",
+                        transition: "color 0.15s",
                       }}
                     >
                       {item.label}
+                      {isChats && chatUnread > 0 && (
+                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                          {chatUnread > 99 ? "99+" : chatUnread}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}
@@ -322,37 +332,68 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
             </div>
           </div>
 
-          {/* Mobile dropdown menu */}
-          {isMobile && menuOpen && (
-            <nav
-              style={{
-                borderTop: "1px solid var(--color-border)",
-                padding: "8px 0",
-              }}
-            >
-              {roleNav[role].map((item) => {
-                const active = pathname === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMenuOpen(false)}
-                    style={{
-                      display: "block",
-                      padding: "12px 24px",
-                      fontSize: "14px",
-                      fontWeight: active ? 600 : 500,
-                      color: active ? "var(--color-navy)" : "var(--color-slate)",
-                      backgroundColor: active ? "rgba(27,53,96,0.06)" : "transparent",
-                      textDecoration: "none",
-                      borderLeft: active ? "3px solid var(--color-navy)" : "3px solid transparent",
-                    }}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
+          {/* Mobile dropdown menu — overlays page content, animated */}
+          {isMobile && (
+            <>
+              {/* Backdrop — closes menu on tap outside */}
+              {menuOpen && (
+                <div
+                  onClick={() => setMenuOpen(false)}
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    zIndex: 28,
+                  }}
+                />
+              )}
+              <nav
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  right: 0,
+                  backgroundColor: "var(--color-surface)",
+                  borderBottom: menuOpen ? "1px solid var(--color-border)" : "none",
+                  boxShadow: menuOpen ? "0 8px 24px rgba(0,0,0,0.08)" : "none",
+                  zIndex: 29,
+                  opacity: menuOpen ? 1 : 0,
+                  transform: menuOpen ? "translateY(0)" : "translateY(-6px)",
+                  pointerEvents: menuOpen ? "auto" : "none",
+                  transition: "opacity 0.2s ease, transform 0.2s ease",
+                  padding: menuOpen ? "8px 0" : "0",
+                }}
+              >
+                {roleNav[role].map((item) => {
+                  const active = pathname === item.href;
+                  const isChats = item.label === "Chats";
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "12px 24px",
+                        fontSize: "14px",
+                        fontWeight: active ? 600 : 500,
+                        color: active ? "var(--color-navy)" : "var(--color-slate)",
+                        backgroundColor: active ? "rgba(27,53,96,0.06)" : "transparent",
+                        textDecoration: "none",
+                        borderLeft: active ? "3px solid var(--color-navy)" : "3px solid transparent",
+                      }}
+                    >
+                      {item.label}
+                      {isChats && chatUnread > 0 && (
+                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "20px", height: "20px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                          {chatUnread > 99 ? "99+" : chatUnread}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </>
           )}
         </div>
       </header>
