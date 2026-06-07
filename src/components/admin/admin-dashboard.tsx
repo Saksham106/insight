@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, UserPlus } from "lucide-react";
+import { CalendarDays, Link2, UserPlus } from "lucide-react";
 
 import { AdminFormsGrid } from "@/components/admin/admin-forms-grid";
 import { AdminSessionsSection } from "@/components/admin/admin-sessions-section";
@@ -16,7 +16,7 @@ import type {
   ProfileRow,
 } from "@/lib/dashboard-data";
 
-export type AdminDashboardView = "overview" | "users" | "sessions";
+export type AdminDashboardView = "overview" | "users" | "assignments" | "sessions";
 
 interface AdminDashboardProps {
   view: AdminDashboardView;
@@ -33,11 +33,15 @@ const viewCopy: Record<AdminDashboardView, { title: string; description: string 
   },
   users: {
     title: "Users",
-    description: "Invite teachers and students, create pairings, and manage access.",
+    description: "Invite teachers and students, and manage access.",
+  },
+  assignments: {
+    title: "Assignments",
+    description: "Create and manage teacher-student pairings.",
   },
   sessions: {
     title: "Sessions",
-    description: "Review every scheduled, pending, and past session.",
+    description: "View every scheduled, pending, and past session.",
   },
 };
 
@@ -46,7 +50,13 @@ const overviewLinks = [
     href: "/admin/users",
     icon: UserPlus,
     title: "Users",
-    description: "Invite teachers and students, and create pairings.",
+    description: "Invite teachers and students, and manage access.",
+  },
+  {
+    href: "/admin/assignments",
+    icon: Link2,
+    title: "Assignments",
+    description: "Pair teachers with students and manage assignment status.",
   },
   {
     href: "/admin/sessions",
@@ -144,7 +154,11 @@ export function AdminDashboard({
             <h2 className="text-lg font-semibold text-navy">Students/Parents</h2>
             <StudentsTable students={students} />
           </section>
+        </>
+      )}
 
+      {view === "assignments" && (
+        <>
           <AssignStudentForm teachers={teachers} students={students} />
 
           <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>

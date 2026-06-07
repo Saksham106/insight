@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ const roleRedirects: Record<string, string> = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const checkedSessionRef = useRef(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +25,30 @@ export default function LoginPage() {
 
   useEffect(() => {
     const checkSession = async () => {
+      if (checkedSessionRef.current) return;
+      checkedSessionRef.current = true;
+
       const supabase = createClient();
+      if (typeof window !== "undefined") {
+        const queryParams = new URLSearchParams(window.location.search);
+        const authFlow = queryParams.get("auth_flow");
+        const code = queryParams.get("code");
+        const clearUrl = () => window.history.replaceState({}, document.title, window.location.pathname);
+
+        if (authFlow === "invite" && code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          clearUrl();
+
+          if (exchangeError) {
+            setError("This invite link could not be used. Please ask your administrator to resend the invite.");
+            return;
+          }
+
+          router.replace("/set-password");
+          return;
+        }
+      }
+
       if (typeof window !== "undefined" && window.location.hash) {
         const params = new URLSearchParams(window.location.hash.slice(1));
         const authError = params.get("error");
@@ -59,17 +83,14 @@ export default function LoginPage() {
         }
       }
 
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", data.session.user.id)
-          .single();
+      const response = await fetch("/api/auth/session", { cache: "no-store" });
+      const session = await response.json().catch(() => null) as {
+        authenticated?: boolean;
+        role?: string;
+      } | null;
 
-        if (profile?.role && roleRedirects[profile.role]) {
-          router.replace(roleRedirects[profile.role]);
-        }
+      if (session?.authenticated && session.role && roleRedirects[session.role]) {
+        router.replace(roleRedirects[session.role]);
       }
     };
 

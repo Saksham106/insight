@@ -132,6 +132,10 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
 
         {/* proposed_by === currentUserId means the current user proposed it (awaiting other party) */}
         {(() => {
+          if (role === "admin") {
+            return null;
+          }
+
           const iAmProposer = session.proposed_by !== null
             ? session.proposed_by === currentUserId
             : role === "teacher"; // null = legacy teacher-proposed
@@ -140,11 +144,9 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
             if (iAmProposer) {
               return (
                 <div style={{ display: "flex", gap: "8px" }}>
-                  {role !== "admin" && (
-                    <Button size="sm" variant="outline" style={{ width: "fit-content" }} onClick={() => setShowReschedule((v) => !v)}>
-                      {showReschedule ? "Close" : "Reschedule"}
-                    </Button>
-                  )}
+                  <Button size="sm" variant="outline" style={{ width: "fit-content" }} onClick={() => setShowReschedule((v) => !v)}>
+                    {showReschedule ? "Close" : "Reschedule"}
+                  </Button>
                   <Button size="sm" variant="outline" style={{ width: "fit-content" }} onClick={() => update("cancelled")} disabled={loading !== null}>
                     {loading === "cancel" ? "Cancelling..." : "Cancel"}
                   </Button>
@@ -165,7 +167,7 @@ export function SessionCard({ session, currentUserId, role }: SessionCardProps) 
             }
           }
 
-          if (session.status === "confirmed" && role !== "admin") {
+          if (session.status === "confirmed") {
             return (
               <div style={{ display: "flex", gap: "8px" }}>
                 <Button size="sm" variant="outline" style={{ width: "fit-content" }} onClick={() => setShowReschedule((v) => !v)}>

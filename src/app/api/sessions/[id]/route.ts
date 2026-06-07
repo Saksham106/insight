@@ -28,6 +28,26 @@ export async function PATCH(
 
   if (!existing) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
+  const admin = createAdminClient();
+  const { data: assignment } = await admin
+    .from("teacher_student_assignments")
+    .select("teacher_id, student_id")
+    .eq("id", existing.assignment_id)
+    .single();
+
+  if (!assignment) return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
+
+  const isParticipant =
+    profile.id === assignment.teacher_id ||
+    profile.id === assignment.student_id;
+
+  if (!isParticipant) {
+    return NextResponse.json(
+      { error: "Only the teacher or student on this assignment can update this session." },
+      { status: 403 },
+    );
+  }
+
   if (scheduled_at !== undefined && new Date(scheduled_at) <= new Date()) {
     return NextResponse.json({ error: "Cannot reschedule a session to a past date." }, { status: 400 });
   }
