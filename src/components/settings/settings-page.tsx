@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell, Camera, CheckCircle, KeyRound, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -46,14 +46,7 @@ export function SettingsPage({
   createdAt,
 }: SettingsPageProps) {
   const router = useRouter();
-  const browserTimezone =
-    typeof Intl !== "undefined"
-      ? Intl.DateTimeFormat().resolvedOptions().timeZone
-      : "America/New_York";
-  const timezoneOptions =
-    typeof Intl !== "undefined" && "supportedValuesOf" in Intl
-      ? Intl.supportedValuesOf("timeZone")
-      : ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"];
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
   const [name, setName] = useState(fullName);
@@ -62,10 +55,7 @@ export function SettingsPage({
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountSaving, setAccountSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [selectedTimezone, setSelectedTimezone] = useState(timezone ?? browserTimezone);
-  const [timezoneSaving, setTimezoneSaving] = useState(false);
-  const [timezoneStatus, setTimezoneStatus] = useState<string | null>(null);
-  const [timezoneError, setTimezoneError] = useState<string | null>(null);
+  const [selectedTimezone, setSelectedTimezone] = useState(timezone ?? "");
   const [reminderState, setReminderState] = useState({
     reminder_24h: reminder24h,
   });
@@ -77,6 +67,13 @@ export function SettingsPage({
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  useEffect(() => {
+    if (!timezone) {
+      setSelectedTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    }
+  }, [timezone]);
+
 
   const handleAccountSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -130,27 +127,6 @@ export function SettingsPage({
     router.refresh();
   };
 
-  const handleTimezoneSave = async () => {
-    setTimezoneError(null);
-    setTimezoneStatus(null);
-    setTimezoneSaving(true);
-
-    const response = await fetch("/api/user/timezone", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ timezone: selectedTimezone }),
-    });
-
-    setTimezoneSaving(false);
-
-    if (!response.ok) {
-      setTimezoneError("Could not update your timezone.");
-      return;
-    }
-
-    setTimezoneStatus("Timezone updated.");
-    router.refresh();
-  };
 
   const handleReminderToggle = async (field: "reminder_24h", value: boolean) => {
     setReminderError(null);
@@ -341,32 +317,13 @@ export function SettingsPage({
                     Timezone
                   </h2>
                   <p className="text-sm text-muted" style={{ margin: "4px 0 0" }}>
-                    Used for calendar displays and reminder timing.
+                    Auto-detected from your browser. Used for calendar displays and reminder timing.
                   </p>
                 </div>
-                <div className="form-grid-2" style={{ alignItems: "end" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <Label htmlFor="settings-timezone">Timezone</Label>
-                    <select
-                      id="settings-timezone"
-                      value={selectedTimezone}
-                      onChange={(event) => setSelectedTimezone(event.target.value)}
-                      className="rounded-md border border-border bg-white px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate"
-                      style={{ height: "40px", width: "100%" }}
-                    >
-                      {timezoneOptions.map((zone) => (
-                        <option key={zone} value={zone}>
-                          {zone}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <Button type="button" onClick={() => void handleTimezoneSave()} disabled={timezoneSaving} style={{ width: "fit-content" }}>
-                    {timezoneSaving ? "Saving..." : "Save timezone"}
-                  </Button>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "320px" }}>
+                  <Label htmlFor="settings-timezone">Timezone</Label>
+                  <Input id="settings-timezone" value={selectedTimezone} disabled />
                 </div>
-                {timezoneError ? <p className="text-sm text-error">{timezoneError}</p> : null}
-                {timezoneStatus ? <StatusMessage>{timezoneStatus}</StatusMessage> : null}
               </section>
 
               <section style={{ marginTop: "28px", paddingTop: "24px", borderTop: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -544,7 +501,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function formatDate(value: string | null) {
   if (!value) return "Not available";
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
