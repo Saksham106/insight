@@ -26,9 +26,22 @@ export default function LoginPage() {
       const supabase = createClient();
       if (typeof window !== "undefined" && window.location.hash) {
         const params = new URLSearchParams(window.location.hash.slice(1));
+        const authError = params.get("error");
+        const authErrorCode = params.get("error_code");
+        const authErrorDescription = params.get("error_description");
         const accessToken = params.get("access_token");
         const refreshToken = params.get("refresh_token");
         const type = params.get("type");
+
+        if (authError) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setError(
+            authErrorCode === "otp_expired"
+              ? "This invite link has expired. Please ask your administrator to resend the invite."
+              : authErrorDescription ?? "This invite link could not be used. Please ask your administrator for a new invite.",
+          );
+          return;
+        }
 
         if (accessToken && refreshToken) {
           await supabase.auth.setSession({
@@ -38,7 +51,7 @@ export default function LoginPage() {
 
           window.history.replaceState({}, document.title, window.location.pathname);
 
-          if (type === "invite" || type === "recovery") {
+          if (!type || type === "invite" || type === "recovery") {
             router.replace("/set-password");
             return;
           }

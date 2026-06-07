@@ -17,6 +17,8 @@ const roleRedirects: Record<string, string> = {
 
 export default function SetPasswordPage() {
   const router = useRouter();
+  const [accountEmail, setAccountEmail] = useState("");
+  const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +30,21 @@ export default function SetPasswordPage() {
     const checkSession = async () => {
       const supabase = createClient();
       const { data } = await supabase.auth.getSession();
-      setHasSession(Boolean(data.session));
+      const user = data.session?.user;
+
+      setHasSession(Boolean(user));
+      setAccountEmail(user?.email ?? "");
+
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", user.id)
+          .single();
+
+        setFullName(profile?.full_name ?? "");
+      }
+
       setReady(true);
     };
 
@@ -92,6 +108,11 @@ export default function SetPasswordPage() {
       <Card style={{ width: "100%", maxWidth: "28rem" }}>
         <CardHeader>
           <CardTitle className="text-navy">Set your password</CardTitle>
+          {fullName ? (
+            <p className="text-sm text-muted" style={{ margin: 0 }}>
+              Hi {fullName}, finish setting up your account.
+            </p>
+          ) : null}
         </CardHeader>
         <CardContent>
           {!ready ? (
@@ -108,6 +129,17 @@ export default function SetPasswordPage() {
             </div>
           ) : (
             <form style={{ display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={handleSubmit}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <Label htmlFor="accountEmail">Email</Label>
+                <Input
+                  id="accountEmail"
+                  name="accountEmail"
+                  type="email"
+                  value={accountEmail}
+                  disabled
+                  aria-readonly="true"
+                />
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 <Label htmlFor="password">New password</Label>
                 <Input
