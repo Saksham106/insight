@@ -41,7 +41,7 @@ export function AssignStudentForm({ teachers, students }: AssignStudentFormProps
       return;
     }
 
-    setStatus("Assignment created.");
+    setStatus(data.reactivated ? "Assignment reactivated." : "Assignment created.");
     setTeacherId("");
     setStudentId("");
     setLoading(false);
