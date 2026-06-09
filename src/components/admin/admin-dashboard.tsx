@@ -6,6 +6,7 @@ import { AdminSessionsSection } from "@/components/admin/admin-sessions-section"
 import { AdminStats } from "@/components/admin/admin-stats";
 import { AssignStudentForm } from "@/components/admin/assign-student-form";
 import { AssignmentsTable } from "@/components/admin/assignments-table";
+import { ComposeEmailButton } from "@/components/admin/compose-email-button";
 import { CreateStudentForm } from "@/components/admin/create-student-form";
 import { CreateTeacherForm } from "@/components/admin/create-teacher-form";
 import { StudentsTable } from "@/components/admin/students-table";
@@ -120,11 +121,14 @@ export function AdminDashboard({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-      <div>
-        <h1 className="text-2xl font-semibold text-navy">{copy.title}</h1>
-        <p className="text-sm text-muted" style={{ marginTop: "4px" }}>
-          {copy.description}
-        </p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
+        <div>
+          <h1 className="text-2xl font-semibold text-navy">{copy.title}</h1>
+          <p className="text-sm text-muted" style={{ marginTop: "4px" }}>
+            {copy.description}
+          </p>
+        </div>
+        <ComposeEmailButton teachers={teachers} students={students} />
       </div>
 
       {view === "overview" && (
