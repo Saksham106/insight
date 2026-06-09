@@ -344,6 +344,8 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
       .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
       .map((s) => ({ ...s, studentName: a.student?.full_name ?? "Student" })),
   );
+  const futureCalendarCount = calendarSessions.filter((s) => new Date(s.scheduled_at) >= now).length;
+  const pendingCalendarCount = calendarSessions.filter((s) => s.status === "proposed").length;
 
   const upcoming = (selected?.sessions ?? [])
     .filter((s) => s.status !== "cancelled" && new Date(s.scheduled_at) >= now)
@@ -477,12 +479,45 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
 
       {/* Calendar — desktop and mobile */}
       {view === "schedule" && (
-        <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <section style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div
+            className="border border-border bg-surface"
+            style={{
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              alignItems: isMobile ? "stretch" : "center",
+              justifyContent: "space-between",
+              gap: "14px",
+              borderRadius: "12px",
+              padding: isMobile ? "14px" : "16px 18px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
+              <div
+                style={{
+                  width: "38px",
+                  height: "38px",
+                  borderRadius: "10px",
+                  backgroundColor: "rgba(27,53,96,0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <CalendarDays size={18} color="var(--color-navy)" />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
+                <p className="text-sm font-semibold text-navy">Calendar</p>
+                <p className="text-sm text-muted" style={{ lineHeight: 1.45 }}>
+                  {assignments.length} assigned student{assignments.length === 1 ? "" : "s"} · {futureCalendarCount} upcoming · {pendingCalendarCount} pending
+                </p>
+              </div>
+            </div>
             <Button
               onClick={() => setScheduleDate(new Date())}
               disabled={assignments.length === 0}
-              style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              style={{ display: "flex", alignItems: "center", gap: "6px", width: isMobile ? "100%" : undefined }}
             >
               <Plus style={{ height: "16px", width: "16px" }} />
               Schedule session
