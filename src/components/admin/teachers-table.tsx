@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getOnboardingStatus } from "@/lib/onboarding-status";
 import {
   Table,
   TableBody,
@@ -21,6 +22,9 @@ interface Teacher {
   id: string;
   full_name: string;
   is_active: boolean;
+  invite_sent_at: string | null;
+  invite_accepted_at: string | null;
+  password_set_at: string | null;
   created_at: string;
 }
 
@@ -32,11 +36,12 @@ export function TeachersTable({ teachers }: TeachersTableProps) {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 480px)").matches : false,
+  );
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 480px)");
-    setIsMobile(mq.matches);
     const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
@@ -73,41 +78,49 @@ export function TeachersTable({ teachers }: TeachersTableProps) {
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Onboarding</TableHead>
             {!isMobile && <TableHead>Created</TableHead>}
             <TableHead className="text-right">Action</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {teachers.length === 0 && (
-            <tr><td colSpan={4} style={{ padding: "0", paddingTop: "8px" }}>
+            <tr><td colSpan={5} style={{ padding: "0", paddingTop: "8px" }}>
               <EmptyState icon={Users} title="No teachers yet" description="Invite a teacher to get started." />
             </td></tr>
           )}
-          {teachers.map((teacher) => (
-            <TableRow key={teacher.id}>
-              <TableCell className="font-medium">{teacher.full_name}</TableCell>
-              <TableCell>
-                <Badge variant={teacher.is_active ? "default" : "gold"}>
-                  {teacher.is_active ? "Active" : "Disabled"}
-                </Badge>
-              </TableCell>
-              {!isMobile && (
+          {teachers.map((teacher) => {
+            const onboarding = getOnboardingStatus(teacher);
+
+            return (
+              <TableRow key={teacher.id}>
+                <TableCell className="font-medium">{teacher.full_name}</TableCell>
                 <TableCell>
-                  {new Date(teacher.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  <Badge variant={teacher.is_active ? "default" : "gold"}>
+                    {teacher.is_active ? "Active" : "Disabled"}
+                  </Badge>
                 </TableCell>
-              )}
-              <TableCell className="text-right">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toggleUser(teacher)}
-                  disabled={loadingId === teacher.id}
-                >
-                  {teacher.is_active ? "Disable" : "Enable"}
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
+                <TableCell>
+                  <Badge variant={onboarding.variant}>{onboarding.label}</Badge>
+                </TableCell>
+                {!isMobile && (
+                  <TableCell>
+                    {new Date(teacher.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  </TableCell>
+                )}
+                <TableCell className="text-right">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleUser(teacher)}
+                    disabled={loadingId === teacher.id}
+                  >
+                    {teacher.is_active ? "Disable" : "Enable"}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

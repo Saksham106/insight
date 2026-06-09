@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
     full_name: fullName,
     role,
     is_active: true,
+    invite_sent_at: new Date().toISOString(),
   });
 
   if (profileError) {
@@ -46,6 +48,9 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+
+  revalidateTag("admin-dashboard", "max");
+  revalidateTag("dashboard", "max");
 
   return NextResponse.json({ userId: data.user.id });
 }

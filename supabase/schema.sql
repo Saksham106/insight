@@ -6,6 +6,9 @@ create table if not exists public.profiles (
   role text not null check (role in ('admin', 'teacher', 'student')),
   is_active boolean not null default true,
   avatar_url text,
+  invite_sent_at timestamptz,
+  invite_accepted_at timestamptz,
+  password_set_at timestamptz,
   created_at timestamptz not null default now()
 );
 

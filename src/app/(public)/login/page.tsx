@@ -46,6 +46,12 @@ export default function LoginPage() {
             return;
           }
 
+          await fetch("/api/user/onboarding", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event: "invite_accepted" }),
+          }).catch(() => null);
+
           router.replace("/set-password");
           return;
         }
@@ -77,6 +83,14 @@ export default function LoginPage() {
           });
 
           window.history.replaceState({}, document.title, window.location.pathname);
+
+          if (!type || type === "invite") {
+            await fetch("/api/user/onboarding", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ event: "invite_accepted" }),
+            }).catch(() => null);
+          }
 
           if (!type || type === "invite" || type === "recovery") {
             router.replace("/set-password");

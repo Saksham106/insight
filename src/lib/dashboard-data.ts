@@ -23,6 +23,12 @@ export interface ProfileRow {
   id: string;
   full_name: string;
   is_active: boolean;
+  invite_sent_at: string | null;
+  invite_accepted_at: string | null;
+  password_set_at: string | null;
+  auth_invited_at: string | null;
+  auth_email_confirmed_at: string | null;
+  auth_last_sign_in_at: string | null;
   created_at: string;
 }
 
@@ -36,6 +42,12 @@ export interface AdminAssignmentRow {
 }
 
 export type AdminSession = Session & { teacherName: string; studentName: string };
+
+interface AuthUserOnboardingState {
+  invited_at?: string | null;
+  email_confirmed_at?: string | null;
+  last_sign_in_at?: string | null;
+}
 
 const fetchTeacherAssignments = (teacherId: string) =>
   unstable_cache(
@@ -104,12 +116,12 @@ const fetchAdminData = unstable_cache(
     const [teachersResult, studentsResult, assignmentsResult, sessionsResult] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, full_name, is_active, created_at")
+      .select("id, full_name, is_active, invite_sent_at, invite_accepted_at, password_set_at, created_at")
       .eq("role", "teacher")
       .order("created_at", { ascending: false }),
     supabase
       .from("profiles")
-      .select("id, full_name, is_active, created_at")
+      .select("id, full_name, is_active, invite_sent_at, invite_accepted_at, password_set_at, created_at")
       .eq("role", "student")
       .order("created_at", { ascending: false }),
     supabase
@@ -126,8 +138,32 @@ const fetchAdminData = unstable_cache(
       .order("scheduled_at", { ascending: true }),
   ]);
 
-  const teachers = (teachersResult.data ?? []) as ProfileRow[];
-  const students = (studentsResult.data ?? []) as ProfileRow[];
+  const authUsersResult = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const authUsersById = new Map(
+    (authUsersResult.data?.users ?? []).map((user) => [
+      user.id,
+      {
+        invited_at: user.invited_at ?? null,
+        email_confirmed_at: user.email_confirmed_at ?? null,
+        last_sign_in_at: user.last_sign_in_at ?? null,
+      } satisfies AuthUserOnboardingState,
+    ]),
+  );
+
+  const withAuthOnboardingState = (rows: ProfileRow[]) =>
+    rows.map((row) => {
+      const authUser = authUsersById.get(row.id);
+
+      return {
+        ...row,
+        auth_invited_at: authUser?.invited_at ?? null,
+        auth_email_confirmed_at: authUser?.email_confirmed_at ?? null,
+        auth_last_sign_in_at: authUser?.last_sign_in_at ?? null,
+      };
+    });
+
+  const teachers = withAuthOnboardingState((teachersResult.data ?? []) as ProfileRow[]);
+  const students = withAuthOnboardingState((studentsResult.data ?? []) as ProfileRow[]);
   const assignments = (assignmentsResult.data ?? []).map((assignment) => {
     const teacher = Array.isArray(assignment.teacher)
       ? assignment.teacher[0]

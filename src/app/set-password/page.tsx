@@ -86,6 +86,12 @@ export default function SetPasswordPage() {
       return;
     }
 
+    await fetch("/api/user/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event: "password_set" }),
+    }).catch(() => null);
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
