@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -146,15 +148,27 @@ export default function LoginPage() {
       <div aria-hidden style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(18,48,74,0.13) 1px, transparent 1px), linear-gradient(90deg, rgba(18,48,74,0.13) 1px, transparent 1px)", backgroundSize: "44px 44px", maskImage: "radial-gradient(ellipse 62% 78% at 50% 50%, black 35%, transparent 75%)", WebkitMaskImage: "radial-gradient(ellipse 62% 78% at 50% 50%, black 35%, transparent 75%)", pointerEvents: "none" }} />
 
       {/* Card — single centered element so it sits perfectly in the middle */}
-      <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "26rem" }}>
+      <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "26rem", display: "flex", flexDirection: "column", gap: "14px" }}>
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          style={{ width: "fit-content", borderRadius: "9999px", backgroundColor: "rgba(255,255,255,0.86)", color: "var(--color-navy)", fontWeight: 600 }}
+        >
+          <Link href="/">
+            <ArrowLeft size={15} />
+            Back to home
+          </Link>
+        </Button>
+
         <Card>
           <CardContent style={{ padding: "36px 32px 32px" }}>
 
             {/* Branding inside the card */}
             <div style={{ textAlign: "center", marginBottom: "28px" }}>
-              <p style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--color-slate)", marginBottom: "10px" }}>
+              <Link href="/" style={{ display: "inline-block", fontSize: "14px", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--color-navy)", marginBottom: "10px", textDecoration: "none" }}>
                 Insight Academy
-              </p>
+              </Link>
               <h1 style={{ fontSize: "22px", fontWeight: 700, color: "var(--color-navy)", margin: 0 }}>
                 Welcome back
               </h1>

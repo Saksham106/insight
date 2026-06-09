@@ -64,6 +64,10 @@ body {
   .settings-layout {
     grid-template-columns: 1fr !important;
   }
+
+  .landing-contact-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 @keyframes skeleton-pulse {

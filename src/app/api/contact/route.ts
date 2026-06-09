@@ -8,20 +8,69 @@ import { createClient } from "@/lib/supabase/server";
 const NAVY = "#1b3560";
 const MUTED = "#6b7280";
 const BORDER = "#e5e7eb";
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function clean(value: unknown, maxLength: number) {
+  const text = value?.toString().trim() ?? "";
+  return text ? text.slice(0, maxLength) : null;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function detailRow(label: string, value: string) {
+  return `<tr>
+    <td style="padding:14px 18px;border-bottom:1px solid ${BORDER};">
+      <span style="color:${MUTED};font-size:12px;display:block;margin-bottom:2px;">${label}</span>
+      <span style="color:${NAVY};font-weight:600;">${escapeHtml(value)}</span>
+    </td>
+  </tr>`;
+}
 
 export async function POST(request: Request) {
   const profile = await getUserProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let senderEmail: string | null = null;
 
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const senderEmail = authData.user?.email ?? null;
+  if (profile) {
+    const supabase = await createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    senderEmail = authData.user?.email ?? null;
+  }
 
-  const body = await request.json();
-  const { category, message } = body;
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
 
-  if (!category || !message?.trim()) {
+  const category = clean((body as { category?: unknown }).category, 80);
+  const message = clean((body as { message?: unknown }).message, 2000);
+  const publicName = clean((body as { name?: unknown }).name, 120);
+  const publicEmail = clean((body as { email?: unknown }).email, 254)?.toLowerCase() ?? null;
+
+  if (!category || !message) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  if (!profile) {
+    if (!publicName) {
+      return NextResponse.json({ error: "Please include your name." }, { status: 400 });
+    }
+
+    if (!publicEmail) {
+      return NextResponse.json({ error: "Please include your email address." }, { status: 400 });
+    }
+
+    if (!emailRegex.test(publicEmail)) {
+      return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 });
+    }
+
+    senderEmail = publicEmail;
   }
 
   if (!process.env.RESEND_API_KEY || !process.env.ADMIN_EMAIL) {
@@ -30,6 +79,9 @@ export async function POST(request: Request) {
 
   const resend = new Resend(process.env.RESEND_API_KEY);
   const FROM = getEmailFrom();
+  const senderName = profile ? profile.full_name : publicName;
+  const senderRole = profile ? profile.role : "public visitor";
+  const safeMessage = escapeHtml(message).replaceAll("\n", "<br>");
 
   const html = `<!DOCTYPE html>
 <html>
@@ -45,32 +97,17 @@ export async function POST(request: Request) {
     <tr>
       <td style="padding:16px 36px 32px;">
         <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f9fafb;border-radius:8px;border:1px solid ${BORDER};">
-          <tr>
-            <td style="padding:14px 18px;border-bottom:1px solid ${BORDER};">
-              <span style="color:${MUTED};font-size:12px;display:block;margin-bottom:2px;">From</span>
-              <span style="color:${NAVY};font-weight:600;">${profile.full_name} (${profile.role})</span>
-            </td>
-          </tr>
-          ${senderEmail ? `<tr>
-            <td style="padding:14px 18px;border-bottom:1px solid ${BORDER};">
-              <span style="color:${MUTED};font-size:12px;display:block;margin-bottom:2px;">Email</span>
-              <a href="mailto:${senderEmail}" style="color:${NAVY};font-weight:600;">${senderEmail}</a>
-            </td>
-          </tr>` : ""}
-          <tr>
-            <td style="padding:14px 18px;border-bottom:1px solid ${BORDER};">
-              <span style="color:${MUTED};font-size:12px;display:block;margin-bottom:2px;">Category</span>
-              <span style="color:${NAVY};font-weight:600;">${category}</span>
-            </td>
-          </tr>
+          ${detailRow("From", `${senderName} (${senderRole})`)}
+          ${senderEmail ? detailRow("Email", senderEmail) : ""}
+          ${detailRow("Category", category)}
           <tr>
             <td style="padding:14px 18px;">
               <span style="color:${MUTED};font-size:12px;display:block;margin-bottom:6px;">Message</span>
-              <span style="color:#111827;white-space:pre-wrap;">${message.trim()}</span>
+              <span style="color:#111827;white-space:pre-wrap;">${safeMessage}</span>
             </td>
           </tr>
         </table>
-        <p style="margin:16px 0 0;font-size:12px;color:${MUTED};">Sent via the Insight Academy in-app feedback form.</p>
+        <p style="margin:16px 0 0;font-size:12px;color:${MUTED};">Sent via the Insight Academy ${profile ? "in-app feedback form" : "public contact form"}.</p>
       </td>
     </tr>
   </table>
@@ -81,7 +118,7 @@ export async function POST(request: Request) {
     from: FROM,
     to: process.env.ADMIN_EMAIL,
     replyTo: senderEmail ?? undefined,
-    subject: `[Insight] ${category} from ${profile.full_name}`,
+    subject: `[Insight] ${category} from ${senderName}`,
     html,
   });
 

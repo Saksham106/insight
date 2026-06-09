@@ -1,65 +1,63 @@
 import Link from "next/link";
-import { CalendarCheck, MessageCircle, Shield, Users, Bell, FileText } from "lucide-react";
+import {
+  Bell,
+  CalendarCheck,
+  CheckCircle,
+  Clock,
+  GraduationCap,
+  MessageCircle,
+  UserRound,
+} from "lucide-react";
 
 import { JoinInterestModal } from "@/components/landing/join-interest-modal";
+import { LandingContactModal } from "@/components/landing/landing-contact-modal";
 import { Button } from "@/components/ui/button";
 
-const features = [
-  {
-    icon: MessageCircle,
-    title: "Private messaging",
-    description: "Chat with your teacher or student in real time, directly inside the platform.",
-  },
+const workflowFeatures = [
   {
     icon: CalendarCheck,
-    title: "Easy session scheduling",
-    description: "Propose, confirm, and reschedule sessions with a shared calendar. No more back-and-forth over text or email.",
+    title: "Lesson scheduling",
+    description: "Request, propose, confirm, reschedule, or cancel sessions from one calendar.",
+  },
+  {
+    icon: CheckCircle,
+    title: "Session requests",
+    description: "See what is waiting, review notes, and accept or decline quickly.",
+  },
+  {
+    icon: MessageCircle,
+    title: "Private chat and files",
+    description: "Keep questions, updates, worksheets, PDFs, and photos with the right pairing.",
   },
   {
     icon: Bell,
-    title: "Email notifications",
-    description: "Get notified the moment a session is scheduled, confirmed, rescheduled, or cancelled — straight to your inbox.",
-  },
-  {
-    icon: FileText,
-    title: "File sharing",
-    description: "Send photos, notes, worksheets, and PDFs directly in chat. Share exactly what you need, when you need it.",
-  },
-  {
-    icon: Shield,
-    title: "Safe and private",
-    description: "Every conversation is kept inside the platform, keeping all interactions professional and secure.",
-  },
-  {
-    icon: Users,
-    title: "Coordinator managed",
-    description: "Your tutoring coordinator handles all setup and pairings — you just log in and focus on learning.",
+    title: "Helpful reminders",
+    description: "Email updates and timezone-aware scheduling keep lessons on track.",
   },
 ];
 
-const steps = [
+const roleHighlights = [
   {
-    number: "1",
-    title: "Your coordinator sets you up",
-    description: "You'll receive an invite link from your tutoring coordinator. Click it, create your account, and you're in.",
+    icon: GraduationCap,
+    title: "For students and parents",
+    items: ["See assigned teachers", "Request sessions", "Review proposals and history"],
   },
   {
-    number: "2",
-    title: "Connect with your teacher or student",
-    description: "Log in to find who you've been paired with. A private conversation is ready and waiting — no setup needed.",
+    icon: UserRound,
+    title: "For teachers",
+    items: ["Track assigned students", "Schedule or respond to requests", "Keep chats and files organized"],
   },
-  {
-    number: "3",
-    title: "Schedule sessions and communicate",
-    description: "Propose sessions, confirm times, share files, and message — all in one place.",
-  },
+];
+
+const trustPoints = [
+  { icon: MessageCircle, label: "Teacher-student chat" },
+  { icon: CalendarCheck, label: "Session requests" },
+  { icon: Clock, label: "Timezone-aware scheduling" },
 ];
 
 export default function LandingPage() {
   return (
     <div className="bg-background" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-
-      {/* Nav */}
       <nav
         className="bg-surface"
         style={{
@@ -81,7 +79,9 @@ export default function LandingPage() {
             justifyContent: "space-between",
           }}
         >
-          <span className="text-base font-semibold text-navy">Insight Academy</span>
+          <Link href="/" className="text-base font-semibold text-navy" style={{ textDecoration: "none" }}>
+            Insight Academy
+          </Link>
           <Button asChild size="sm">
             <Link href="/login">Log in</Link>
           </Button>
@@ -89,16 +89,13 @@ export default function LandingPage() {
       </nav>
 
       <main style={{ flex: 1 }}>
-
-        {/* Hero */}
         <section
           style={{
             position: "relative",
             overflow: "hidden",
-            padding: "96px 24px 80px",
+            padding: "92px 24px 76px",
           }}
         >
-          {/* Blue tint — centered oval, fades to nothing at edges */}
           <div
             aria-hidden
             style={{
@@ -109,17 +106,16 @@ export default function LandingPage() {
               width: "1600px",
               height: "560px",
               borderRadius: "50%",
-              background: "radial-gradient(ellipse, rgba(18,48,74,0.165) 0%, transparent 68%)",
+              background: "radial-gradient(ellipse, rgba(18,48,74,0.16) 0%, transparent 68%)",
               pointerEvents: "none",
             }}
           />
-          {/* Line grid — same oval mask so it fades out at the edges */}
           <div
             aria-hidden
             style={{
               position: "absolute",
               inset: 0,
-              backgroundImage: "linear-gradient(rgba(18,48,74,0.13) 1px, transparent 1px), linear-gradient(90deg, rgba(18,48,74,0.13) 1px, transparent 1px)",
+              backgroundImage: "linear-gradient(rgba(18,48,74,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(18,48,74,0.12) 1px, transparent 1px)",
               backgroundSize: "44px 44px",
               maskImage: "radial-gradient(ellipse 62% 78% at 50% 48%, black 35%, transparent 75%)",
               WebkitMaskImage: "radial-gradient(ellipse 62% 78% at 50% 48%, black 35%, transparent 75%)",
@@ -128,68 +124,62 @@ export default function LandingPage() {
           />
 
           <div style={{ maxWidth: "72rem", marginLeft: "auto", marginRight: "auto", position: "relative", zIndex: 1 }}>
-          <div
-            style={{
-              maxWidth: "680px",
-              marginLeft: "auto",
-              marginRight: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: "24px",
-              alignItems: "center",
-              textAlign: "center",
-            }}
-          >
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate">
-              Insight Academy
-            </p>
-            <h1
-              className="text-navy"
-              style={{ fontSize: "clamp(36px, 5vw, 56px)", fontWeight: 700, lineHeight: 1.15, margin: 0 }}
+            <div
+              style={{
+                maxWidth: "700px",
+                marginLeft: "auto",
+                marginRight: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: "24px",
+                alignItems: "center",
+                textAlign: "center",
+              }}
             >
-              Your tutor and student connection, all in one place
-            </h1>
-            <p className="text-muted" style={{ fontSize: "18px", lineHeight: 1.7, maxWidth: "540px", margin: 0 }}>
-              Schedule sessions, chat privately, and share files with your teacher or student — all in one place.
-            </p>
-            <div style={{ display: "flex", gap: "12px", alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
-              <JoinInterestModal />
-              <Button asChild size="lg" variant="outline">
-                <Link href="/login">Log in to your account</Link>
-              </Button>
+              <p className="text-sm font-semibold uppercase text-slate" style={{ letterSpacing: "0.14em" }}>
+                Insight Academy
+              </p>
+              <h1
+                className="text-navy"
+                style={{ fontSize: "clamp(36px, 5vw, 56px)", fontWeight: 700, lineHeight: 1.12, margin: 0 }}
+              >
+                Tutoring tools that keep teachers and students connected
+              </h1>
+              <p className="text-muted" style={{ fontSize: "18px", lineHeight: 1.7, maxWidth: "580px", margin: 0 }}>
+                One workspace for session requests, scheduling, private chat, files, and reminders.
+              </p>
+              <div style={{ display: "flex", gap: "12px", alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+                <JoinInterestModal />
+                <Button asChild size="lg" variant="outline">
+                  <Link href="/login">Log in to your account</Link>
+                </Button>
+              </div>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center", marginTop: "4px" }}>
+                {trustPoints.map(({ icon: Icon, label }) => (
+                  <span
+                    key={label}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 14px",
+                      borderRadius: "9999px",
+                      border: "1px solid var(--color-border)",
+                      backgroundColor: "rgba(255,255,255,0.78)",
+                      fontSize: "13px",
+                      color: "var(--color-slate)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    <Icon size={13} strokeWidth={2.2} />
+                    {label}
+                  </span>
+                ))}
+              </div>
             </div>
-            {/* Feature chips */}
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center", marginTop: "4px" }}>
-              {[
-                { icon: CalendarCheck, label: "Session scheduling" },
-                { icon: MessageCircle, label: "Private messaging" },
-                { icon: FileText, label: "File sharing" },
-              ].map(({ icon: Icon, label }) => (
-                <span
-                  key={label}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "6px 14px",
-                    borderRadius: "9999px",
-                    border: "1px solid var(--color-border)",
-                    backgroundColor: "rgba(255,255,255,0.75)",
-                    fontSize: "13px",
-                    color: "var(--color-slate)",
-                    fontWeight: 500,
-                  }}
-                >
-                  <Icon size={13} strokeWidth={2.2} />
-                  {label}
-                </span>
-              ))}
-            </div>
-          </div>
           </div>
         </section>
 
-        {/* Features */}
         <section
           style={{
             padding: "72px 24px",
@@ -198,23 +188,25 @@ export default function LandingPage() {
             borderBottom: "1px solid var(--color-border)",
           }}
         >
-          <div style={{ maxWidth: "72rem", marginLeft: "auto", marginRight: "auto", display: "flex", flexDirection: "column", gap: "48px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <h2 className="text-2xl font-semibold text-navy">Everything you need to learn and teach</h2>
-              <p className="text-muted" style={{ fontSize: "16px" }}>Designed for students, teachers, and the coordinators who support them.</p>
+          <div style={{ maxWidth: "72rem", marginLeft: "auto", marginRight: "auto", display: "flex", flexDirection: "column", gap: "40px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "620px" }}>
+              <h2 className="text-2xl font-semibold text-navy">What teachers and students can do</h2>
+              <p className="text-muted" style={{ fontSize: "16px", lineHeight: 1.65 }}>
+                Plan lessons, respond to requests, and keep communication in one place.
+              </p>
             </div>
-            <div className="form-grid-3" style={{ gap: "24px" }}>
-              {features.map((feature) => {
+
+            <div className="form-grid-2" style={{ gap: "18px" }}>
+              {workflowFeatures.map((feature) => {
                 const Icon = feature.icon;
                 return (
                   <div
                     key={feature.title}
                     style={{
                       display: "flex",
-                      flexDirection: "column",
-                      gap: "12px",
+                      gap: "16px",
                       padding: "24px",
-                      borderRadius: "12px",
+                      borderRadius: "8px",
                       border: "1px solid var(--color-border)",
                       backgroundColor: "var(--color-background)",
                     }}
@@ -223,8 +215,8 @@ export default function LandingPage() {
                       style={{
                         width: "40px",
                         height: "40px",
-                        borderRadius: "10px",
-                        backgroundColor: "rgba(27,53,96,0.08)",
+                        borderRadius: "8px",
+                        backgroundColor: "rgba(18,48,74,0.08)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -244,68 +236,98 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* How it works */}
         <section style={{ padding: "72px 24px" }}>
-          <div style={{ maxWidth: "72rem", marginLeft: "auto", marginRight: "auto", display: "flex", flexDirection: "column", gap: "48px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <h2 className="text-2xl font-semibold text-navy">How it works</h2>
-              <p className="text-muted" style={{ fontSize: "16px" }}>Up and running in three steps.</p>
+          <div style={{ maxWidth: "72rem", marginLeft: "auto", marginRight: "auto", display: "flex", flexDirection: "column", gap: "40px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "620px" }}>
+              <h2 className="text-2xl font-semibold text-navy">Focused on both sides of the lesson</h2>
+              <p className="text-muted" style={{ fontSize: "16px", lineHeight: 1.65 }}>
+                Simple views for the people using the platform every week.
+              </p>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0px" }}>
-              {steps.map((step, i) => (
-                <div
-                  key={step.number}
-                  style={{
-                    display: "flex",
-                    gap: "24px",
-                    paddingBottom: i < steps.length - 1 ? "36px" : "0",
-                    position: "relative",
-                  }}
-                >
-                  {/* Line connector */}
-                  {i < steps.length - 1 && (
-                    <div
-                      aria-hidden
-                      style={{
-                        position: "absolute",
-                        left: "19px",
-                        top: "40px",
-                        bottom: "0",
-                        width: "1px",
-                        backgroundColor: "var(--color-border)",
-                      }}
-                    />
-                  )}
+
+            <div className="form-grid-2" style={{ gap: "18px" }}>
+              {roleHighlights.map((role) => {
+                const Icon = role.icon;
+                return (
                   <div
+                    key={role.title}
                     style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "50%",
-                      backgroundColor: "var(--color-navy)",
-                      color: "white",
                       display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 700,
-                      fontSize: "15px",
-                      flexShrink: 0,
-                      position: "relative",
-                      zIndex: 1,
+                      flexDirection: "column",
+                      gap: "18px",
+                      padding: "24px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--color-border)",
+                      backgroundColor: "var(--color-surface)",
                     }}
                   >
-                    {step.number}
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div
+                        style={{
+                          width: "38px",
+                          height: "38px",
+                          borderRadius: "8px",
+                          backgroundColor: "rgba(18,48,74,0.08)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Icon size={18} color="var(--color-navy)" />
+                      </div>
+                      <h3 className="text-base font-semibold text-navy">{role.title}</h3>
+                    </div>
+                    <ul style={{ display: "flex", flexDirection: "column", gap: "10px", margin: 0, padding: 0, listStyle: "none" }}>
+                      {role.items.map((item) => (
+                        <li key={item} className="text-sm text-muted" style={{ display: "flex", alignItems: "flex-start", gap: "8px", lineHeight: 1.5 }}>
+                          <CheckCircle size={15} color="var(--color-success)" style={{ marginTop: "2px", flexShrink: 0 }} />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", paddingTop: "8px" }}>
-                    <h3 className="text-base font-semibold text-navy">{step.title}</h3>
-                    <p className="text-sm text-muted" style={{ lineHeight: 1.65 }}>{step.description}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+
+          </div>
+        </section>
+
+        <section
+          style={{
+            padding: "64px 24px",
+            backgroundColor: "var(--color-soft)",
+            borderTop: "1px solid var(--color-border)",
+            borderBottom: "1px solid var(--color-border)",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: "72rem",
+              marginLeft: "auto",
+              marginRight: "auto",
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1.4fr) minmax(260px, 0.6fr)",
+              gap: "28px",
+              alignItems: "center",
+            }}
+            className="landing-contact-grid"
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <h2 className="text-2xl font-semibold text-navy">Questions, feedback, or something else?</h2>
+              <p className="text-muted" style={{ fontSize: "16px", lineHeight: 1.65, maxWidth: "620px" }}>
+                Reach out for support, partnerships, program questions, or product feedback.
+              </p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-start" }}>
+              <LandingContactModal
+                buttonLabel="Contact us"
+                buttonStyle={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-navy)", color: "var(--color-navy)" }}
+              />
             </div>
           </div>
         </section>
 
-        {/* CTA strip */}
         <section
           style={{
             padding: "64px 24px",
@@ -325,10 +347,10 @@ export default function LandingPage() {
             }}
           >
             <h2 style={{ fontSize: "28px", fontWeight: 700, color: "white", margin: 0 }}>
-              Ready to get started?
+              Ready to use Insight Academy?
             </h2>
-            <p style={{ fontSize: "16px", color: "rgba(255,255,255,0.7)", margin: 0, maxWidth: "440px" }}>
-              Already have an account? Log in below. New here? Let us know you&apos;re interested and we&apos;ll follow up.
+            <p style={{ fontSize: "16px", color: "rgba(255,255,255,0.76)", margin: 0, maxWidth: "520px", lineHeight: 1.65 }}>
+              Log in, or ask to join as a student, parent, or teacher.
             </p>
             <div style={{ display: "flex", gap: "12px", alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
               <JoinInterestModal
@@ -338,7 +360,7 @@ export default function LandingPage() {
                 asChild
                 size="lg"
                 variant="outline"
-                style={{ backgroundColor: "transparent", color: "white", borderColor: "rgba(255,255,255,0.35)" }}
+                style={{ backgroundColor: "transparent", color: "white", borderColor: "rgba(255,255,255,0.38)" }}
               >
                 <Link href="/login">Log in</Link>
               </Button>
@@ -347,7 +369,6 @@ export default function LandingPage() {
         </section>
       </main>
 
-      {/* Footer */}
       <footer
         className="bg-surface"
         style={{
@@ -363,6 +384,8 @@ export default function LandingPage() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: "16px",
+            flexWrap: "wrap",
           }}
         >
           <span className="text-sm font-medium text-navy">Insight Academy</span>
