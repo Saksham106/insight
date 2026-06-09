@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +18,7 @@ interface AssignStudentFormProps {
 }
 
 export function AssignStudentForm({ teachers, students }: AssignStudentFormProps) {
+  const router = useRouter();
   const [teacherId, setTeacherId] = useState("");
   const [studentId, setStudentId] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -45,6 +47,7 @@ export function AssignStudentForm({ teachers, students }: AssignStudentFormProps
     setTeacherId("");
     setStudentId("");
     setLoading(false);
+    router.refresh();
   };
 
   return (

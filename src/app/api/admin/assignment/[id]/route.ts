@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
@@ -22,6 +23,8 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  revalidateDashboards();
 
   return NextResponse.json({ success: true });
 }
@@ -49,5 +52,12 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  revalidateDashboards();
+
   return NextResponse.json({ success: true });
+}
+
+function revalidateDashboards() {
+  revalidateTag("dashboard", "max");
+  revalidateTag("admin-dashboard", "max");
 }

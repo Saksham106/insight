@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
@@ -42,6 +43,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: convError.message }, { status: 500 });
       }
 
+      revalidateDashboards();
+
       return NextResponse.json({
         assignmentId: existingAssignment.id,
         reactivated: true,
@@ -70,6 +73,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: convError.message }, { status: 500 });
   }
 
+  revalidateDashboards();
+
   return NextResponse.json({ assignmentId: data.id });
 }
 
@@ -90,4 +95,9 @@ async function ensureConversation(supabase: AdminClient, assignmentId: string) {
     .insert({ assignment_id: assignmentId });
 
   return error;
+}
+
+function revalidateDashboards() {
+  revalidateTag("dashboard", "max");
+  revalidateTag("admin-dashboard", "max");
 }

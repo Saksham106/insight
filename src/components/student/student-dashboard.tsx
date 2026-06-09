@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, CheckCircle, UserRound, Users, X } from "lucide-react";
+import { CalendarDays, CheckCircle, Plus, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -122,6 +122,25 @@ function WorkflowLinks({
   );
 }
 
+function toDateInputValue(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function formatDateInputLabel(value: string) {
+  if (!value) return "Choose a date";
+
+  return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function QuickRequestModal({
   date,
   assignments,
@@ -134,18 +153,7 @@ function QuickRequestModal({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const dateStr = [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-  const dateLabel = date.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-
+  const [dateValue, setDateValue] = useState(toDateInputValue(date));
   const [assignmentId, setAssignmentId] = useState(assignments[0]?.id ?? "");
   const [time, setTime] = useState("09:00");
   const [duration, setDuration] = useState("60");
@@ -157,7 +165,7 @@ function QuickRequestModal({
     e.preventDefault();
     setError(null);
 
-    const scheduledAt = new Date(`${dateStr}T${time}:00`);
+    const scheduledAt = new Date(`${dateValue}T${time}:00`);
     if (scheduledAt <= new Date()) {
       setError("Please choose a time in the future.");
       return;
@@ -211,7 +219,7 @@ function QuickRequestModal({
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "20px" }}>
           <div>
             <h3 className="text-base font-semibold text-navy">Request session</h3>
-            <p className="text-sm text-muted" style={{ marginTop: "2px" }}>{dateLabel}</p>
+            <p className="text-sm text-muted" style={{ marginTop: "2px" }}>{formatDateInputLabel(dateValue)}</p>
           </div>
           <button
             onClick={onClose}
@@ -241,6 +249,19 @@ function QuickRequestModal({
               </select>
             </div>
           )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <Label>Date</Label>
+            <input
+              type="date"
+              value={dateValue}
+              min={toDateInputValue(new Date())}
+              onChange={(e) => setDateValue(e.target.value)}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              style={{ width: "100%", height: "40px" }}
+              required
+            />
+          </div>
 
           <div className="form-grid-2">
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -454,13 +475,23 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
 
         {/* Calendar — desktop and mobile */}
         {view === "schedule" && (
-          <section>
+          <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button
+                onClick={() => setRequestDate(new Date())}
+                disabled={assignments.length === 0}
+                style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              >
+                <Plus style={{ height: "16px", width: "16px" }} />
+                Request session
+              </Button>
+            </div>
             <MonthCalendar
               sessions={calendarSessions}
               onDateDoubleClick={setRequestDate}
               currentUserId={studentId}
               role="student"
-              hint="Double-click a date to request a session"
+              hint={isMobile ? undefined : "Double-click a date to request a session"}
             />
           </section>
         )}
