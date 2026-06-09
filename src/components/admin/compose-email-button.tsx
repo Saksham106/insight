@@ -33,27 +33,40 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [status, setStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [status, setStatus] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
   const [sending, setSending] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const allPeople = [
-    ...teachers.map(t => ({ kind: "user" as const, id: t.id, name: t.full_name, role: "teacher" as const })),
-    ...students.map(s => ({ kind: "user" as const, id: s.id, name: s.full_name, role: "student" as const })),
+    ...teachers.map((t) => ({
+      kind: "user" as const,
+      id: t.id,
+      name: t.full_name,
+      role: "teacher" as const,
+    })),
+    ...students.map((s) => ({
+      kind: "user" as const,
+      id: s.id,
+      name: s.full_name,
+      role: "student" as const,
+    })),
   ];
 
   const selectedKeys = new Set(recipients.map(recipientKey));
   const filtered = allPeople.filter(
-    p =>
+    (p) =>
       !selectedKeys.has(recipientKey(p)) &&
       p.name.toLowerCase().includes(search.toLowerCase()),
   );
 
   const addRecipient = (r: Recipient) => {
     if (selectedKeys.has(recipientKey(r))) return;
-    setRecipients(prev => [...prev, r]);
+    setRecipients((prev) => [...prev, r]);
     setSearch("");
     setShowDropdown(false);
     searchRef.current?.focus();
@@ -66,12 +79,15 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
   };
 
   const removeRecipient = (key: string) => {
-    setRecipients(prev => prev.filter(r => recipientKey(r) !== key));
+    setRecipients((prev) => prev.filter((r) => recipientKey(r) !== key));
   };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setShowDropdown(false);
       }
     };
@@ -103,19 +119,31 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
     setSending(true);
     setStatus(null);
 
-    const userIds = recipients.filter(r => r.kind === "user").map(r => (r as { kind: "user"; id: string }).id);
-    const rawEmails = recipients.filter(r => r.kind === "email").map(r => (r as { kind: "email"; email: string }).email);
+    const userIds = recipients
+      .filter((r) => r.kind === "user")
+      .map((r) => (r as { kind: "user"; id: string }).id);
+    const rawEmails = recipients
+      .filter((r) => r.kind === "email")
+      .map((r) => (r as { kind: "email"; email: string }).email);
 
     try {
       const res = await fetch("/api/admin/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userIds, rawEmails, subject: subject.trim(), message: message.trim() }),
+        body: JSON.stringify({
+          userIds,
+          rawEmails,
+          subject: subject.trim(),
+          message: message.trim(),
+        }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        setStatus({ type: "success", text: `Sent to ${data.sent} recipient${data.sent !== 1 ? "s" : ""}` });
+        setStatus({
+          type: "success",
+          text: `Sent to ${data.sent} recipient${data.sent !== 1 ? "s" : ""}`,
+        });
         setTimeout(onClose, 1800);
       } else {
         setStatus({ type: "error", text: data.error ?? "Failed to send." });
@@ -145,7 +173,7 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
     >
       {/* Header */}
       <div
-        onClick={() => setMinimized(m => !m)}
+        onClick={() => setMinimized((m) => !m)}
         style={{
           backgroundColor: "var(--color-navy)",
           padding: "10px 16px",
@@ -156,15 +184,22 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
           userSelect: "none",
         }}
       >
-        <span style={{ color: "#fff", fontSize: "14px", fontWeight: 600, letterSpacing: "-0.01em" }}>
-          New message
+        <span
+          style={{
+            color: "#fff",
+            fontSize: "14px",
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+          }}
+        >
+          New Email
         </span>
         <div
           style={{ display: "flex", gap: "4px", alignItems: "center" }}
-          onClick={e => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <button
-            onClick={() => setMinimized(m => !m)}
+            onClick={() => setMinimized((m) => !m)}
             aria-label="Minimize"
             style={{
               background: "none",
@@ -205,10 +240,16 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
           {/* To field */}
           <div
             ref={dropdownRef}
-            style={{ position: "relative", borderBottom: "1px solid var(--color-border)" }}
+            style={{
+              position: "relative",
+              borderBottom: "1px solid var(--color-border)",
+            }}
           >
             <div
-              onClick={() => { searchRef.current?.focus(); setShowDropdown(true); }}
+              onClick={() => {
+                searchRef.current?.focus();
+                setShowDropdown(true);
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -231,7 +272,7 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
                 To
               </span>
 
-              {recipients.map(r => {
+              {recipients.map((r) => {
                 const key = recipientKey(r);
                 return (
                   <span
@@ -250,7 +291,10 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
                   >
                     {recipientLabel(r)}
                     <button
-                      onClick={e => { e.stopPropagation(); removeRecipient(key); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeRecipient(key);
+                      }}
                       aria-label={`Remove ${recipientLabel(r)}`}
                       style={{
                         background: "none",
@@ -272,11 +316,16 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
               <input
                 ref={searchRef}
                 value={search}
-                onChange={e => { setSearch(e.target.value); setShowDropdown(true); }}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setShowDropdown(true);
+                }}
                 onFocus={() => setShowDropdown(true)}
                 onKeyDown={handleSearchKeyDown}
                 onBlur={tryAddEmail}
-                placeholder={recipients.length === 0 ? "Name or email address..." : ""}
+                placeholder={
+                  recipients.length === 0 ? "Name or email address..." : ""
+                }
                 style={{
                   border: "none",
                   outline: "none",
@@ -306,7 +355,7 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
                   overflowY: "auto",
                 }}
               >
-                {filtered.map(p => (
+                {filtered.map((p) => (
                   <button
                     key={p.id}
                     onMouseDown={() => addRecipient(p)}
@@ -323,7 +372,11 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
                       fontSize: "13px",
                     }}
                   >
-                    <span style={{ color: "var(--color-navy)", fontWeight: 500 }}>{p.name}</span>
+                    <span
+                      style={{ color: "var(--color-navy)", fontWeight: 500 }}
+                    >
+                      {p.name}
+                    </span>
                     <span
                       style={{
                         color: "var(--color-muted)",
@@ -343,10 +396,15 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
           </div>
 
           {/* Subject */}
-          <div style={{ borderBottom: "1px solid var(--color-border)", padding: "0 14px" }}>
+          <div
+            style={{
+              borderBottom: "1px solid var(--color-border)",
+              padding: "0 14px",
+            }}
+          >
             <input
               value={subject}
-              onChange={e => setSubject(e.target.value)}
+              onChange={(e) => setSubject(e.target.value)}
               placeholder="Subject"
               style={{
                 width: "100%",
@@ -363,7 +421,7 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
           {/* Message body */}
           <textarea
             value={message}
-            onChange={e => setMessage(e.target.value)}
+            onChange={(e) => setMessage(e.target.value)}
             placeholder="Write your message..."
             style={{
               border: "none",
@@ -421,7 +479,10 @@ interface ComposeEmailButtonProps {
   students: ProfileRow[];
 }
 
-export function ComposeEmailButton({ teachers, students }: ComposeEmailButtonProps) {
+export function ComposeEmailButton({
+  teachers,
+  students,
+}: ComposeEmailButtonProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -444,7 +505,7 @@ export function ComposeEmailButton({ teachers, students }: ComposeEmailButtonPro
         }}
       >
         <Mail size={14} />
-        Compose
+        Send Email
       </button>
 
       {open && (
