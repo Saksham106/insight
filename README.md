@@ -62,6 +62,10 @@ npm run dev
 | NEXT_PUBLIC_SUPABASE_URL | Yes | Supabase project URL. |
 | NEXT_PUBLIC_SUPABASE_ANON_KEY | Yes | Supabase anon key (public). |
 | SUPABASE_SERVICE_ROLE_KEY | Yes | Supabase service role key (server-only). |
+| RESEND_API_KEY | Yes | Resend API key for app-sent email. |
+| EMAIL_FROM | Yes | Sender email address for app-sent email. |
+| EMAIL_FROM_NAME | No | Sender display name. Defaults to Insight Academy. |
+| ADMIN_EMAIL | Yes | Admin notification recipient. |
 | NEXT_PUBLIC_DEV_BYPASS_AUTH | No | Set to true to bypass auth in dev only. |
 | NEXT_PUBLIC_DEV_BYPASS_ROLE | No | Role to use with auth bypass: admin, teacher, student. |
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
+import { getEmailFrom } from "@/lib/email/from";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const NAVY = "#1b3560";
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
   }
 
   const resend = new Resend(process.env.RESEND_API_KEY);
-  const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+  const FROM = getEmailFrom();
   const html = buildHtml(message);
 
   const results = await Promise.allSettled(

@@ -1,5 +1,7 @@
 import { Resend } from "resend";
 
+import { getEmailFrom } from "@/lib/email/from";
+
 export type SessionEmailEvent =
   | "proposed"    // new session created — notify other party
   | "confirmed"   // session confirmed — notify proposer
@@ -134,7 +136,7 @@ export async function sendReminderEmail(options: ReminderEmailOptions) {
   if (!process.env.RESEND_API_KEY) return;
 
   const resend = new Resend(process.env.RESEND_API_KEY);
-  const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+  const FROM = getEmailFrom();
   const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   const label = options.hoursUntil === 24 ? "tomorrow" : "in 3 hours";
@@ -158,7 +160,7 @@ export async function sendSessionEmail(options: SessionEmailOptions) {
   if (!process.env.RESEND_API_KEY) return; // silently skip if not configured
 
   const resend = new Resend(process.env.RESEND_API_KEY);
-  const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+  const FROM = getEmailFrom();
   const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   const dashboardPath = options.role === "teacher" ? "/teacher" : "/student";

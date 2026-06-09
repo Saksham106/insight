@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
+import { getEmailFrom } from "@/lib/email/from";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const NAVY = "#1b3560";
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
 
   if (process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const from = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+    const from = getEmailFrom();
     const roleLabel = role === "teacher" ? "Teacher" : "Student or parent";
     const safeMessage = message ? escapeHtml(message).replaceAll("\n", "<br>") : null;
 
