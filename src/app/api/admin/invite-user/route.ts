@@ -57,40 +57,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
 
+  const isResend = body.resend === true;
   const origin = new URL(request.url).origin;
   const supabaseAdmin = createAdminClient();
 
-  const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${origin}/set-password`,
-  });
-
-  // User already exists in auth
-  if (error) {
-    const alreadyExists =
-      error.message.toLowerCase().includes("already registered") ||
-      error.message.toLowerCase().includes("already been invited") ||
-      error.status === 422;
-
-    if (!alreadyExists) {
-      return NextResponse.json({ error: error.message ?? "Invite failed" }, { status: 500 });
-    }
-
-    // Check whether they have actually set a password yet
-    const { data: authUser } = await supabaseAdmin
-      .schema("auth")
-      .from("users")
-      .select("encrypted_password")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (authUser?.encrypted_password) {
-      return NextResponse.json(
-        { error: "This person has already completed their registration and can log in directly." },
-        { status: 409 },
-      );
-    }
-
-    // Invited but never finished — generate a fresh link and resend
+  // Explicit resend — admin already saw the warning and confirmed
+  if (isResend) {
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: "invite",
       email,
@@ -105,10 +77,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email not configured — cannot resend invite." }, { status: 500 });
     }
 
-    const resend = new Resend(process.env.RESEND_API_KEY);
+    const resendClient = new Resend(process.env.RESEND_API_KEY);
     const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
 
-    const { error: emailError } = await resend.emails.send({
+    const { error: emailError } = await resendClient.emails.send({
       from: FROM,
       to: email,
       subject: "Your Insight Academy invite",
@@ -120,6 +92,40 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ userId: linkData.user.id });
+  }
+
+  // Normal first-time invite
+  const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${origin}/set-password`,
+  });
+
+  if (error) {
+    const alreadyExists =
+      error.message.toLowerCase().includes("already registered") ||
+      error.message.toLowerCase().includes("already been invited") ||
+      error.status === 422;
+
+    if (!alreadyExists) {
+      return NextResponse.json({ error: error.message ?? "Invite failed" }, { status: 500 });
+    }
+
+    // Check whether they have actually set a password (fully active)
+    const { data: authUser } = await supabaseAdmin
+      .schema("auth")
+      .from("users")
+      .select("encrypted_password")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (authUser?.encrypted_password) {
+      return NextResponse.json(
+        { error: "This user already has an active account and can log in directly." },
+        { status: 409 },
+      );
+    }
+
+    // Invited but hasn't finished — tell the frontend to show the resend prompt
+    return NextResponse.json({ alreadyInvited: true }, { status: 409 });
   }
 
   if (!data.user) {

@@ -13,40 +13,71 @@ export function CreateTeacherForm() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<string | null>(null);
-  const [isError, setIsError] = useState(false);
+  const [statusType, setStatusType] = useState<"success" | "warning" | "error">("success");
+  const [pendingResend, setPendingResend] = useState<{ email: string; fullName: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setStatus(null);
+    setPendingResend(null);
     setLoading(true);
 
     const response = await fetch("/api/admin/invite-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fullName,
-        email,
-        role: "teacher",
-      }),
+      body: JSON.stringify({ fullName, email, role: "teacher" }),
     });
 
     const data = await response.json();
+    setLoading(false);
 
-    if (!response.ok) {
-      setIsError(true);
-      setStatus(data.error ?? "Failed to invite teacher.");
-      setLoading(false);
+    if (response.status === 409 && data.alreadyInvited) {
+      setPendingResend({ email, fullName });
+      setStatusType("warning");
+      setStatus("This user has already been invited but hasn't completed registration.");
       return;
     }
 
-    setIsError(false);
+    if (!response.ok) {
+      setStatusType("error");
+      setStatus(data.error ?? "Failed to invite teacher.");
+      return;
+    }
+
+    setStatusType("success");
     setStatus("Invite sent.");
     setFullName("");
     setEmail("");
-    setLoading(false);
     router.refresh();
   };
+
+  const handleResend = async () => {
+    if (!pendingResend) return;
+    setResendLoading(true);
+
+    const response = await fetch("/api/admin/invite-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...pendingResend, role: "teacher", resend: true }),
+    });
+
+    const data = await response.json();
+    setResendLoading(false);
+    setPendingResend(null);
+
+    if (!response.ok) {
+      setStatusType("error");
+      setStatus(data.error ?? "Failed to resend invite.");
+      return;
+    }
+
+    setStatusType("success");
+    setStatus("Invite resent.");
+  };
+
+  const statusColor = statusType === "error" ? "text-error" : statusType === "warning" ? "text-warning" : "text-success";
 
   return (
     <Card>
@@ -74,7 +105,17 @@ export function CreateTeacherForm() {
               required
             />
           </div>
-          {status ? <p className={`text-sm ${isError ? "text-error" : "text-success"}`}>{status}</p> : null}
+          {status ? <p className={`text-sm ${statusColor}`}>{status}</p> : null}
+          {pendingResend ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={resendLoading}
+              onClick={handleResend}
+            >
+              {resendLoading ? "Resending..." : "Resend invite"}
+            </Button>
+          ) : null}
           <Button type="submit" disabled={loading}>
             {loading ? "Sending..." : "Send invite"}
           </Button>
