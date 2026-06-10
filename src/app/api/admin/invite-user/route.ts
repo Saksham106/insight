@@ -109,19 +109,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message ?? "Invite failed" }, { status: 500 });
     }
 
-    // Check whether they have actually set a password (fully active)
+    // Check whether they have fully registered via our profiles table
     const { data: authUser } = await supabaseAdmin
       .schema("auth")
       .from("users")
-      .select("encrypted_password")
+      .select("id")
       .eq("email", email)
       .maybeSingle();
 
-    if (authUser?.encrypted_password) {
-      return NextResponse.json(
-        { error: "This user already has an active account and can log in directly." },
-        { status: 409 },
-      );
+    if (authUser?.id) {
+      const { data: userProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("password_set_at")
+        .eq("id", authUser.id)
+        .maybeSingle();
+
+      if (userProfile?.password_set_at) {
+        return NextResponse.json(
+          { error: "This user already has an active account and can log in directly." },
+          { status: 409 },
+        );
+      }
     }
 
     // Invited but hasn't finished — tell the frontend to show the resend prompt
