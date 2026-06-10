@@ -109,19 +109,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message ?? "Invite failed" }, { status: 500 });
     }
 
-    // Check whether they have fully registered via our profiles table
-    const { data: authUser } = await supabaseAdmin
-      .schema("auth")
-      .from("users")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
+    // auth schema isn't exposed via PostgREST — use the admin API instead
+    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+    const existingUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
 
-    if (authUser?.id) {
+    if (existingUser) {
       const { data: userProfile } = await supabaseAdmin
         .from("profiles")
         .select("password_set_at")
-        .eq("id", authUser.id)
+        .eq("id", existingUser.id)
         .maybeSingle();
 
       if (userProfile?.password_set_at) {
