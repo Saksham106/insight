@@ -109,23 +109,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message ?? "Invite failed" }, { status: 500 });
     }
 
-    // auth schema isn't exposed via PostgREST — use the admin API instead
-    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-    const existingUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    // user_has_password is a SECURITY DEFINER RPC that reads auth.users directly,
+    // bypassing PostgREST's auth-schema restriction. Works for all users regardless
+    // of when they registered (old users have password_set_at = null but do have a hash).
+    const { data: hasPassword, error: rpcError } = await supabaseAdmin.rpc("user_has_password", {
+      p_email: email,
+    });
 
-    if (existingUser) {
-      const { data: userProfile } = await supabaseAdmin
-        .from("profiles")
-        .select("password_set_at")
-        .eq("id", existingUser.id)
-        .maybeSingle();
-
-      if (userProfile?.password_set_at) {
-        return NextResponse.json(
-          { error: "This user already has an active account and can log in directly." },
-          { status: 409 },
-        );
+    if (rpcError) {
+      // RPC not yet deployed — fall back to password_set_at check
+      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+      const existingUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+      if (existingUser) {
+        const { data: userProfile } = await supabaseAdmin
+          .from("profiles")
+          .select("password_set_at, invite_sent_at")
+          .eq("id", existingUser.id)
+          .maybeSingle();
+        // password_set_at set → definitely active; invite_sent_at null + email confirmed → old active user
+        const isActive =
+          Boolean(userProfile?.password_set_at) ||
+          (!userProfile?.invite_sent_at && Boolean(existingUser.email_confirmed_at));
+        if (isActive) {
+          return NextResponse.json(
+            { error: "This user already has an active account and can log in directly." },
+            { status: 409 },
+          );
+        }
       }
+      return NextResponse.json({ alreadyInvited: true }, { status: 409 });
+    }
+
+    if (hasPassword) {
+      return NextResponse.json(
+        { error: "This user already has an active account and can log in directly." },
+        { status: 409 },
+      );
     }
 
     // Invited but hasn't finished — tell the frontend to show the resend prompt
