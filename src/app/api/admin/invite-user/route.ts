@@ -132,7 +132,7 @@ export async function POST(request: Request) {
           (!userProfile?.invite_sent_at && Boolean(existingUser.email_confirmed_at));
         if (isActive) {
           return NextResponse.json(
-            { error: "This user already has an active account and can log in directly." },
+            { alreadyActive: true, error: "This user already has an active account and can log in directly." },
             { status: 409 },
           );
         }
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
 
     if (hasPassword) {
       return NextResponse.json(
-        { error: "This user already has an active account and can log in directly." },
+        { alreadyActive: true, error: "This user already has an active account and can log in directly." },
         { status: 409 },
       );
     }

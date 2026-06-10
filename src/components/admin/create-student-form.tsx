@@ -33,6 +33,12 @@ export function CreateStudentForm() {
     const data = await response.json();
     setLoading(false);
 
+    if (response.status === 409 && data.alreadyActive) {
+      setStatusType("warning");
+      setStatus(data.error ?? "This user already has an active account and can log in directly.");
+      return;
+    }
+
     if (response.status === 409 && data.alreadyInvited) {
       setPendingResend({ email, fullName });
       setStatusType("warning");
