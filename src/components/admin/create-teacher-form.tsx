@@ -13,6 +13,7 @@ export function CreateTeacherForm() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -33,11 +34,13 @@ export function CreateTeacherForm() {
     const data = await response.json();
 
     if (!response.ok) {
+      setIsError(true);
       setStatus(data.error ?? "Failed to invite teacher.");
       setLoading(false);
       return;
     }
 
+    setIsError(false);
     setStatus("Invite sent.");
     setFullName("");
     setEmail("");
@@ -71,7 +74,7 @@ export function CreateTeacherForm() {
               required
             />
           </div>
-          {status ? <p className="text-sm text-muted">{status}</p> : null}
+          {status ? <p className={`text-sm ${isError ? "text-error" : "text-success"}`}>{status}</p> : null}
           <Button type="submit" disabled={loading}>
             {loading ? "Sending..." : "Send invite"}
           </Button>

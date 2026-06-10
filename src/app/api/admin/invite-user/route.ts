@@ -1,8 +1,41 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
+import { Resend } from "resend";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+const NAVY = "#1b3560";
+const MUTED = "#6b7280";
+const BORDER = "#e5e7eb";
+
+function buildInviteEmail(fullName: string, inviteLink: string) {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table style="width:100%;max-width:560px;margin:40px auto;background:#ffffff;border-radius:12px;border:1px solid ${BORDER};border-collapse:collapse;">
+    <tr>
+      <td style="padding:32px 36px 0;">
+        <p style="margin:0 0 24px;font-size:22px;font-weight:700;color:${NAVY};">insight</p>
+        <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:${NAVY};">You've been invited</h1>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 36px 32px;">
+        <p style="color:#374151;line-height:1.6;margin:16px 0;">Hi ${fullName},</p>
+        <p style="color:#374151;line-height:1.6;margin:0 0 24px;">You have been invited to Insight Academy. Click the button below to set your password and access your account.</p>
+        <a href="${inviteLink}" style="display:inline-block;padding:12px 24px;background:${NAVY};color:#ffffff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
+          Accept invite →
+        </a>
+        <p style="margin:24px 0 0;font-size:12px;color:${MUTED};">If you weren't expecting this invitation, you can ignore this email.</p>
+        <p style="margin:32px 0 0;font-size:12px;color:${MUTED};">You're receiving this because your coordinator set up an account for you on insight.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
 
 export async function POST(request: Request) {
   const profile = await getUserProfile();
@@ -26,12 +59,71 @@ export async function POST(request: Request) {
 
   const origin = new URL(request.url).origin;
   const supabaseAdmin = createAdminClient();
+
   const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${origin}/auth/callback`,
+    redirectTo: `${origin}/set-password`,
   });
 
-  if (error || !data.user) {
-    return NextResponse.json({ error: error?.message ?? "Invite failed" }, { status: 500 });
+  // User already exists in auth
+  if (error) {
+    const alreadyExists =
+      error.message.toLowerCase().includes("already registered") ||
+      error.message.toLowerCase().includes("already been invited") ||
+      error.status === 422;
+
+    if (!alreadyExists) {
+      return NextResponse.json({ error: error.message ?? "Invite failed" }, { status: 500 });
+    }
+
+    // Check whether they have actually set a password yet
+    const { data: authUser } = await supabaseAdmin
+      .schema("auth")
+      .from("users")
+      .select("encrypted_password")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (authUser?.encrypted_password) {
+      return NextResponse.json(
+        { error: "This person has already completed their registration and can log in directly." },
+        { status: 409 },
+      );
+    }
+
+    // Invited but never finished — generate a fresh link and resend
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "invite",
+      email,
+      options: { redirectTo: `${origin}/set-password` },
+    });
+
+    if (linkError || !linkData?.properties?.action_link) {
+      return NextResponse.json({ error: "Failed to regenerate invite link." }, { status: 500 });
+    }
+
+    if (!process.env.RESEND_API_KEY) {
+      return NextResponse.json({ error: "Email not configured — cannot resend invite." }, { status: 500 });
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const FROM = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+
+    const { error: emailError } = await resend.emails.send({
+      from: FROM,
+      to: email,
+      subject: "Your Insight Academy invite",
+      html: buildInviteEmail(fullName, linkData.properties.action_link),
+    });
+
+    if (emailError) {
+      return NextResponse.json({ error: "Failed to send invite email." }, { status: 500 });
+    }
+
+    return NextResponse.json({ userId: linkData.user.id });
+  }
+
+  if (!data.user) {
+    return NextResponse.json({ error: "Invite failed" }, { status: 500 });
   }
 
   const { error: profileError } = await supabaseAdmin.from("profiles").insert({

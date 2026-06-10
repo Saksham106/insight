@@ -29,6 +29,35 @@ export default function SetPasswordPage() {
   useEffect(() => {
     const checkSession = async () => {
       const supabase = createClient();
+
+      // Detect error redirected back from Supabase (e.g. expired invite OTP)
+      const hashParams = new URLSearchParams(window.location.hash.slice(1));
+      const hashErrorCode = hashParams.get("error_code");
+      const hashErrorDescription = hashParams.get("error_description");
+      if (hashErrorCode) {
+        window.history.replaceState({}, "", window.location.pathname);
+        setError(
+          hashErrorCode === "otp_expired"
+            ? "This invite link has expired. Please ask your administrator to resend the invite."
+            : hashErrorDescription ?? "This invite link could not be used. Please ask your administrator for a new invite.",
+        );
+        setReady(true);
+        return;
+      }
+
+      // Exchange PKCE code when invite link points directly here
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      if (code) {
+        window.history.replaceState({}, "", window.location.pathname);
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          setError("This invite link could not be used. Please ask your administrator to resend the invite.");
+          setReady(true);
+          return;
+        }
+      }
+
       const { data } = await supabase.auth.getSession();
       const user = data.session?.user;
 
