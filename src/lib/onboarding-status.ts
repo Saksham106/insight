@@ -7,6 +7,7 @@ export interface OnboardingFields {
   auth_invited_at?: string | null;
   auth_email_confirmed_at?: string | null;
   auth_last_sign_in_at?: string | null;
+  auth_has_password?: boolean | null;
 }
 
 export interface OnboardingStatus {
@@ -15,7 +16,9 @@ export interface OnboardingStatus {
 }
 
 export function getOnboardingStatus(user: OnboardingFields): OnboardingStatus {
-  if (user.password_set_at) {
+  // auth_has_password comes straight from auth.users and covers users whose
+  // password_set_at write was missed (e.g. the onboarding callback failed).
+  if (user.password_set_at || user.auth_has_password) {
     return { label: "Ready", variant: "default" };
   }
 

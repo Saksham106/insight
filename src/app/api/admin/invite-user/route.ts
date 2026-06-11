@@ -91,81 +91,87 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to send invite email." }, { status: 500 });
     }
 
+    await supabaseAdmin
+      .from("profiles")
+      .update({ invite_sent_at: new Date().toISOString() })
+      .eq("id", linkData.user.id);
+
+    revalidateTag("admin-dashboard", "max");
+    revalidateTag("dashboard", "max");
+
     return NextResponse.json({ userId: linkData.user.id });
   }
 
-  // Normal first-time invite
+  // Check for an existing user BEFORE calling inviteUserByEmail: Supabase
+  // re-sends the invite email immediately for an existing unconfirmed user
+  // instead of erroring, which would bypass the resend confirmation (and burn
+  // Resend quota). user_has_password is a SECURITY DEFINER RPC reading
+  // auth.users: null → no user, false → invited but not registered, true → active.
+  const { data: hasPassword, error: rpcError } = await supabaseAdmin.rpc("user_has_password", {
+    p_email: email,
+  });
+
+  if (rpcError) {
+    // RPC not deployed — fall back to listUsers + password_set_at check
+    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+    const existingUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    if (existingUser) {
+      const { data: userProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("password_set_at, invite_sent_at")
+        .eq("id", existingUser.id)
+        .maybeSingle();
+      // password_set_at set → definitely active; invite_sent_at null + email confirmed → old active user
+      const isActive =
+        Boolean(userProfile?.password_set_at) ||
+        (!userProfile?.invite_sent_at && Boolean(existingUser.email_confirmed_at));
+      if (isActive) {
+        return NextResponse.json(
+          { alreadyActive: true, error: "This user already has an active account and can log in directly." },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ alreadyInvited: true }, { status: 409 });
+    }
+  } else if (hasPassword === true) {
+    return NextResponse.json(
+      { alreadyActive: true, error: "This user already has an active account and can log in directly." },
+      { status: 409 },
+    );
+  } else if (hasPassword === false) {
+    // Invited but hasn't finished — show the resend prompt without sending anything
+    return NextResponse.json({ alreadyInvited: true }, { status: 409 });
+  }
+
+  // No existing user — send the first-time invite
   const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
     redirectTo: `${origin}/set-password`,
   });
 
   if (error) {
-    const alreadyExists =
-      error.message.toLowerCase().includes("already registered") ||
-      error.message.toLowerCase().includes("already been invited") ||
-      error.status === 422;
-
-    if (!alreadyExists) {
-      return NextResponse.json({ error: error.message ?? "Invite failed" }, { status: 500 });
-    }
-
-    // user_has_password is a SECURITY DEFINER RPC that reads auth.users directly,
-    // bypassing PostgREST's auth-schema restriction. Works for all users regardless
-    // of when they registered (old users have password_set_at = null but do have a hash).
-    const { data: hasPassword, error: rpcError } = await supabaseAdmin.rpc("user_has_password", {
-      p_email: email,
-    });
-
-    if (rpcError) {
-      // RPC not yet deployed — fall back to password_set_at check
-      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-      const existingUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
-      if (existingUser) {
-        const { data: userProfile } = await supabaseAdmin
-          .from("profiles")
-          .select("password_set_at, invite_sent_at")
-          .eq("id", existingUser.id)
-          .maybeSingle();
-        // password_set_at set → definitely active; invite_sent_at null + email confirmed → old active user
-        const isActive =
-          Boolean(userProfile?.password_set_at) ||
-          (!userProfile?.invite_sent_at && Boolean(existingUser.email_confirmed_at));
-        if (isActive) {
-          return NextResponse.json(
-            { alreadyActive: true, error: "This user already has an active account and can log in directly." },
-            { status: 409 },
-          );
-        }
-      }
-      return NextResponse.json({ alreadyInvited: true }, { status: 409 });
-    }
-
-    if (hasPassword) {
-      return NextResponse.json(
-        { alreadyActive: true, error: "This user already has an active account and can log in directly." },
-        { status: 409 },
-      );
-    }
-
-    // Invited but hasn't finished — tell the frontend to show the resend prompt
-    return NextResponse.json({ alreadyInvited: true }, { status: 409 });
+    return NextResponse.json({ error: error.message ?? "Invite failed" }, { status: 500 });
   }
 
   if (!data.user) {
     return NextResponse.json({ error: "Invite failed" }, { status: 500 });
   }
 
-  const { error: profileError } = await supabaseAdmin.from("profiles").insert({
-    id: data.user.id,
-    full_name: fullName,
-    role,
-    is_active: true,
-    invite_sent_at: new Date().toISOString(),
-  });
+  // inviteUserByEmail also succeeds for an existing unconfirmed user (it re-sends
+  // the invite email), so a profile row may already exist — upsert instead of insert.
+  const { error: profileError } = await supabaseAdmin.from("profiles").upsert(
+    {
+      id: data.user.id,
+      full_name: fullName,
+      role,
+      is_active: true,
+      invite_sent_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
 
   if (profileError) {
     return NextResponse.json(
-      { error: "Failed to create profile" },
+      { error: "The invite email was sent, but saving the profile failed. Please try inviting again." },
       { status: 500 },
     );
   }

@@ -29,6 +29,7 @@ export interface ProfileRow {
   auth_invited_at: string | null;
   auth_email_confirmed_at: string | null;
   auth_last_sign_in_at: string | null;
+  auth_has_password: boolean;
   created_at: string;
 }
 
@@ -139,6 +140,11 @@ const fetchAdminData = unstable_cache(
   ]);
 
   const authUsersResult = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  // users_with_password is a SECURITY DEFINER RPC: ids of auth users with a password hash.
+  // listUsers doesn't expose this, and password_set_at can be missed if the onboarding
+  // callback fails — this is the authoritative signal for "Ready".
+  const { data: passwordIds } = await supabase.rpc("users_with_password");
+  const usersWithPassword = new Set<string>((passwordIds ?? []) as string[]);
   const authUsersById = new Map(
     (authUsersResult.data?.users ?? []).map((user) => [
       user.id,
@@ -159,6 +165,7 @@ const fetchAdminData = unstable_cache(
         auth_invited_at: authUser?.invited_at ?? null,
         auth_email_confirmed_at: authUser?.email_confirmed_at ?? null,
         auth_last_sign_in_at: authUser?.last_sign_in_at ?? null,
+        auth_has_password: usersWithPassword.has(row.id),
       };
     });
 

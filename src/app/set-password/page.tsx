@@ -115,11 +115,16 @@ export default function SetPasswordPage() {
       return;
     }
 
-    await fetch("/api/user/onboarding", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event: "password_set" }),
-    }).catch(() => null);
+    // Retry once — if this write is missed the admin dashboard shows the wrong
+    // status, but never block the user since their password is already saved.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await fetch("/api/user/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "password_set" }),
+      }).catch(() => null);
+      if (response?.ok) break;
+    }
 
     const { data: profile } = await supabase
       .from("profiles")
