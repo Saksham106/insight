@@ -20,56 +20,10 @@ const {
   getOnboardingStatus,
 } = require(path.join(__dirname, "onboarding-status.ts"));
 
-test("marks invited users as invite sent until they accept the invite", () => {
+test("marks a never-logged-in invitee as invite sent", () => {
   assert.deepEqual(
     getOnboardingStatus({
-      invite_sent_at: "2026-06-01T10:00:00Z",
-      invite_accepted_at: null,
       password_set_at: null,
-    }),
-    {
-      label: "Invite sent",
-      variant: "gold",
-    },
-  );
-});
-
-test("marks users as needs password after accepting invite but before setting password", () => {
-  assert.deepEqual(
-    getOnboardingStatus({
-      invite_sent_at: "2026-06-01T10:00:00Z",
-      invite_accepted_at: "2026-06-01T10:05:00Z",
-      password_set_at: null,
-    }),
-    {
-      label: "Needs password",
-      variant: "gold",
-    },
-  );
-});
-
-test("marks users as ready after setting password", () => {
-  assert.deepEqual(
-    getOnboardingStatus({
-      invite_sent_at: "2026-06-01T10:00:00Z",
-      invite_accepted_at: "2026-06-01T10:05:00Z",
-      password_set_at: "2026-06-01T10:08:00Z",
-    }),
-    {
-      label: "Ready",
-      variant: "default",
-    },
-  );
-});
-
-test("uses auth invite state when profile invite timestamps are missing", () => {
-  assert.deepEqual(
-    getOnboardingStatus({
-      invite_sent_at: null,
-      invite_accepted_at: null,
-      password_set_at: null,
-      auth_invited_at: "2026-06-09T13:49:44Z",
-      auth_email_confirmed_at: null,
       auth_last_sign_in_at: null,
     }),
     {
@@ -79,18 +33,40 @@ test("uses auth invite state when profile invite timestamps are missing", () => 
   );
 });
 
-test("keeps legacy signed-in users ready when profile onboarding timestamps are missing", () => {
+test("marks a user who logged in but never changed their password as logged in with temp password", () => {
   assert.deepEqual(
     getOnboardingStatus({
-      invite_sent_at: null,
-      invite_accepted_at: null,
       password_set_at: null,
-      auth_invited_at: "2026-06-08T04:28:22Z",
-      auth_email_confirmed_at: "2026-06-08T04:29:23Z",
-      auth_last_sign_in_at: "2026-06-08T04:29:23Z",
+      auth_last_sign_in_at: "2026-07-03T10:05:00Z",
     }),
     {
-      label: "Ready",
+      label: "Logged in (temp password)",
+      variant: "gold",
+    },
+  );
+});
+
+test("marks a user who changed their password as password changed", () => {
+  assert.deepEqual(
+    getOnboardingStatus({
+      password_set_at: "2026-07-03T10:08:00Z",
+      auth_last_sign_in_at: "2026-07-03T10:05:00Z",
+    }),
+    {
+      label: "Password changed",
+      variant: "default",
+    },
+  );
+});
+
+test("password_set_at takes priority even if auth_last_sign_in_at is somehow missing", () => {
+  assert.deepEqual(
+    getOnboardingStatus({
+      password_set_at: "2026-07-03T10:08:00Z",
+      auth_last_sign_in_at: null,
+    }),
+    {
+      label: "Password changed",
       variant: "default",
     },
   );
