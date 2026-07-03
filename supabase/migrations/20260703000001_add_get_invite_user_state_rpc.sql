@@ -21,3 +21,8 @@ as $$
   where lower(u.email) = lower(p_email)
   limit 1;
 $$;
+
+-- SECURITY DEFINER functions are PUBLIC EXECUTE by default in Postgres.
+-- This function reads auth.users (email enumeration + PII) and must only
+-- ever be called via the service-role admin client from the invite API route.
+revoke execute on function public.get_invite_user_state(text) from public, anon, authenticated;
