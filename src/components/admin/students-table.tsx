@@ -21,10 +21,11 @@ import {
 interface Student {
   id: string;
   full_name: string;
+  email: string;
   is_active: boolean;
   invite_sent_at: string | null;
-  invite_accepted_at: string | null;
   password_set_at: string | null;
+  auth_last_sign_in_at: string | null;
   created_at: string;
 }
 
@@ -36,6 +37,7 @@ export function StudentsTable({ students }: StudentsTableProps) {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 480px)").matches : false,
   );
@@ -67,6 +69,28 @@ export function StudentsTable({ students }: StudentsTableProps) {
 
     setStatus("Updated user status.");
     setLoadingId(null);
+    router.refresh();
+  };
+
+  const resendCredentials = async (student: Student) => {
+    setStatus(null);
+    setResendingId(student.id);
+
+    const response = await fetch("/api/admin/invite-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: student.email, fullName: student.full_name, role: "student", resend: true }),
+    });
+
+    const data = await response.json();
+    setResendingId(null);
+
+    if (!response.ok) {
+      setStatus(data.error ?? "Failed to resend credentials.");
+      return;
+    }
+
+    setStatus(`Credentials resent to ${student.full_name}. New password: ${data.password}`);
     router.refresh();
   };
 
@@ -109,14 +133,26 @@ export function StudentsTable({ students }: StudentsTableProps) {
                   </TableCell>
                 )}
                 <TableCell className="text-right">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => toggleUser(student)}
-                    disabled={loadingId === student.id}
-                  >
-                    {student.is_active ? "Disable" : "Enable"}
-                  </Button>
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                    {onboarding.label !== "Password changed" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => resendCredentials(student)}
+                        disabled={resendingId === student.id}
+                      >
+                        {resendingId === student.id ? "Resending..." : "Resend"}
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleUser(student)}
+                      disabled={loadingId === student.id}
+                    >
+                      {student.is_active ? "Disable" : "Enable"}
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             );
