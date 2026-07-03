@@ -19,18 +19,18 @@ export interface StudentAssignmentRow {
   sessions: Session[];
 }
 
-export interface ProfileRow {
+interface RawProfileRow {
   id: string;
   full_name: string;
   is_active: boolean;
   invite_sent_at: string | null;
-  invite_accepted_at: string | null;
   password_set_at: string | null;
-  auth_invited_at: string | null;
-  auth_email_confirmed_at: string | null;
-  auth_last_sign_in_at: string | null;
-  auth_has_password: boolean;
   created_at: string;
+}
+
+export interface ProfileRow extends RawProfileRow {
+  email: string;
+  auth_last_sign_in_at: string | null;
 }
 
 export interface AdminAssignmentRow {
@@ -45,9 +45,8 @@ export interface AdminAssignmentRow {
 export type AdminSession = Session & { teacherName: string; studentName: string };
 
 interface AuthUserOnboardingState {
-  invited_at?: string | null;
-  email_confirmed_at?: string | null;
-  last_sign_in_at?: string | null;
+  email: string | null;
+  last_sign_in_at: string | null;
 }
 
 const fetchTeacherAssignments = (teacherId: string) =>
@@ -117,12 +116,12 @@ const fetchAdminData = unstable_cache(
     const [teachersResult, studentsResult, assignmentsResult, sessionsResult] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, full_name, is_active, invite_sent_at, invite_accepted_at, password_set_at, created_at")
+      .select("id, full_name, is_active, invite_sent_at, password_set_at, created_at")
       .eq("role", "teacher")
       .order("created_at", { ascending: false }),
     supabase
       .from("profiles")
-      .select("id, full_name, is_active, invite_sent_at, invite_accepted_at, password_set_at, created_at")
+      .select("id, full_name, is_active, invite_sent_at, password_set_at, created_at")
       .eq("role", "student")
       .order("created_at", { ascending: false }),
     supabase
@@ -140,37 +139,29 @@ const fetchAdminData = unstable_cache(
   ]);
 
   const authUsersResult = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  // users_with_password is a SECURITY DEFINER RPC: ids of auth users with a password hash.
-  // listUsers doesn't expose this, and password_set_at can be missed if the onboarding
-  // callback fails — this is the authoritative signal for "Ready".
-  const { data: passwordIds } = await supabase.rpc("users_with_password");
-  const usersWithPassword = new Set<string>((passwordIds ?? []) as string[]);
   const authUsersById = new Map(
     (authUsersResult.data?.users ?? []).map((user) => [
       user.id,
       {
-        invited_at: user.invited_at ?? null,
-        email_confirmed_at: user.email_confirmed_at ?? null,
+        email: user.email ?? null,
         last_sign_in_at: user.last_sign_in_at ?? null,
       } satisfies AuthUserOnboardingState,
     ]),
   );
 
-  const withAuthOnboardingState = (rows: ProfileRow[]) =>
+  const withAuthOnboardingState = (rows: RawProfileRow[]) =>
     rows.map((row) => {
       const authUser = authUsersById.get(row.id);
 
       return {
         ...row,
-        auth_invited_at: authUser?.invited_at ?? null,
-        auth_email_confirmed_at: authUser?.email_confirmed_at ?? null,
+        email: authUser?.email ?? "",
         auth_last_sign_in_at: authUser?.last_sign_in_at ?? null,
-        auth_has_password: usersWithPassword.has(row.id),
-      };
+      } satisfies ProfileRow;
     });
 
-  const teachers = withAuthOnboardingState((teachersResult.data ?? []) as ProfileRow[]);
-  const students = withAuthOnboardingState((studentsResult.data ?? []) as ProfileRow[]);
+  const teachers = withAuthOnboardingState((teachersResult.data ?? []) as RawProfileRow[]);
+  const students = withAuthOnboardingState((studentsResult.data ?? []) as RawProfileRow[]);
   const assignments = (assignmentsResult.data ?? []).map((assignment) => {
     const teacher = Array.isArray(assignment.teacher)
       ? assignment.teacher[0]
