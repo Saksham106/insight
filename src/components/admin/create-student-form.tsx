@@ -54,8 +54,13 @@ export function CreateStudentForm() {
       return;
     }
 
-    setStatusType("success");
-    setStatus("Account created and credentials emailed.");
+    if (data.emailError) {
+      setStatusType("warning");
+      setStatus("Account created, but the email failed to send. Share the password below manually.");
+    } else {
+      setStatusType("success");
+      setStatus("Account created and credentials emailed.");
+    }
     setGeneratedPassword(data.password ?? null);
     setFullName("");
     setEmail("");
@@ -82,8 +87,13 @@ export function CreateStudentForm() {
       return;
     }
 
-    setStatusType("success");
-    setStatus("Credentials resent.");
+    if (data.emailError) {
+      setStatusType("warning");
+      setStatus("Credentials reset, but the email failed to send. Share the password below manually.");
+    } else {
+      setStatusType("success");
+      setStatus("Credentials resent.");
+    }
     setGeneratedPassword(data.password ?? null);
   };
 
