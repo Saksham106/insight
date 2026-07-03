@@ -90,7 +90,11 @@ export function TeachersTable({ teachers }: TeachersTableProps) {
       return;
     }
 
-    setStatus(`Credentials resent to ${teacher.full_name}. New password: ${data.password}`);
+    if (data.emailError) {
+      setStatus(`Password reset for ${teacher.full_name}, but the email failed to send. New password: ${data.password}`);
+    } else {
+      setStatus(`Credentials resent to ${teacher.full_name}. New password: ${data.password}`);
+    }
     router.refresh();
   };
 
@@ -134,7 +138,7 @@ export function TeachersTable({ teachers }: TeachersTableProps) {
                 )}
                 <TableCell className="text-right">
                   <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-                    {onboarding.label !== "Password changed" ? (
+                    {onboarding.label === "Invite sent" ? (
                       <Button
                         variant="outline"
                         size="sm"
