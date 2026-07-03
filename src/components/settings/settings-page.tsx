@@ -184,13 +184,26 @@ export function SettingsPage({
     }
 
     const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setPasswordSaving(false);
 
     if (error) {
+      setPasswordSaving(false);
       setPasswordError(error.message);
       return;
     }
 
+    // Retry once — if this write is missed the admin dashboard shows the wrong
+    // onboarding status, but never block the user since their password is
+    // already saved.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await fetch("/api/user/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "password_set" }),
+      }).catch(() => null);
+      if (response?.ok) break;
+    }
+
+    setPasswordSaving(false);
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
