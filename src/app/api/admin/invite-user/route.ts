@@ -139,9 +139,6 @@ export async function POST(request: Request) {
     }
 
     const { error: emailError } = await sendCredentialsEmail(fullName, email, password, origin);
-    if (emailError) {
-      return NextResponse.json({ error: emailError }, { status: 500 });
-    }
 
     await supabaseAdmin
       .from("profiles")
@@ -150,6 +147,10 @@ export async function POST(request: Request) {
 
     revalidateTag("admin-dashboard", "max");
     revalidateTag("dashboard", "max");
+
+    if (emailError) {
+      return NextResponse.json({ userId: inviteState.auth_user_id, password, emailError });
+    }
 
     return NextResponse.json({ userId: inviteState.auth_user_id, password });
   }
