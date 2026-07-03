@@ -15,6 +15,7 @@ export function CreateStudentForm() {
   const [status, setStatus] = useState<string | null>(null);
   const [statusType, setStatusType] = useState<"success" | "warning" | "error">("success");
   const [pendingResend, setPendingResend] = useState<{ email: string; fullName: string } | null>(null);
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
 
@@ -22,6 +23,7 @@ export function CreateStudentForm() {
     event.preventDefault();
     setStatus(null);
     setPendingResend(null);
+    setGeneratedPassword(null);
     setLoading(true);
 
     const response = await fetch("/api/admin/invite-user", {
@@ -42,7 +44,7 @@ export function CreateStudentForm() {
     if (response.status === 409 && data.alreadyInvited) {
       setPendingResend({ email, fullName });
       setStatusType("warning");
-      setStatus("This user has already been invited but hasn't completed registration.");
+      setStatus("This user was invited but hasn't logged in yet.");
       return;
     }
 
@@ -53,7 +55,8 @@ export function CreateStudentForm() {
     }
 
     setStatusType("success");
-    setStatus("Invite sent.");
+    setStatus("Account created and credentials emailed.");
+    setGeneratedPassword(data.password ?? null);
     setFullName("");
     setEmail("");
     router.refresh();
@@ -75,12 +78,13 @@ export function CreateStudentForm() {
 
     if (!response.ok) {
       setStatusType("error");
-      setStatus(data.error ?? "Failed to resend invite.");
+      setStatus(data.error ?? "Failed to resend credentials.");
       return;
     }
 
     setStatusType("success");
-    setStatus("Invite resent.");
+    setStatus("Credentials resent.");
+    setGeneratedPassword(data.password ?? null);
   };
 
   const statusColor = statusType === "error" ? "text-error" : statusType === "warning" ? "text-warning" : "text-success";
@@ -112,6 +116,32 @@ export function CreateStudentForm() {
             />
           </div>
           {status ? <p className={`text-sm ${statusColor}`}>{status}</p> : null}
+          {generatedPassword ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--color-border)",
+                background: "var(--color-surface)",
+              }}
+            >
+              <p className="text-sm" style={{ margin: 0 }}>
+                If the email doesn&apos;t arrive, share this password directly:{" "}
+                <strong style={{ fontFamily: "monospace" }}>{generatedPassword}</strong>
+              </p>
+              <button
+                type="button"
+                onClick={() => setGeneratedPassword(null)}
+                className="text-sm text-muted"
+                style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : null}
           {pendingResend ? (
             <Button
               type="button"
@@ -119,7 +149,7 @@ export function CreateStudentForm() {
               disabled={resendLoading}
               onClick={handleResend}
             >
-              {resendLoading ? "Resending..." : "Resend invite"}
+              {resendLoading ? "Resending..." : "Resend credentials"}
             </Button>
           ) : null}
           <Button type="submit" disabled={loading}>
