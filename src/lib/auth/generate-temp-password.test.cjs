@@ -20,7 +20,7 @@ const {
   generateTempPassword,
 } = require(path.join(__dirname, "generate-temp-password.ts"));
 
-const ALLOWED = /^[A-HJ-NP-Za-hj-km-z2-9]+$/;
+const ALLOWED = /^[A-HJ-NP-Za-km-z2-9]+$/;
 
 test("generates a 10 character password", () => {
   const password = generateTempPassword();
@@ -37,7 +37,7 @@ test("always contains at least one uppercase, one lowercase, and one digit", () 
   for (let i = 0; i < 50; i++) {
     const password = generateTempPassword();
     assert.match(password, /[A-HJ-NP-Z]/, `no uppercase in ${password}`);
-    assert.match(password, /[a-hj-km-z]/, `no lowercase in ${password}`);
+    assert.match(password, /[a-km-z]/, `no lowercase in ${password}`);
     assert.match(password, /[2-9]/, `no digit in ${password}`);
   }
 });
