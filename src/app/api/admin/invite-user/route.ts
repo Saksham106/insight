@@ -132,6 +132,8 @@ export async function POST(request: Request) {
     // Never-used existing account — safe to regenerate credentials.
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(inviteState.auth_user_id, {
       password,
+      // Legacy magic-link invites left the email unconfirmed, which blocks password login.
+      email_confirm: true,
     });
 
     if (updateError) {
