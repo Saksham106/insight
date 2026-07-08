@@ -7,24 +7,32 @@ import { AdminStats } from "@/components/admin/admin-stats";
 import { AssignStudentForm } from "@/components/admin/assign-student-form";
 import { AssignmentsTable } from "@/components/admin/assignments-table";
 import { ComposeEmailButton } from "@/components/admin/compose-email-button";
+import { CreateParentForm } from "@/components/admin/create-parent-form";
 import { CreateStudentForm } from "@/components/admin/create-student-form";
 import { CreateTeacherForm } from "@/components/admin/create-teacher-form";
+import { ParentsTable } from "@/components/admin/parents-table";
 import { StudentsTable } from "@/components/admin/students-table";
 import { TeachersTable } from "@/components/admin/teachers-table";
 import type {
   AdminAssignmentRow,
   AdminSession,
+  Label,
+  ParentStudentLink,
   ProfileRow,
+  TeacherRow,
 } from "@/lib/dashboard-data";
 
 export type AdminDashboardView = "overview" | "users" | "assignments" | "sessions";
 
 interface AdminDashboardProps {
   view: AdminDashboardView;
-  teachers: ProfileRow[];
+  teachers: TeacherRow[];
   students: ProfileRow[];
+  parents: ProfileRow[];
   assignments: AdminAssignmentRow[];
   sessions: AdminSession[];
+  labels: Label[];
+  links: ParentStudentLink[];
 }
 
 const viewCopy: Record<AdminDashboardView, { title: string; description: string }> = {
@@ -111,13 +119,34 @@ export function AdminDashboard({
   view,
   teachers,
   students,
+  parents,
   assignments,
   sessions,
+  labels,
+  links,
 }: AdminDashboardProps) {
   const copy = viewCopy[view];
   const totalTeachers = teachers.length;
   const totalStudents = students.length;
   const totalAssignments = assignments.length;
+
+  const parentIdsByStudent = new Map<string, string[]>();
+  const childIdsByParent = new Map<string, string[]>();
+  links.forEach((link) => {
+    parentIdsByStudent.set(link.student_id, [...(parentIdsByStudent.get(link.student_id) ?? []), link.parent_id]);
+    childIdsByParent.set(link.parent_id, [...(childIdsByParent.get(link.parent_id) ?? []), link.student_id]);
+  });
+
+  const studentsWithParents = students.map((student) => ({
+    ...student,
+    parentIds: parentIdsByStudent.get(student.id) ?? [],
+  }));
+  const parentsWithChildren = parents.map((parent) => ({
+    ...parent,
+    childIds: childIdsByParent.get(parent.id) ?? [],
+  }));
+  const studentOptions = students.map((s) => ({ id: s.id, full_name: s.full_name }));
+  const parentOptions = parents.map((p) => ({ id: p.id, full_name: p.full_name }));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
@@ -147,23 +176,29 @@ export function AdminDashboard({
           <AdminFormsGrid>
             <CreateTeacherForm />
             <CreateStudentForm />
+            <CreateParentForm />
           </AdminFormsGrid>
 
           <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <h2 className="text-lg font-semibold text-navy">Teachers</h2>
-            <TeachersTable teachers={teachers} />
+            <TeachersTable teachers={teachers} allLabels={labels} />
           </section>
 
           <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <h2 className="text-lg font-semibold text-navy">Students/Parents</h2>
-            <StudentsTable students={students} />
+            <h2 className="text-lg font-semibold text-navy">Students</h2>
+            <StudentsTable students={studentsWithParents} allParents={parentOptions} />
+          </section>
+
+          <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <h2 className="text-lg font-semibold text-navy">Parents</h2>
+            <ParentsTable parents={parentsWithChildren} allStudents={studentOptions} />
           </section>
         </>
       )}
 
       {view === "assignments" && (
         <>
-          <AssignStudentForm teachers={teachers} students={students} />
+          <AssignStudentForm teachers={teachers} students={students} allLabels={labels} />
 
           <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <h2 className="text-lg font-semibold text-navy">Assignments</h2>

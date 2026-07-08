@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MARK_READ_EVENT, getLastRead } from "@/lib/use-unread-counts";
 
-export function useChatUnreadTotal(userId: string, role: "admin" | "teacher" | "student") {
+export function useChatUnreadTotal(userId: string, role: "admin" | "teacher" | "student" | "parent") {
   const supabase = useMemo(() => createClient(), []);
   const [convIds, setConvIds] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
@@ -13,12 +13,14 @@ export function useChatUnreadTotal(userId: string, role: "admin" | "teacher" | "
   // Fetch all conversation IDs for this user
   useEffect(() => {
     if (role === "admin") return;
-    const col = role === "teacher" ? "teacher_id" : "student_id";
-    supabase
+    // Parents have no direct FK column; RLS scopes assignments to their children.
+    let query = supabase
       .from("teacher_student_assignments")
       .select("conversation:conversations (id)")
-      .eq(col, userId)
-      .eq("is_active", true)
+      .eq("is_active", true);
+    if (role === "teacher") query = query.eq("teacher_id", userId);
+    else if (role === "student") query = query.eq("student_id", userId);
+    query
       .then(({ data }) => {
         const ids: string[] = [];
         (data ?? []).forEach((row) => {

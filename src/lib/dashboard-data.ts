@@ -33,6 +33,27 @@ export interface ProfileRow extends RawProfileRow {
   auth_last_sign_in_at: string | null;
 }
 
+export interface Label {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface TeacherRow extends ProfileRow {
+  labels: Label[];
+}
+
+export interface ParentStudentLink {
+  parent_id: string;
+  student_id: string;
+}
+
+export interface ParentChild {
+  id: string;
+  full_name: string;
+  assignments: StudentAssignmentRow[];
+}
+
 export interface AdminAssignmentRow {
   id: string;
   created_at: string;
@@ -110,10 +131,76 @@ export const getStudentDashboardData = cache(async function getStudentDashboardD
   return { profile, assignments };
 });
 
+function normalizeStudentAssignments(rows: unknown[]): StudentAssignmentRow[] {
+  return (rows as Record<string, unknown>[]).map((row) => {
+    const teacher = Array.isArray(row.teacher) ? row.teacher[0] : row.teacher;
+    const rawConv = row.conversation;
+    const conversation = Array.isArray(rawConv) ? rawConv : rawConv != null ? [rawConv as { id: string }] : null;
+    const sessions = ((row.sessions ?? []) as Session[]).sort(
+      (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+    );
+    return { ...row, teacher, conversation, sessions } as StudentAssignmentRow;
+  });
+}
+
+// The admin client bypasses RLS, so parent access MUST be scoped here by
+// filtering strictly through parent_student_links for the authenticated parent.
+const fetchParentChildren = (parentId: string) =>
+  unstable_cache(
+    async () => {
+      const supabase = createAdminClient();
+      const { data: links } = await supabase
+        .from("parent_student_links")
+        .select("student:student_id (id, full_name)")
+        .eq("parent_id", parentId);
+
+      const children = (links ?? [])
+        .map((link) => (Array.isArray(link.student) ? link.student[0] : link.student))
+        .filter((child): child is { id: string; full_name: string } => Boolean(child))
+        .sort((a, b) => a.full_name.localeCompare(b.full_name));
+
+      return Promise.all(
+        children.map(async (child) => {
+          const { data } = await supabase
+            .from("teacher_student_assignments")
+            .select(
+              "id, teacher:teacher_id (id, full_name), conversation:conversations (id), sessions (id, assignment_id, scheduled_at, duration_minutes, notes, status, proposed_by)",
+            )
+            .eq("student_id", child.id)
+            .eq("is_active", true)
+            .order("created_at", { ascending: true });
+
+          return {
+            id: child.id,
+            full_name: child.full_name,
+            assignments: normalizeStudentAssignments(data ?? []),
+          } satisfies ParentChild;
+        }),
+      );
+    },
+    [`parent-children-${parentId}`],
+    { revalidate: 60, tags: ["dashboard", `user-${parentId}`] },
+  )();
+
+export const getParentDashboardData = cache(async function getParentDashboardData() {
+  const profile = await requireRole(["parent"]);
+  const children = await fetchParentChildren(profile.id);
+  return { profile, children };
+});
+
 const fetchAdminData = unstable_cache(
   async () => {
     const supabase = createAdminClient();
-    const [teachersResult, studentsResult, assignmentsResult, sessionsResult] = await Promise.all([
+    const [
+      teachersResult,
+      studentsResult,
+      parentsResult,
+      assignmentsResult,
+      sessionsResult,
+      labelsResult,
+      teacherLabelsResult,
+      linksResult,
+    ] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, full_name, is_active, invite_sent_at, password_set_at, created_at")
@@ -123,6 +210,11 @@ const fetchAdminData = unstable_cache(
       .from("profiles")
       .select("id, full_name, is_active, invite_sent_at, password_set_at, created_at")
       .eq("role", "student")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("id, full_name, is_active, invite_sent_at, password_set_at, created_at")
+      .eq("role", "parent")
       .order("created_at", { ascending: false }),
     supabase
       .from("teacher_student_assignments")
@@ -136,6 +228,9 @@ const fetchAdminData = unstable_cache(
         "id, assignment_id, scheduled_at, duration_minutes, notes, status, proposed_by, assignment:assignment_id (teacher:teacher_id (full_name), student:student_id (full_name))",
       )
       .order("scheduled_at", { ascending: true }),
+    supabase.from("labels").select("id, name, color").order("name", { ascending: true }),
+    supabase.from("teacher_labels").select("teacher_id, label:label_id (id, name, color)"),
+    supabase.from("parent_student_links").select("parent_id, student_id"),
   ]);
 
   const authUsersResult = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -160,8 +255,27 @@ const fetchAdminData = unstable_cache(
       } satisfies ProfileRow;
     });
 
-  const teachers = withAuthOnboardingState((teachersResult.data ?? []) as RawProfileRow[]);
+  const labels = (labelsResult.data ?? []) as Label[];
+
+  const labelsByTeacher = new Map<string, Label[]>();
+  ((teacherLabelsResult.data ?? []) as { teacher_id: string; label: Label | Label[] | null }[]).forEach((row) => {
+    const label = Array.isArray(row.label) ? row.label[0] : row.label;
+    if (!label) return;
+    const existing = labelsByTeacher.get(row.teacher_id) ?? [];
+    existing.push(label);
+    labelsByTeacher.set(row.teacher_id, existing);
+  });
+
+  const teachers = withAuthOnboardingState((teachersResult.data ?? []) as RawProfileRow[]).map(
+    (teacher) =>
+      ({
+        ...teacher,
+        labels: (labelsByTeacher.get(teacher.id) ?? []).sort((a, b) => a.name.localeCompare(b.name)),
+      }) satisfies TeacherRow,
+  );
   const students = withAuthOnboardingState((studentsResult.data ?? []) as RawProfileRow[]);
+  const parents = withAuthOnboardingState((parentsResult.data ?? []) as RawProfileRow[]);
+  const links = (linksResult.data ?? []) as ParentStudentLink[];
   const assignments = (assignmentsResult.data ?? []).map((assignment) => {
     const teacher = Array.isArray(assignment.teacher)
       ? assignment.teacher[0]
@@ -200,7 +314,7 @@ const fetchAdminData = unstable_cache(
     } as AdminSession;
   });
 
-    return { teachers, students, assignments, sessions };
+    return { teachers, students, parents, assignments, sessions, labels, links };
   },
   ["admin-dashboard"],
   { revalidate: 60, tags: ["dashboard", "admin-dashboard"] },

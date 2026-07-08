@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, Pencil } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/empty-state";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EditUserModal, type UserOption } from "@/components/admin/edit-user-modal";
 import { getOnboardingStatus } from "@/lib/onboarding-status";
 import {
   Table,
@@ -27,17 +28,20 @@ interface Student {
   password_set_at: string | null;
   auth_last_sign_in_at: string | null;
   created_at: string;
+  parentIds: string[];
 }
 
 interface StudentsTableProps {
   students: Student[];
+  allParents: UserOption[];
 }
 
-export function StudentsTable({ students }: StudentsTableProps) {
+export function StudentsTable({ students, allParents }: StudentsTableProps) {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Student | null>(null);
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 480px)").matches : false,
   );
@@ -48,6 +52,8 @@ export function StudentsTable({ students }: StudentsTableProps) {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+
+  const colSpan = isMobile ? 3 : 4;
 
   const toggleUser = async (student: Student) => {
     setStatus(null);
@@ -105,7 +111,6 @@ export function StudentsTable({ students }: StudentsTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
-            <TableHead>Status</TableHead>
             <TableHead>Onboarding</TableHead>
             {!isMobile && <TableHead>Created</TableHead>}
             <TableHead className="text-right">Action</TableHead>
@@ -113,7 +118,7 @@ export function StudentsTable({ students }: StudentsTableProps) {
         </TableHeader>
         <TableBody>
           {students.length === 0 && (
-            <tr><td colSpan={5} style={{ padding: "0", paddingTop: "8px" }}>
+            <tr><td colSpan={colSpan} style={{ padding: "0", paddingTop: "8px" }}>
               <EmptyState icon={GraduationCap} title="No students yet" description="Invite a student to get started." />
             </td></tr>
           )}
@@ -121,13 +126,8 @@ export function StudentsTable({ students }: StudentsTableProps) {
             const onboarding = getOnboardingStatus(student);
 
             return (
-              <TableRow key={student.id}>
+              <TableRow key={student.id} style={student.is_active ? undefined : { opacity: 0.55 }}>
                 <TableCell className="font-medium">{student.full_name}</TableCell>
-                <TableCell>
-                  <Badge variant={student.is_active ? "default" : "gold"}>
-                    {student.is_active ? "Active" : "Disabled"}
-                  </Badge>
-                </TableCell>
                 <TableCell>
                   <Badge variant={onboarding.variant}>{onboarding.label}</Badge>
                 </TableCell>
@@ -137,7 +137,16 @@ export function StudentsTable({ students }: StudentsTableProps) {
                   </TableCell>
                 )}
                 <TableCell className="text-right">
-                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center" }}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditing(student)}
+                      aria-label={`Edit ${student.full_name}`}
+                      style={{ display: "flex", alignItems: "center", padding: "0 10px" }}
+                    >
+                      <Pencil size={14} />
+                    </Button>
                     {onboarding.label === "Invite sent" ? (
                       <Button
                         variant="outline"
@@ -163,6 +172,17 @@ export function StudentsTable({ students }: StudentsTableProps) {
           })}
         </TableBody>
       </Table>
+
+      {editing && (
+        <EditUserModal
+          user={{ id: editing.id, full_name: editing.full_name }}
+          role="student"
+          relationTitle="Linked parents"
+          relationOptions={allParents}
+          initialRelationIds={editing.parentIds}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { ChatWindow, type ChatMessage } from "@/components/chat/chat-window";
 import { requireRole } from "@/lib/auth/require-role";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClientWithBypass } from "@/lib/supabase/server";
 
 interface ChatPageProps {
@@ -10,7 +11,7 @@ interface ChatPageProps {
 
 export default async function ChatPage({ params }: ChatPageProps) {
   const { conversationId } = await params;
-  const profile = await requireRole(["admin", "teacher", "student"]);
+  const profile = await requireRole(["admin", "teacher", "student", "parent"]);
   const supabase = await createServerClientWithBypass();
 
   const { data: conversation } = await supabase
@@ -44,6 +45,23 @@ export default async function ChatPage({ params }: ChatPageProps) {
   const teacherName = teacher?.full_name ?? "Teacher";
   const studentName = student?.full_name ?? "Student";
 
+  // The admin/bypass client sidesteps RLS, so a parent must be explicitly
+  // authorized for this conversation's student before we render anything.
+  if (profile.role === "parent") {
+    const admin = createAdminClient();
+    const { data: link } = await admin
+      .from("parent_student_links")
+      .select("id")
+      .eq("parent_id", profile.id)
+      .eq("student_id", student?.id ?? "")
+      .maybeSingle();
+
+    if (!link) {
+      notFound();
+    }
+  }
+
+  // Parent and admin both see both participants ("Teacher and Child").
   const title =
     profile.role === "teacher"
       ? `Chat with ${studentName}`
