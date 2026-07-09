@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { EditUserModal, type LabelOption } from "@/components/admin/edit-user-modal";
 import { getOnboardingStatus } from "@/lib/onboarding-status";
 import {
@@ -215,6 +216,12 @@ export function TeachersTable({ teachers, allLabels }: TeachersTableProps) {
                     >
                       {teacher.is_active ? "Disable" : "Enable"}
                     </Button>
+                    <DeleteUserButton
+                      userId={teacher.id}
+                      userName={teacher.full_name}
+                      onError={setStatus}
+                      onDeleted={setStatus}
+                    />
                   </div>
                 </TableCell>
               </TableRow>

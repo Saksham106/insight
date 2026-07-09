@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { EditUserModal, type UserOption } from "@/components/admin/edit-user-modal";
 import { getOnboardingStatus } from "@/lib/onboarding-status";
 import {
@@ -165,6 +166,12 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
                     >
                       {student.is_active ? "Disable" : "Enable"}
                     </Button>
+                    <DeleteUserButton
+                      userId={student.id}
+                      userName={student.full_name}
+                      onError={setStatus}
+                      onDeleted={setStatus}
+                    />
                   </div>
                 </TableCell>
               </TableRow>

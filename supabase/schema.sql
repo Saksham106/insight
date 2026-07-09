@@ -9,8 +9,15 @@ create table if not exists public.profiles (
   invite_sent_at timestamptz,
   invite_accepted_at timestamptz,
   password_set_at timestamptz,
+  -- Soft delete. Set together with is_active = false; the is_active gates are
+  -- what block sign-in, deleted_at only hides the row from the admin lists.
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+create index if not exists idx_profiles_not_deleted
+  on public.profiles (role, created_at desc)
+  where deleted_at is null;
 
 create table if not exists public.teacher_student_assignments (
   id uuid primary key default gen_random_uuid(),

@@ -205,16 +205,19 @@ const fetchAdminData = unstable_cache(
       .from("profiles")
       .select("id, full_name, is_active, invite_sent_at, password_set_at, created_at")
       .eq("role", "teacher")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     supabase
       .from("profiles")
       .select("id, full_name, is_active, invite_sent_at, password_set_at, created_at")
       .eq("role", "student")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     supabase
       .from("profiles")
       .select("id, full_name, is_active, invite_sent_at, password_set_at, created_at")
       .eq("role", "parent")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     supabase
       .from("teacher_student_assignments")
