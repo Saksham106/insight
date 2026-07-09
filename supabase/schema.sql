@@ -109,44 +109,26 @@ using (
   and is_active = true
 );
 
+-- Policies on profiles must never read profiles directly -- that re-enters this
+-- table's RLS and Postgres aborts with "infinite recursion detected in policy".
+-- Every role/relationship test goes through a SECURITY DEFINER helper instead.
+
 create policy profiles_select_admin on public.profiles
 for select
-using (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.role = 'admin'
-      and p.is_active = true
-  )
-);
+using (is_admin());
 
 create policy profiles_select_teacher_students on public.profiles
 for select
 using (
-  exists (
-    select 1
-    from public.teacher_student_assignments a
-    join public.profiles me on me.id = auth.uid()
-    where me.role = 'teacher'
-      and me.is_active = true
-      and a.teacher_id = auth.uid()
-      and a.student_id = public.profiles.id
-  )
+  is_teacher()
+  and teacher_can_access_student(public.profiles.id)
 );
 
 create policy profiles_select_student_teacher on public.profiles
 for select
 using (
-  exists (
-    select 1
-    from public.teacher_student_assignments a
-    join public.profiles me on me.id = auth.uid()
-    where me.role = 'student'
-      and me.is_active = true
-      and a.student_id = auth.uid()
-      and a.teacher_id = public.profiles.id
-  )
+  is_student()
+  and student_can_access_teacher(public.profiles.id)
 );
 
 create policy profiles_update_admin on public.profiles
@@ -418,42 +400,25 @@ using (parent_id = auth.uid());
 create policy profiles_select_parent_children on public.profiles
 for select
 using (
-  exists (
-    select 1
-    from public.parent_student_links l
-    join public.profiles me on me.id = auth.uid()
-    where me.role = 'parent'
-      and me.is_active = true
-      and l.parent_id = auth.uid()
-      and l.student_id = public.profiles.id
-  )
+  is_parent()
+  and parent_can_access_student(public.profiles.id)
 );
 
 create policy profiles_select_parent_child_teachers on public.profiles
 for select
 using (
-  exists (
-    select 1
-    from public.parent_student_links l
-    join public.teacher_student_assignments a on a.student_id = l.student_id
-    join public.profiles me on me.id = auth.uid()
-    where me.role = 'parent'
-      and me.is_active = true
-      and l.parent_id = auth.uid()
-      and a.teacher_id = public.profiles.id
-  )
+  is_parent()
+  and parent_can_access_teacher(public.profiles.id)
 );
 
 create policy assignments_select_parent on public.teacher_student_assignments
 for select
 using (
-  exists (
+  is_parent()
+  and exists (
     select 1
     from public.parent_student_links l
-    join public.profiles me on me.id = auth.uid()
-    where me.role = 'parent'
-      and me.is_active = true
-      and l.parent_id = auth.uid()
+    where l.parent_id = auth.uid()
       and l.student_id = public.teacher_student_assignments.student_id
   )
 );
@@ -461,14 +426,12 @@ using (
 create policy conversations_select_parent on public.conversations
 for select
 using (
-  exists (
+  is_parent()
+  and exists (
     select 1
     from public.teacher_student_assignments a
     join public.parent_student_links l on l.student_id = a.student_id
-    join public.profiles me on me.id = auth.uid()
-    where me.role = 'parent'
-      and me.is_active = true
-      and l.parent_id = auth.uid()
+    where l.parent_id = auth.uid()
       and a.id = public.conversations.assignment_id
   )
 );
@@ -476,15 +439,13 @@ using (
 create policy messages_select_parent on public.messages
 for select
 using (
-  exists (
+  is_parent()
+  and exists (
     select 1
     from public.teacher_student_assignments a
     join public.conversations c on c.assignment_id = a.id
     join public.parent_student_links l on l.student_id = a.student_id
-    join public.profiles me on me.id = auth.uid()
-    where me.role = 'parent'
-      and me.is_active = true
-      and l.parent_id = auth.uid()
+    where l.parent_id = auth.uid()
       and c.id = public.messages.conversation_id
   )
 );
@@ -509,14 +470,12 @@ with check (
 create policy sessions_select_parent on public.sessions
 for select
 using (
-  exists (
+  is_parent()
+  and exists (
     select 1
     from public.teacher_student_assignments a
     join public.parent_student_links l on l.student_id = a.student_id
-    join public.profiles me on me.id = auth.uid()
-    where me.role = 'parent'
-      and me.is_active = true
-      and l.parent_id = auth.uid()
+    where l.parent_id = auth.uid()
       and a.id = public.sessions.assignment_id
   )
 );
