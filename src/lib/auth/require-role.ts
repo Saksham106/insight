@@ -7,6 +7,7 @@ const roleRedirects: Record<UserRole, string> = {
   admin: "/admin",
   teacher: "/teacher",
   student: "/student",
+  parent: "/parent",
 };
 
 export async function requireUser(): Promise<UserProfile> {

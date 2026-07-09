@@ -15,7 +15,7 @@ type SettingsTab = "account" | "reminders" | "password";
 interface SettingsPageProps {
   email: string;
   fullName: string;
-  role: "admin" | "teacher" | "student";
+  role: "admin" | "teacher" | "student" | "parent";
   isActive: boolean;
   avatarUrl: string | null;
   reminder24h: boolean;
@@ -27,6 +27,7 @@ const roleLabels: Record<SettingsPageProps["role"], string> = {
   admin: "Admin",
   teacher: "Teacher",
   student: "Student/Parent",
+  parent: "Parent",
 };
 
 const tabs: { id: SettingsTab; label: string; icon: typeof UserRound }[] = [

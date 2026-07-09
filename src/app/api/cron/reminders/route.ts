@@ -51,6 +51,11 @@ export async function POST(request: Request) {
 
     if (!teacher || !student) continue;
 
+    // TODO(parent-role): also remind the student's linked parents. For each
+    // session, join public.parent_student_links on student.id, load each
+    // parent's email + reminder_24h + timezone, and push them into `parties`
+    // with role "student" (respecting the reminder_24h preference). Left as a
+    // follow-up to avoid changing this cron's unverified query shape here.
     const parties: Array<{ email: string; name: string; other: string; role: "teacher" | "student"; tz: string | null; pref: boolean }> = [
       { email: teacher.email, name: teacher.name, other: student.name, role: "teacher", tz: teacher.timezone, pref: teacher.reminder_24h },
       { email: student.email, name: student.name, other: teacher.name, role: "student", tz: student.timezone, pref: student.reminder_24h },
