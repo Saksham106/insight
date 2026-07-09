@@ -17,6 +17,20 @@ const roleRedirects: Record<string, string> = {
   student: "/student",
 };
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const fetchSessionRole = async () => {
+  await wait(250);
+
+  const response = await fetch("/api/auth/session", { cache: "no-store" });
+  const session = await response.json().catch(() => null) as {
+    authenticated?: boolean;
+    role?: string;
+  } | null;
+
+  return session?.authenticated && session.role ? session.role : null;
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const checkedSessionRef = useRef(false);
@@ -136,19 +150,35 @@ export default function LoginPage() {
       return;
     }
 
+    if (data.session) {
+      await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+    }
+
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", data.user.id)
       .single();
 
-    if (profileError || !profile?.role) {
+    const role = profile?.role ?? await fetchSessionRole();
+
+    if (profileError && !role) {
+      console.error("Unable to load account profile after sign-in.", {
+        userId: data.user.id,
+        profileError,
+      });
+    }
+
+    if (!role || !roleRedirects[role]) {
       setError("Unable to load your account profile.");
       setLoading(false);
       return;
     }
 
-    router.replace(roleRedirects[profile.role]);
+    router.replace(roleRedirects[role]);
   };
 
   return (
