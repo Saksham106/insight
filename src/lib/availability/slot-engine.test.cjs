@@ -200,3 +200,42 @@ test("partial unavailable override splits the window around the block", () => {
     assert.equal(overlapsBlock, false, `slot at ${time} overlaps the blocked segment`);
   }
 });
+
+test("overlapping recurring rule and available override do not produce duplicate slots", () => {
+  const mondayRuleWide = {
+    ...mondayRule,
+    start_time: "09:00",
+    end_time: "17:00",
+  };
+  const slots = generateAvailabilitySlots({
+    settings,
+    rules: [mondayRuleWide],
+    overrides: [{
+      id: "override-1",
+      teacher_id: "teacher-1",
+      date: "2026-07-13",
+      start_time: "10:00",
+      end_time: "11:00",
+      timezone: "America/New_York",
+      is_available: true,
+      reason: null,
+    }],
+    busySessions: [],
+    durationMinutes: 30,
+    from: new Date("2026-07-13T00:00:00"),
+    to: new Date("2026-07-13T23:59:59"),
+    now: new Date("2026-07-12T00:00:00"),
+  });
+
+  // Verify no duplicate starts_at values
+  const startTimes = slots.map((s) => s.starts_at);
+  const uniqueStartTimes = new Set(startTimes);
+  assert.equal(uniqueStartTimes.size, slots.length, "found duplicate slot start times");
+
+  // Verify the overlapping region (10:00-11:00) is still available with expected slots
+  const times = localTimes(slots);
+  assert.ok(times.includes("10:00"));
+  assert.ok(times.includes("10:15"));
+  assert.ok(times.includes("10:30"));
+  assert.ok(times.includes("10:45"));
+});

@@ -28,10 +28,6 @@ export function intervalsOverlap(a: Interval, b: Interval): boolean {
   return a.start < b.end && b.start < a.end;
 }
 
-export function containsInterval(container: Interval, candidate: Interval): boolean {
-  return candidate.start >= container.start && candidate.end <= container.end;
-}
-
 export function eachDate(from: Date, to: Date): Date[] {
   const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
   const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
