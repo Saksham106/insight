@@ -127,6 +127,10 @@ declare
   v_start timestamptz := p_scheduled_at;
   v_end timestamptz := p_scheduled_at + make_interval(mins => p_duration_minutes);
 begin
+  if auth.uid() is distinct from p_student_id then
+    raise exception 'Not authorized to book on behalf of this student';
+  end if;
+
   select teacher_id into v_teacher_id
   from public.teacher_student_assignments
   where id = p_assignment_id
