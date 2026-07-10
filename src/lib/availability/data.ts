@@ -1,0 +1,108 @@
+import { createAdminClient } from "@/lib/supabase/admin";
+
+import type { AvailabilityOverride, AvailabilityRule, BookingSettings, BusySession } from "./types";
+
+const DEFAULT_SETTINGS: Omit<BookingSettings, "teacher_id"> = {
+  default_duration_minutes: 60,
+  allowed_durations: [30, 45, 60, 90, 120],
+  buffer_before_minutes: 0,
+  buffer_after_minutes: 0,
+  minimum_notice_hours: 12,
+  max_days_ahead: 30,
+  auto_confirm: true,
+};
+
+export async function getTeacherAvailabilityBundle(teacherId: string): Promise<{
+  settings: BookingSettings;
+  rules: AvailabilityRule[];
+  overrides: AvailabilityOverride[];
+}> {
+  const admin = createAdminClient();
+
+  const [{ data: settingsRow }, { data: rulesRows }, { data: overridesRows }] = await Promise.all([
+    admin
+      .from("teacher_booking_settings")
+      .select(
+        "teacher_id, default_duration_minutes, allowed_durations, buffer_before_minutes, buffer_after_minutes, minimum_notice_hours, max_days_ahead, auto_confirm",
+      )
+      .eq("teacher_id", teacherId)
+      .maybeSingle(),
+    admin
+      .from("teacher_availability_rules")
+      .select("id, teacher_id, weekday, start_time, end_time, timezone, is_active")
+      .eq("teacher_id", teacherId)
+      .eq("is_active", true),
+    admin
+      .from("teacher_availability_overrides")
+      .select("id, teacher_id, date, start_time, end_time, timezone, is_available, reason")
+      .eq("teacher_id", teacherId),
+  ]);
+
+  const settings: BookingSettings = settingsRow
+    ? (settingsRow as BookingSettings)
+    : { teacher_id: teacherId, ...DEFAULT_SETTINGS };
+
+  return {
+    settings,
+    rules: (rulesRows ?? []) as AvailabilityRule[],
+    overrides: (overridesRows ?? []) as AvailabilityOverride[],
+  };
+}
+
+export async function getAssignmentParticipants(assignmentId: string): Promise<{
+  assignmentId: string;
+  teacherId: string;
+  studentId: string;
+} | null> {
+  const admin = createAdminClient();
+
+  const { data } = await admin
+    .from("teacher_student_assignments")
+    .select("id, teacher_id, student_id")
+    .eq("id", assignmentId)
+    .single();
+
+  if (!data) return null;
+
+  return {
+    assignmentId: data.id as string,
+    teacherId: data.teacher_id as string,
+    studentId: data.student_id as string,
+  };
+}
+
+export async function getBusySessionsForParticipants(params: {
+  teacherId: string;
+  studentId: string;
+  from: Date;
+  to: Date;
+}): Promise<BusySession[]> {
+  const admin = createAdminClient();
+
+  // Widen the query window so sessions that start just before `from` (or end
+  // just after `to`) but still overlap the requested range aren't missed.
+  const queryFrom = new Date(params.from.getTime() - 24 * 60 * 60 * 1000);
+  const queryTo = new Date(params.to.getTime() + 24 * 60 * 60 * 1000);
+
+  const { data } = await admin
+    .from("sessions")
+    .select("id, scheduled_at, duration_minutes, status, assignment_id, assignment:assignment_id (teacher_id, student_id)")
+    .neq("status", "cancelled")
+    .gte("scheduled_at", queryFrom.toISOString())
+    .lte("scheduled_at", queryTo.toISOString());
+
+  if (!data) return [];
+
+  return data
+    .filter((session) => {
+      const assignment = Array.isArray(session.assignment) ? session.assignment[0] : session.assignment;
+      const teacherId = (assignment as { teacher_id?: string } | null)?.teacher_id;
+      const studentId = (assignment as { student_id?: string } | null)?.student_id;
+      return teacherId === params.teacherId || studentId === params.studentId;
+    })
+    .map((session) => ({
+      id: session.id as string,
+      scheduled_at: session.scheduled_at as string,
+      duration_minutes: session.duration_minutes as number,
+    }));
+}
