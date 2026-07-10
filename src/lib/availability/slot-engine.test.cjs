@@ -159,3 +159,44 @@ test("available override adds slots on a day without a recurring rule", () => {
 
   assert.deepEqual(localTimes(slots), ["14:00", "14:15", "14:30"]);
 });
+
+test("partial unavailable override splits the window around the block", () => {
+  const mondayRuleWide = {
+    ...mondayRule,
+    start_time: "09:00",
+    end_time: "17:00",
+  };
+  const slots = generateAvailabilitySlots({
+    settings,
+    rules: [mondayRuleWide],
+    overrides: [{
+      id: "override-1",
+      teacher_id: "teacher-1",
+      date: "2026-07-13",
+      start_time: "12:00",
+      end_time: "13:00",
+      timezone: "America/New_York",
+      is_available: false,
+      reason: null,
+    }],
+    busySessions: [],
+    durationMinutes: 30,
+    from: new Date("2026-07-13T00:00:00"),
+    to: new Date("2026-07-13T23:59:59"),
+    now: new Date("2026-07-12T00:00:00"),
+  });
+
+  const times = localTimes(slots);
+
+  // Slots before the block remain, including one ending exactly at the block start.
+  assert.ok(times.includes("11:30"));
+  // Slots after the block remain, including one starting exactly at the block end.
+  assert.ok(times.includes("13:00"));
+  // No slot overlaps the 12:00-13:00 blocked segment.
+  for (const time of times) {
+    const [hour, minute] = time.split(":").map(Number);
+    const minutesFromMidnight = hour * 60 + minute;
+    const overlapsBlock = minutesFromMidnight < 13 * 60 && minutesFromMidnight + 30 > 12 * 60;
+    assert.equal(overlapsBlock, false, `slot at ${time} overlaps the blocked segment`);
+  }
+});

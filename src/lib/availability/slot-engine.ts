@@ -1,7 +1,6 @@
 import type { AvailabilitySlot, GenerateSlotsInput } from "@/lib/availability/types";
 import {
   addMinutes,
-  containsInterval,
   dateKey,
   eachDate,
   intervalsOverlap,
@@ -40,22 +39,41 @@ function expandWindows(input: GenerateSlotsInput): Interval[] {
   return windows;
 }
 
+function subtractInterval(window: Interval, block: Interval): Interval[] {
+  if (!intervalsOverlap(window, block)) return [window];
+
+  const pieces: Interval[] = [];
+
+  if (block.start > window.start) {
+    pieces.push({ start: window.start, end: block.start });
+  }
+  if (block.end < window.end) {
+    pieces.push({ start: block.end, end: window.end });
+  }
+
+  return pieces.filter((piece) => piece.end.getTime() - piece.start.getTime() > 0);
+}
+
 function applyUnavailableOverrides(windows: Interval[], input: GenerateSlotsInput): Interval[] {
-  return windows.filter((window) => {
+  return windows.flatMap((window) => {
     const key = dateKey(window.start);
     const unavailable = input.overrides.filter((item) => item.date === key && !item.is_available);
 
+    let pieces: Interval[] = [window];
+
     for (const override of unavailable) {
-      if (!override.start_time || !override.end_time) return false;
+      if (!override.start_time || !override.end_time) return [];
 
       const block = {
         start: parseTimeOnDate(window.start, override.start_time),
         end: parseTimeOnDate(window.start, override.end_time),
       };
-      if (containsInterval(block, window)) return false;
+
+      pieces = pieces.flatMap((piece) => subtractInterval(piece, block));
+      if (pieces.length === 0) return [];
     }
 
-    return true;
+    return pieces;
   });
 }
 
