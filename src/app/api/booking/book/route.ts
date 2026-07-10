@@ -46,7 +46,7 @@ export async function POST(request: Request) {
 
   // Recompute availability for the target day server-side — never trust the client's slot list.
   const dayStart = new Date(scheduledDate);
-  dayStart.setUTCHours(0, 0, 0, 0);
+  dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
   const busySessions = await getBusySessionsForParticipants({
