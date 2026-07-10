@@ -5,6 +5,7 @@ import { CalendarDays, CheckCircle, Plus, UserRound, Users, X } from "lucide-rea
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { AvailabilityEditor } from "@/components/availability/availability-editor";
 import { ChatDrawer } from "@/components/chat/chat-drawer";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { ScheduleSessionForm } from "@/components/sessions/schedule-session-form";
@@ -476,6 +477,9 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
           )}
         </section>
       )}
+
+      {/* Availability editor — teacher-managed weekly hours, booking rules, and date overrides */}
+      {view === "schedule" && <AvailabilityEditor />}
 
       {/* Calendar — desktop and mobile */}
       {view === "schedule" && (
