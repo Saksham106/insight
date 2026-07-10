@@ -137,7 +137,7 @@ begin
     raise exception 'Assignment not found or inactive';
   end if;
 
-  v_lock_key := ('x' || substr(md5(v_teacher_id::text || ':' || p_scheduled_at::text), 1, 16))::bit(64)::bigint;
+  v_lock_key := ('x' || substr(md5(v_teacher_id::text), 1, 16))::bit(64)::bigint;
   perform pg_advisory_xact_lock(v_lock_key);
 
   if exists (
