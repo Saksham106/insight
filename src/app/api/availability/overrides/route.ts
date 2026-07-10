@@ -33,6 +33,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "end_time must be after start_time." }, { status: 400 });
   }
 
+  // When is_available is false, times are optional but must both be present or both be null
+  if (!is_available) {
+    const hasStartTime = start_time !== undefined && start_time !== null;
+    const hasEndTime = end_time !== undefined && end_time !== null;
+
+    // Both or neither must be provided
+    if (hasStartTime !== hasEndTime) {
+      return NextResponse.json(
+        { error: "start_time and end_time must both be provided or both be null when is_available is false." },
+        { status: 400 }
+      );
+    }
+
+    // If both are provided, validate end_time > start_time
+    if (hasStartTime && hasEndTime && !(end_time > start_time)) {
+      return NextResponse.json({ error: "end_time must be after start_time." }, { status: 400 });
+    }
+  }
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -40,8 +59,8 @@ export async function POST(request: Request) {
     .insert({
       teacher_id: profile.id,
       date,
-      start_time: is_available ? start_time : null,
-      end_time: is_available ? end_time : null,
+      start_time: start_time ?? null,
+      end_time: end_time ?? null,
       timezone,
       is_available,
       reason: reason ?? null,
