@@ -5,6 +5,7 @@ import { CalendarDays, CheckCircle, Plus, UserRound, Users, X } from "lucide-rea
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { SlotPicker } from "@/components/booking/slot-picker";
 import { ChatDrawer } from "@/components/chat/chat-drawer";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { RequestSessionForm } from "@/components/sessions/request-session-form";
@@ -473,6 +474,13 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
               </div>
             )}
           </section>
+        )}
+
+        {/* Find a time — book directly from teacher availability */}
+        {view === "schedule" && (
+          <SlotPicker
+            assignments={assignments.map((a) => ({ id: a.id, teacher: a.teacher }))}
+          />
         )}
 
         {/* Calendar — desktop and mobile */}
