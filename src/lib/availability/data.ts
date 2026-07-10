@@ -60,6 +60,7 @@ export async function getAssignmentParticipants(assignmentId: string): Promise<{
     .from("teacher_student_assignments")
     .select("id, teacher_id, student_id")
     .eq("id", assignmentId)
+    .eq("is_active", true)
     .single();
 
   if (!data) return null;
