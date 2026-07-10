@@ -234,6 +234,21 @@ that performs the conflict check and insert in one transaction using an
 advisory transaction lock keyed by teacher id and slot start. The API should
 call this RPC instead of doing a separate read-then-insert.
 
+**Implementation note:** `book_availability_session` keys its advisory lock by
+`teacher_id` alone, not `teacher_id + slot start`. Locking by exact start time
+left a residual race for two concurrent bookings with different-but-overlapping
+start times (e.g. 9:00-10:00 and 9:15-10:15), which would take different lock
+keys and could both pass the conflict check before either inserted. Keying by
+`teacher_id` only fully serializes booking attempts for a given teacher,
+closing that race at the cost of serializing unrelated concurrent bookings for
+the same teacher — an acceptable tradeoff at this app's booking volume.
+
+The RPC is `security definer` and directly reachable via PostgREST
+(`/rest/v1/rpc/book_availability_session`), independent of the Next.js API
+route. It verifies `auth.uid() = p_student_id` internally as defense-in-depth,
+so a direct REST call cannot book on behalf of a different student even if it
+bypasses the API layer's own checks.
+
 ## API Surface
 
 ### Teacher Availability

@@ -84,7 +84,7 @@
 - Produces RPC: `public.book_availability_session(p_assignment_id uuid, p_student_id uuid, p_scheduled_at timestamptz, p_duration_minutes integer, p_notes text, p_auto_confirm boolean) returns uuid`.
 - Later API code calls the RPC after independently recomputing that the slot is valid.
 
-- [ ] **Step 1: Write the migration**
+- [x] **Step 1: Write the migration**
 
 Create `supabase/migrations/20260710000001_add_teacher_availability_booking.sql`:
 
@@ -268,7 +268,7 @@ end;
 $$;
 ```
 
-- [ ] **Step 2: Apply the migration locally**
+- [x] **Step 2: Apply the migration locally**
 
 Run: `supabase db reset`
 Expected: local database resets and applies all migrations without SQL errors.
@@ -276,7 +276,7 @@ Expected: local database resets and applies all migrations without SQL errors.
 If no local Supabase is running, run: `supabase migration list`
 Expected: command succeeds enough to confirm the migration is discoverable; note in the task result that DB execution still needs a connected Supabase environment.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add supabase/migrations/20260710000001_add_teacher_availability_booking.sql
@@ -297,7 +297,7 @@ git commit -m "feat: add availability booking schema"
 - Produces `generateAvailabilitySlots(input: GenerateSlotsInput): AvailabilitySlot[]`.
 - Produces shared types consumed by API routes and UI components.
 
-- [ ] **Step 1: Create shared types**
+- [x] **Step 1: Create shared types**
 
 Create `src/lib/availability/types.ts`:
 
@@ -358,7 +358,7 @@ export interface GenerateSlotsInput {
 }
 ```
 
-- [ ] **Step 2: Create time helpers**
+- [x] **Step 2: Create time helpers**
 
 Create `src/lib/availability/time.ts`:
 
@@ -408,7 +408,7 @@ export function eachDate(from: Date, to: Date): Date[] {
 }
 ```
 
-- [ ] **Step 3: Write failing slot-engine tests**
+- [x] **Step 3: Write failing slot-engine tests**
 
 Create `src/lib/availability/slot-engine.test.cjs`:
 
@@ -541,12 +541,12 @@ test("available override adds slots on a day without a recurring rule", () => {
 });
 ```
 
-- [ ] **Step 4: Run tests and confirm failure**
+- [x] **Step 4: Run tests and confirm failure**
 
 Run: `node src/lib/availability/slot-engine.test.cjs`
 Expected: FAIL because `slot-engine.ts` does not exist yet.
 
-- [ ] **Step 5: Implement slot engine**
+- [x] **Step 5: Implement slot engine**
 
 Create `src/lib/availability/slot-engine.ts`:
 
@@ -651,7 +651,7 @@ export function generateAvailabilitySlots(input: GenerateSlotsInput): Availabili
 }
 ```
 
-- [ ] **Step 6: Run tests and type-check**
+- [x] **Step 6: Run tests and type-check**
 
 Run: `node src/lib/availability/slot-engine.test.cjs`
 Expected: PASS.
@@ -662,7 +662,7 @@ Expected: no lint errors.
 Run: `npx tsc --noEmit`
 Expected: no TypeScript errors.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/lib/availability/types.ts src/lib/availability/time.ts src/lib/availability/slot-engine.ts src/lib/availability/slot-engine.test.cjs
@@ -688,7 +688,7 @@ git commit -m "feat: add availability slot engine"
 - Produces student slot lookup and booking endpoints.
 - Consumes `generateAvailabilitySlots` from Task 2 and `book_availability_session` from Task 1.
 
-- [ ] **Step 1: Implement `src/lib/availability/data.ts`**
+- [x] **Step 1: Implement `src/lib/availability/data.ts`**
 
 Create helper functions:
 
@@ -716,7 +716,7 @@ export async function getBusySessionsForParticipants(params: {
 Use `createAdminClient()` in these helpers so slot generation can read the data
 needed for both participants while the API route performs explicit auth checks.
 
-- [ ] **Step 2: Implement settings route**
+- [x] **Step 2: Implement settings route**
 
 `GET /api/availability/settings`:
 
@@ -732,7 +732,7 @@ needed for both participants while the API route performs explicit auth checks.
 - return saved settings
 - call `revalidateTag("dashboard", "max")`
 
-- [ ] **Step 3: Implement rules routes**
+- [x] **Step 3: Implement rules routes**
 
 `POST /api/availability/rules`:
 
@@ -750,7 +750,7 @@ needed for both participants while the API route performs explicit auth checks.
 - teacher only
 - soft delete with `{ is_active: false }`
 
-- [ ] **Step 4: Implement override routes**
+- [x] **Step 4: Implement override routes**
 
 `POST /api/availability/overrides`:
 
@@ -764,7 +764,7 @@ needed for both participants while the API route performs explicit auth checks.
 - teacher only
 - delete only owned override
 
-- [ ] **Step 5: Implement slot route**
+- [x] **Step 5: Implement slot route**
 
 `GET /api/booking/slots`:
 
@@ -777,7 +777,7 @@ needed for both participants while the API route performs explicit auth checks.
 - call `generateAvailabilitySlots`
 - return `{ slots, settings: { allowed_durations, default_duration_minutes, auto_confirm } }`
 
-- [ ] **Step 6: Implement booking route**
+- [x] **Step 6: Implement booking route**
 
 `POST /api/booking/book`:
 
@@ -791,7 +791,7 @@ needed for both participants while the API route performs explicit auth checks.
 - send session email using the same data shape as `src/app/api/sessions/route.ts`
 - return `{ sessionId }`
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 Run: `npm run lint`
 Expected: no lint errors.
@@ -799,7 +799,7 @@ Expected: no lint errors.
 Run: `npx tsc --noEmit`
 Expected: no TypeScript errors.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/lib/availability/data.ts src/app/api/availability src/app/api/booking
@@ -820,7 +820,7 @@ git commit -m "feat: add availability booking APIs"
 - Consumes `/api/availability/settings`, `/api/availability/rules`, and `/api/availability/overrides`.
 - Produces an availability management section visible from the teacher schedule view.
 
-- [ ] **Step 1: Build `BookingSettingsForm`**
+- [x] **Step 1: Build `BookingSettingsForm`**
 
 Controls:
 
@@ -836,7 +836,7 @@ Submit:
 - `PUT /api/availability/settings`
 - show success or API error message
 
-- [ ] **Step 2: Build `DateOverridesList`**
+- [x] **Step 2: Build `DateOverridesList`**
 
 Controls:
 
@@ -851,7 +851,7 @@ Submit:
 - `POST /api/availability/overrides`
 - `DELETE /api/availability/overrides/[id]`
 
-- [ ] **Step 3: Build `AvailabilityEditor`**
+- [x] **Step 3: Build `AvailabilityEditor`**
 
 On mount:
 
@@ -871,21 +871,18 @@ Empty state:
 
 - "Add your first availability window so students can book from your schedule."
 
-- [ ] **Step 4: Integrate into teacher dashboard**
+- [x] **Step 4: Integrate into teacher dashboard**
 
 In `src/components/teacher/teacher-dashboard.tsx`, render `AvailabilityEditor`
 near the top of the `schedule` view, before or beside the existing monthly
 calendar. Keep the existing manual scheduling modal available for teachers.
 
-- [ ] **Step 5: Verify responsive layout**
+- [ ] **Step 5: Verify responsive layout** — SKIPPED. Live browser verification was
+  not performed (no test credentials / dev-bypass declined by human). Static
+  review (lint, tsc, thorough diff review against actual API contracts) backs
+  this task instead. Revisit if live UI verification is later wanted.
 
-Run app with `npm run dev`, open `/teacher/schedule`, and verify:
-
-- desktop: availability controls and calendar are readable
-- mobile: controls stack without overlapping text
-- add/update/delete rule flows update without full page confusion
-
-- [ ] **Step 6: Static checks and commit**
+- [x] **Step 6: Static checks and commit**
 
 Run: `npm run lint`
 Expected: no lint errors.
@@ -911,7 +908,7 @@ git commit -m "feat: add teacher availability editor"
 - Consumes `/api/booking/slots` and `/api/booking/book`.
 - Produces a "Find a time" flow on the student schedule page.
 
-- [ ] **Step 1: Build `BookSessionModal`**
+- [x] **Step 1: Build `BookSessionModal`**
 
 Props:
 
@@ -933,7 +930,7 @@ Behavior:
 - on `409`, show "That time was just booked. Pick another slot."
 - on success, call `router.refresh()` and `onBooked()`
 
-- [ ] **Step 2: Build `SlotPicker`**
+- [x] **Step 2: Build `SlotPicker`**
 
 Props:
 
@@ -955,24 +952,19 @@ Behavior:
 - empty state when no slots are returned
 - opens `BookSessionModal` when a slot is selected
 
-- [ ] **Step 3: Integrate into student dashboard**
+- [x] **Step 3: Integrate into student dashboard**
 
 In `src/components/student/student-dashboard.tsx`, render `SlotPicker` in the
 schedule view above the existing calendar/request controls. Keep the existing
 manual request form as a fallback for teachers who have not published
 availability.
 
-- [ ] **Step 4: Verify responsive layout**
+- [ ] **Step 4: Verify responsive layout** — SKIPPED. Live browser verification was
+  not performed (no test credentials / dev-bypass declined by human). Static
+  review (lint, tsc, thorough diff review against actual API contracts) backs
+  this task instead. Revisit if live UI verification is later wanted.
 
-Run app with `npm run dev`, open `/student/schedule`, and verify:
-
-- students with one teacher do not see an unnecessary teacher selector
-- students with multiple teachers can switch teacher
-- slot buttons fit on mobile
-- booking success refreshes the calendar
-- booking conflict message appears when API returns `409`
-
-- [ ] **Step 5: Static checks and commit**
+- [x] **Step 5: Static checks and commit**
 
 Run: `npm run lint`
 Expected: no lint errors.
@@ -997,7 +989,7 @@ git commit -m "feat: add student availability booking flow"
 **Interfaces:**
 - Produces final confidence that the end-to-end scheduling flow works.
 
-- [ ] **Step 1: Run automated checks**
+- [x] **Step 1: Run automated checks**
 
 Run: `node src/lib/availability/slot-engine.test.cjs`
 Expected: all tests pass.
@@ -1008,40 +1000,19 @@ Expected: no lint errors.
 Run: `npx tsc --noEmit`
 Expected: no TypeScript errors.
 
-- [ ] **Step 2: Manual teacher flow**
+- [ ] **Step 2: Manual teacher flow** — SKIPPED. The migration was applied to the
+  live "insight" Supabase project (tables/RLS/RPC confirmed present via
+  `list_tables`), but the human declined to enable the dev-auth-bypass flag
+  needed to browser-test this without real credentials. Not verified live.
 
-Log in as teacher or use the dev bypass role. Open `/teacher/schedule`.
+- [ ] **Step 3: Manual student flow** — SKIPPED, same reason as Step 2.
 
-Verify:
+- [ ] **Step 4: Manual conflict flow** — SKIPPED, same reason as Step 2. The
+  race-safety logic (advisory lock keyed by teacher_id, RPC re-check, 409
+  translation) was verified by code review, not by an actual concurrent
+  booking attempt against the live app.
 
-- add Monday availability
-- change booking settings
-- add unavailable date override
-- refresh page and confirm saved values persist
-
-- [ ] **Step 3: Manual student flow**
-
-Log in as student assigned to that teacher or use the dev bypass role. Open
-`/student/schedule`.
-
-Verify:
-
-- slots appear for the teacher's available day
-- unavailable override removes slots
-- booking a slot creates a confirmed session
-- session appears on both student and teacher calendars
-
-- [ ] **Step 4: Manual conflict flow**
-
-Attempt to book the same slot twice.
-
-Expected:
-
-- first booking succeeds
-- second booking returns `409`
-- UI says "That time was just booked. Pick another slot."
-
-- [ ] **Step 5: Commit documentation updates if any**
+- [x] **Step 5: Commit documentation updates if any**
 
 ```bash
 git add README.md docs/superpowers/specs/2026-07-10-in-app-availability-booking-design.md docs/superpowers/plans/2026-07-10-in-app-availability-booking.md
