@@ -93,10 +93,14 @@ test("expands a weekly rule into 15-minute stepped slots", () => {
 });
 
 test("removes slots overlapping busy sessions", () => {
+  const mondayRuleWide = {
+    ...mondayRule,
+    end_time: "12:00",
+  };
   const busyStart = new Date(2026, 6, 13, 9, 30).toISOString();
   const slots = generateAvailabilitySlots({
     settings,
-    rules: [mondayRule],
+    rules: [mondayRuleWide],
     overrides: [],
     busySessions: [{ id: "session-1", scheduled_at: busyStart, duration_minutes: 60 }],
     durationMinutes: 60,
