@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 
 interface DashboardHeaderProps {
   userName: string;
-  role: "admin" | "teacher" | "student";
+  role: "admin" | "teacher" | "student" | "parent";
   userId: string;
   avatarUrl?: string | null;
 }
@@ -24,6 +24,7 @@ const roleLabels: Record<DashboardHeaderProps["role"], string> = {
   admin: "Admin",
   teacher: "Teacher",
   student: "Student/Parent",
+  parent: "Parent",
 };
 
 const roleNav: Record<DashboardHeaderProps["role"], { href: string; label: string }[]> = {
@@ -44,6 +45,11 @@ const roleNav: Record<DashboardHeaderProps["role"], { href: string; label: strin
     { href: "/student/schedule", label: "Schedule" },
     { href: "/student/teachers", label: "Teachers" },
     { href: "/student/chats", label: "Chats" },
+  ],
+  parent: [
+    { href: "/parent", label: "Overview" },
+    { href: "/parent/schedule", label: "Schedule" },
+    { href: "/parent/chats", label: "Chats" },
   ],
 };
 

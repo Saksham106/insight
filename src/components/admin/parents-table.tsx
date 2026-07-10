@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { GraduationCap, Pencil } from "lucide-react";
+import { Pencil, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/empty-state";
 
@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-interface Student {
+interface Parent {
   id: string;
   full_name: string;
   email: string;
@@ -29,20 +29,20 @@ interface Student {
   password_set_at: string | null;
   auth_last_sign_in_at: string | null;
   created_at: string;
-  parentIds: string[];
+  childIds: string[];
 }
 
-interface StudentsTableProps {
-  students: Student[];
-  allParents: UserOption[];
+interface ParentsTableProps {
+  parents: Parent[];
+  allStudents: UserOption[];
 }
 
-export function StudentsTable({ students, allParents }: StudentsTableProps) {
+export function ParentsTable({ parents, allStudents }: ParentsTableProps) {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<Student | null>(null);
+  const [editing, setEditing] = useState<Parent | null>(null);
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 480px)").matches : false,
   );
@@ -54,16 +54,21 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  const colSpan = isMobile ? 3 : 4;
+  const studentNameById = useMemo(
+    () => new Map(allStudents.map((s) => [s.id, s.full_name])),
+    [allStudents],
+  );
 
-  const toggleUser = async (student: Student) => {
+  const colSpan = isMobile ? 4 : 5;
+
+  const toggleUser = async (parent: Parent) => {
     setStatus(null);
-    setLoadingId(student.id);
+    setLoadingId(parent.id);
 
     const response = await fetch("/api/admin/toggle-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: student.id, isActive: !student.is_active }),
+      body: JSON.stringify({ userId: parent.id, isActive: !parent.is_active }),
     });
 
     const data = await response.json();
@@ -79,14 +84,14 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
     router.refresh();
   };
 
-  const resendCredentials = async (student: Student) => {
+  const resendCredentials = async (parent: Parent) => {
     setStatus(null);
-    setResendingId(student.id);
+    setResendingId(parent.id);
 
     const response = await fetch("/api/admin/invite-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: student.email, fullName: student.full_name, role: "student", resend: true }),
+      body: JSON.stringify({ email: parent.email, fullName: parent.full_name, role: "parent", resend: true }),
     });
 
     const data = await response.json();
@@ -98,9 +103,9 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
     }
 
     if (data.emailError) {
-      setStatus(`Password reset for ${student.full_name}, but the email failed to send. New password: ${data.password}`);
+      setStatus(`Password reset for ${parent.full_name}, but the email failed to send. New password: ${data.password}`);
     } else {
-      setStatus(`Credentials resent to ${student.full_name}. New password: ${data.password}`);
+      setStatus(`Credentials resent to ${parent.full_name}. New password: ${data.password}`);
     }
     router.refresh();
   };
@@ -112,29 +117,40 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
+            <TableHead>Children</TableHead>
             <TableHead>Onboarding</TableHead>
             {!isMobile && <TableHead>Created</TableHead>}
             <TableHead className="text-right">Action</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {students.length === 0 && (
+          {parents.length === 0 && (
             <tr><td colSpan={colSpan} style={{ padding: "0", paddingTop: "8px" }}>
-              <EmptyState icon={GraduationCap} title="No students yet" description="Invite a student to get started." />
+              <EmptyState icon={Users} title="No parents yet" description="Invite a parent and link them to their children." />
             </td></tr>
           )}
-          {students.map((student) => {
-            const onboarding = getOnboardingStatus(student);
+          {parents.map((parent) => {
+            const onboarding = getOnboardingStatus(parent);
+            const childNames = parent.childIds
+              .map((id) => studentNameById.get(id))
+              .filter((name): name is string => Boolean(name));
 
             return (
-              <TableRow key={student.id} style={student.is_active ? undefined : { opacity: 0.55 }}>
-                <TableCell className="font-medium">{student.full_name}</TableCell>
+              <TableRow key={parent.id} style={parent.is_active ? undefined : { opacity: 0.55 }}>
+                <TableCell className="font-medium">{parent.full_name}</TableCell>
+                <TableCell>
+                  {childNames.length > 0 ? (
+                    <span className="text-sm text-foreground">{childNames.join(", ")}</span>
+                  ) : (
+                    <span className="text-sm text-muted">—</span>
+                  )}
+                </TableCell>
                 <TableCell>
                   <Badge variant={onboarding.variant}>{onboarding.label}</Badge>
                 </TableCell>
                 {!isMobile && (
                   <TableCell>
-                    {new Date(student.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                    {new Date(parent.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                   </TableCell>
                 )}
                 <TableCell className="text-right">
@@ -142,8 +158,8 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setEditing(student)}
-                      aria-label={`Edit ${student.full_name}`}
+                      onClick={() => setEditing(parent)}
+                      aria-label={`Edit ${parent.full_name}`}
                       style={{ display: "flex", alignItems: "center", padding: "0 10px" }}
                     >
                       <Pencil size={14} />
@@ -152,23 +168,23 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => resendCredentials(student)}
-                        disabled={resendingId === student.id}
+                        onClick={() => resendCredentials(parent)}
+                        disabled={resendingId === parent.id}
                       >
-                        {resendingId === student.id ? "Resending..." : "Resend"}
+                        {resendingId === parent.id ? "Resending..." : "Resend"}
                       </Button>
                     ) : null}
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => toggleUser(student)}
-                      disabled={loadingId === student.id}
+                      onClick={() => toggleUser(parent)}
+                      disabled={loadingId === parent.id}
                     >
-                      {student.is_active ? "Disable" : "Enable"}
+                      {parent.is_active ? "Disable" : "Enable"}
                     </Button>
                     <DeleteUserButton
-                      userId={student.id}
-                      userName={student.full_name}
+                      userId={parent.id}
+                      userName={parent.full_name}
                       onError={setStatus}
                       onDeleted={setStatus}
                     />
@@ -183,10 +199,10 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
       {editing && (
         <EditUserModal
           user={{ id: editing.id, full_name: editing.full_name }}
-          role="student"
-          relationTitle="Linked parents"
-          relationOptions={allParents}
-          initialRelationIds={editing.parentIds}
+          role="parent"
+          relationTitle="Linked children"
+          relationOptions={allStudents}
+          initialRelationIds={editing.childIds}
           onClose={() => setEditing(null)}
         />
       )}

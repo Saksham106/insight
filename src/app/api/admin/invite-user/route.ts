@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  if (!["teacher", "student", "admin"].includes(role)) {
+  if (!["teacher", "student", "admin", "parent"].includes(role)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
 

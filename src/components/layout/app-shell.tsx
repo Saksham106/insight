@@ -6,7 +6,7 @@ import { TimezoneSync } from "@/components/layout/timezone-sync";
 
 interface AppShellProps {
   userName: string;
-  role: "admin" | "teacher" | "student";
+  role: "admin" | "teacher" | "student" | "parent";
   userId: string;
   avatarUrl?: string | null;
   children: React.ReactNode;
