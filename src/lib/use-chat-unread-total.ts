@@ -54,19 +54,20 @@ export function useChatUnreadTotal(userId: string, role: "admin" | "teacher" | "
     void compute();
   }, [convIds, userId, supabase]);
 
-  // Realtime: bump total on new incoming messages
+  // Realtime: one channel for all conversations (RLS already scopes events to
+  // rows this user can see); per-conversation channels churn realtime.subscription.
   useEffect(() => {
     if (convIds.length === 0) return;
+    const idSet = new Set(convIds);
     const uid = Math.random().toString(36).slice(2);
-    const channels = convIds.map((conversationId) =>
-      supabase
-        .channel(`hdr-unread-${userId}-${conversationId}-${uid}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, (payload) => {
-          if (payload.new.sender_id !== userId) setTotal((prev) => prev + 1);
-        })
-        .subscribe(),
-    );
-    return () => { channels.forEach((c) => { void supabase.removeChannel(c); }); };
+    const channel = supabase
+      .channel(`hdr-unread-${userId}-${uid}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+        const convId = payload.new.conversation_id as string;
+        if (idSet.has(convId) && payload.new.sender_id !== userId) setTotal((prev) => prev + 1);
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
   }, [convIds, userId, supabase]);
 
   // Listen for mark-read events dispatched by the drawer to decrement total

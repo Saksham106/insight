@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CalendarDays, CheckCircle, Plus, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -359,9 +359,9 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
     .slice(0, 3);
 
   const conversationId = selected?.conversation?.[0]?.id;
-  const chatContacts = assignments
+  const chatContacts = useMemo(() => assignments
     .filter((a) => a.conversation?.[0]?.id)
-    .map((a) => ({ conversationId: a.conversation![0].id, name: a.teacher?.full_name ?? "Teacher" }));
+    .map((a) => ({ conversationId: a.conversation![0].id, name: a.teacher?.full_name ?? "Teacher" })), [assignments]);
   const { unread: chatUnread, total: totalUnread } = useUnreadCounts(chatContacts, studentId);
   const copy = viewCopy[view];
 

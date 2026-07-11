@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CalendarDays, MessageSquare, Users } from "lucide-react";
 
 import { ChatDrawer } from "@/components/chat/chat-drawer";
@@ -60,14 +60,14 @@ export function ParentDashboard({ childProfiles, parentId, view = "overview" }: 
   const copy = viewCopy[view];
 
   // Flatten every conversation across all children into chat contacts.
-  const chatContacts = childProfiles.flatMap((child) =>
+  const chatContacts = useMemo(() => childProfiles.flatMap((child) =>
     child.assignments
       .filter((a) => a.conversation?.[0]?.id)
       .map((a) => ({
         conversationId: a.conversation![0].id,
         name: contactName(a.teacher?.full_name ?? "Teacher", child.full_name),
       })),
-  );
+  ), [childProfiles]);
   const { unread: chatUnread, total: totalUnread } = useUnreadCounts(chatContacts, parentId);
 
   // All sessions across all children, tagged with teacher name for the calendar.

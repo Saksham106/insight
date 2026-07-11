@@ -26,11 +26,16 @@ export function useUnreadCounts(contacts: ChatContact[], currentUserId: string) 
   const supabase = useMemo(() => createClient(), []);
   const [unread, setUnread] = useState<Record<string, number>>({});
 
+  // Callers often rebuild the contacts array every render; key effects on the ID set,
+  // not the array reference, so they only refire when membership actually changes.
+  const convKey = contacts.map((c) => c.conversationId).sort().join(",");
+
   const computeAll = useCallback(async () => {
-    if (contacts.length === 0) return;
+    const ids = convKey ? convKey.split(",") : [];
+    if (ids.length === 0) return;
     const counts: Record<string, number> = {};
     await Promise.all(
-      contacts.map(async ({ conversationId }) => {
+      ids.map(async (conversationId) => {
         const lastRead = getLastRead(currentUserId, conversationId);
         let q = supabase
           .from("messages")
@@ -43,26 +48,27 @@ export function useUnreadCounts(contacts: ChatContact[], currentUserId: string) 
       }),
     );
     setUnread(counts);
-  }, [contacts, currentUserId, supabase]);
+  }, [convKey, currentUserId, supabase]);
 
   useEffect(() => { void computeAll(); }, [computeAll]);
 
-  // Realtime: bump counts on new incoming messages
+  // Realtime: one channel for all conversations (RLS already scopes events to
+  // rows this user can see); per-conversation channels churn realtime.subscription.
   useEffect(() => {
-    if (contacts.length === 0) return;
+    const idSet = new Set(convKey ? convKey.split(",") : []);
+    if (idSet.size === 0) return;
     const uid = Math.random().toString(36).slice(2);
-    const channels = contacts.map(({ conversationId }) =>
-      supabase
-        .channel(`unread-${currentUserId}-${conversationId}-${uid}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, (payload) => {
-          if (payload.new.sender_id !== currentUserId) {
-            setUnread((prev) => ({ ...prev, [conversationId]: (prev[conversationId] ?? 0) + 1 }));
-          }
-        })
-        .subscribe(),
-    );
-    return () => { channels.forEach((c) => { void supabase.removeChannel(c); }); };
-  }, [contacts, currentUserId, supabase]);
+    const channel = supabase
+      .channel(`unread-${currentUserId}-${uid}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+        const convId = payload.new.conversation_id as string;
+        if (idSet.has(convId) && payload.new.sender_id !== currentUserId) {
+          setUnread((prev) => ({ ...prev, [convId]: (prev[convId] ?? 0) + 1 }));
+        }
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [convKey, currentUserId, supabase]);
 
   const markAsRead = useCallback((conversationId: string) => {
     markRead(currentUserId, conversationId);
