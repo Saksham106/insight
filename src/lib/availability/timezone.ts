@@ -57,7 +57,7 @@ export function zoneOffsetMinutes(instant: Date, timeZone: string): number {
   // The wall-clock time in the zone, reinterpreted as if it were UTC.
   const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, 0, 0);
   // Round to the minute to erase the sub-minute remainder of `instant`.
-  const instantMinutes = Math.round(instant.getTime() / 60000) * 60000;
+  const instantMinutes = Math.floor(instant.getTime() / 60000) * 60000;
   return Math.round((asUtc - instantMinutes) / 60000);
 }
 
@@ -66,27 +66,30 @@ function pad(n: number): string {
 }
 
 // Resolve a wall-clock date+time in a zone to the correct UTC instant.
-// Two-pass offset correction handles DST boundaries. Gap times resolve forward;
-// ambiguous fall-back times resolve to the earlier (first) occurrence.
+// Probe the zone offset a day before and a day after the target wall time; on a
+// DST-transition day these differ and bracket the two candidate offsets. A
+// candidate instant is "real" if reinterpreting it in the zone reproduces the
+// requested wall clock. Ambiguous fall-back times (both candidates real) resolve
+// to the EARLIER instant; nonexistent spring-forward gap times (neither real)
+// resolve FORWARD past the transition.
 export function zonedTimeToUtc(dateKey: string, time: string, timeZone: string): Date {
   const [y, mo, d] = dateKey.split("-").map(Number);
   const [h, mi] = time.split(":").map(Number);
   const naiveUtc = Date.UTC(y, mo - 1, d, h, mi, 0, 0);
 
-  // First guess: treat the wall clock as UTC, then subtract the offset that the
-  // zone has at that guessed instant.
-  const guess = new Date(naiveUtc);
-  const offset1 = zoneOffsetMinutes(guess, timeZone);
-  const candidate1 = new Date(naiveUtc - offset1 * 60000);
+  const offBefore = zoneOffsetMinutes(new Date(naiveUtc - 86_400_000), timeZone);
+  const offAfter = zoneOffsetMinutes(new Date(naiveUtc + 86_400_000), timeZone);
+  if (offBefore === offAfter) return new Date(naiveUtc - offBefore * 60000);
 
-  // Re-derive the offset at the candidate. If a DST boundary changed it, correct
-  // once more. Taking the max of the two candidates yields the earlier local
-  // occurrence for fall-back overlaps and pushes gap times forward.
-  const offset2 = zoneOffsetMinutes(candidate1, timeZone);
-  if (offset2 === offset1) return candidate1;
+  const candBefore = naiveUtc - offBefore * 60000;
+  const candAfter = naiveUtc - offAfter * 60000;
+  const beforeValid = zoneOffsetMinutes(new Date(candBefore), timeZone) === offBefore;
+  const afterValid = zoneOffsetMinutes(new Date(candAfter), timeZone) === offAfter;
 
-  const candidate2 = new Date(naiveUtc - offset2 * 60000);
-  return new Date(Math.max(candidate1.getTime(), candidate2.getTime()));
+  if (beforeValid && afterValid) return new Date(Math.min(candBefore, candAfter)); // fall-back: earlier
+  if (beforeValid) return new Date(candBefore);
+  if (afterValid) return new Date(candAfter);
+  return new Date(Math.max(candBefore, candAfter)); // spring-forward gap: resolve forward
 }
 
 export function dateKeyInZone(instant: Date, timeZone: string): string {

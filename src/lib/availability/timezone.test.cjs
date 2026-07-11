@@ -115,3 +115,19 @@ test("dateKeysInZone: inclusive span across two zone-local days", () => {
 test("weekdayInZone: 2026-07-14 is Tuesday", () => {
   assert.equal(weekdayInZone("2026-07-14", "America/Toronto"), 2);
 });
+
+test("zonedTimeToUtc: fall-back in a non-negative-offset zone resolves to the earlier instant", () => {
+  // Europe/London DST ends 2026-10-25; 01:30 occurs twice. Earlier is BST (UTC+1) = 00:30Z.
+  assert.equal(zonedTimeToUtc("2026-10-25", "01:30", "Europe/London").toISOString(), "2026-10-25T00:30:00.000Z");
+});
+
+test("zonedTimeToUtc: spring-forward gap in Europe/London resolves forward", () => {
+  // Europe/London DST starts 2026-03-29; clocks jump 01:00->02:00 local, so 01:30 is skipped.
+  // Both raw candidates land at 01:30Z; forward resolution keeps 01:30Z (now BST).
+  assert.equal(zonedTimeToUtc("2026-03-29", "01:30", "Europe/London").toISOString(), "2026-03-29T01:30:00.000Z");
+});
+
+test("zoneOffsetMinutes: correct for an instant with seconds >= 30", () => {
+  // Sub-minute seconds must not shift the offset; Toronto stays UTC-4 in July.
+  assert.equal(zoneOffsetMinutes(new Date("2026-07-14T16:00:45Z"), "America/Toronto"), -240);
+});
