@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { AvailabilitySlot } from "@/lib/availability/types";
+import { WeekGrid, type WeekGridBlock } from "@/components/calendar/week-grid";
 
 import { BookSessionModal } from "./book-session-modal";
 
@@ -16,6 +17,7 @@ interface SlotPickerProps {
     id: string;
     teacher: { id: string; full_name: string } | null;
   }>;
+  singleAssignmentId?: string;
 }
 
 interface SlotsResponse {
@@ -24,7 +26,9 @@ interface SlotsResponse {
     allowed_durations: number[];
     default_duration_minutes: number;
     auto_confirm: boolean;
+    slot_increment_minutes: number;
   };
+  timezone?: string;
 }
 
 function startOfWeek(date: Date) {
@@ -65,9 +69,9 @@ function formatDayLabel(key: string) {
   return key === todayKey ? `Today, ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : label;
 }
 
-export function SlotPicker({ assignments }: SlotPickerProps) {
+export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps) {
   const isMobile = useMediaQuery("(max-width: 768px)");
-  const [assignmentId, setAssignmentId] = useState(assignments[0]?.id ?? "");
+  const [assignmentId, setAssignmentId] = useState(singleAssignmentId ?? assignments[0]?.id ?? "");
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [duration, setDuration] = useState<number | null>(null);
   const [allowedDurations, setAllowedDurations] = useState<number[]>([]);
@@ -76,6 +80,9 @@ export function SlotPicker({ assignments }: SlotPickerProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [slotIncrement, setSlotIncrement] = useState(30);
+  const [teacherTimeZone, setTeacherTimeZone] = useState<string | null>(null);
 
   const selectedAssignment = assignments.find((a) => a.id === assignmentId) ?? null;
 
@@ -112,6 +119,8 @@ export function SlotPicker({ assignments }: SlotPickerProps) {
       setSlots(response.slots);
       setAllowedDurations(response.settings.allowed_durations);
       if (!duration) setDuration(response.settings.default_duration_minutes);
+      setSlotIncrement(response.settings.slot_increment_minutes);
+      setTeacherTimeZone((data as { timezone?: string }).timezone ?? null);
       setLoading(false);
     })();
 
@@ -121,6 +130,17 @@ export function SlotPicker({ assignments }: SlotPickerProps) {
   }, [assignmentId, weekStart, duration, refreshKey]);
 
   const dayGroups = groupSlotsByDay(slots);
+
+  const gridBlocks: WeekGridBlock[] = slots.map((s) => {
+    const start = new Date(s.starts_at);
+    return {
+      id: s.starts_at,
+      start,
+      end: new Date(s.ends_at),
+      variant: "slot",
+      label: start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+    };
+  });
 
   if (assignments.length === 0) return null;
 
@@ -176,7 +196,7 @@ export function SlotPicker({ assignments }: SlotPickerProps) {
             flexWrap: "wrap",
           }}
         >
-          {assignments.length > 1 && (
+          {assignments.length > 1 && !singleAssignmentId && (
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: "180px" }}>
               <Label>Teacher</Label>
               <select
@@ -233,6 +253,11 @@ export function SlotPicker({ assignments }: SlotPickerProps) {
             >
               <ChevronRight style={{ height: "16px", width: "16px" }} />
             </Button>
+            {!isMobile && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setViewMode((v) => (v === "grid" ? "list" : "grid"))}>
+                {viewMode === "grid" ? "List" : "Grid"}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -245,11 +270,23 @@ export function SlotPicker({ assignments }: SlotPickerProps) {
           <EmptyState
             icon={CalendarClock}
             title="No open times this week"
-            description="Try another week or request a session manually below."
+            description="This teacher has no open times this week. Try another week, or request another time below."
           />
         )}
 
-        {!loading && !error && dayGroups.length > 0 && (
+        {!loading && !error && !isMobile && viewMode === "grid" && dayGroups.length > 0 && (
+          <WeekGrid
+            weekStart={weekStart}
+            blocks={gridBlocks}
+            snapMinutes={slotIncrement}
+            onBlockClick={(b) => {
+              const slot = slots.find((s) => s.starts_at === b.id);
+              if (slot) setSelectedSlot(slot);
+            }}
+          />
+        )}
+
+        {!loading && !error && (isMobile || viewMode === "list") && dayGroups.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             {dayGroups.map(([dayKey, daySlots]) => (
               <div key={dayKey} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
