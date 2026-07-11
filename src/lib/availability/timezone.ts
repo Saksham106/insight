@@ -56,7 +56,8 @@ export function zoneOffsetMinutes(instant: Date, timeZone: string): number {
   const p = utcToZonedParts(instant, timeZone);
   // The wall-clock time in the zone, reinterpreted as if it were UTC.
   const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, 0, 0);
-  // Round to the minute to erase the sub-minute remainder of `instant`.
+  // Floor to the minute to erase the sub-minute remainder of `instant`, matching
+  // the floored minute field that formatToParts returns.
   const instantMinutes = Math.floor(instant.getTime() / 60000) * 60000;
   return Math.round((asUtc - instantMinutes) / 60000);
 }
