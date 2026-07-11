@@ -68,6 +68,33 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "auto_confirm must be a boolean." }, { status: 400 });
   }
 
+  const { availability_mode, open_day_start, open_day_end, timezone, slot_increment_minutes } = body;
+
+  if (availability_mode !== "open" && availability_mode !== "restricted") {
+    return NextResponse.json({ error: "availability_mode must be 'open' or 'restricted'." }, { status: 400 });
+  }
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+  if (typeof open_day_start !== "string" || !TIME_RE.test(open_day_start) ||
+      typeof open_day_end !== "string" || !TIME_RE.test(open_day_end)) {
+    return NextResponse.json({ error: "open_day_start and open_day_end must be HH:MM times." }, { status: 400 });
+  }
+  if (!(open_day_end > open_day_start)) {
+    return NextResponse.json({ error: "open_day_end must be after open_day_start." }, { status: 400 });
+  }
+  if (![15, 30, 60].includes(slot_increment_minutes)) {
+    return NextResponse.json({ error: "slot_increment_minutes must be 15, 30, or 60." }, { status: 400 });
+  }
+  if (timezone !== null && timezone !== undefined) {
+    if (typeof timezone !== "string") {
+      return NextResponse.json({ error: "timezone must be a string or null." }, { status: 400 });
+    }
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    } catch {
+      return NextResponse.json({ error: "timezone is not a valid IANA zone." }, { status: 400 });
+    }
+  }
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -81,9 +108,14 @@ export async function PUT(request: Request) {
       minimum_notice_hours,
       max_days_ahead,
       auto_confirm,
+      availability_mode,
+      open_day_start,
+      open_day_end,
+      timezone: timezone ?? null,
+      slot_increment_minutes,
     })
     .select(
-      "teacher_id, default_duration_minutes, allowed_durations, buffer_before_minutes, buffer_after_minutes, minimum_notice_hours, max_days_ahead, auto_confirm",
+      "teacher_id, default_duration_minutes, allowed_durations, buffer_before_minutes, buffer_after_minutes, minimum_notice_hours, max_days_ahead, auto_confirm, availability_mode, open_day_start, open_day_end, timezone, slot_increment_minutes",
     )
     .single();
 

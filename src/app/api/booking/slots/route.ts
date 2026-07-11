@@ -5,6 +5,8 @@ import {
   getAssignmentParticipants,
   getBusySessionsForParticipants,
   getTeacherAvailabilityBundle,
+  getTeacherProfileTimezone,
+  resolveTeacherTimeZone,
 } from "@/lib/availability/data";
 import { generateAvailabilitySlots } from "@/lib/availability/slot-engine";
 
@@ -40,6 +42,9 @@ export async function GET(request: Request) {
 
   const bundle = await getTeacherAvailabilityBundle(participants.teacherId);
 
+  const profileTz = await getTeacherProfileTimezone(participants.teacherId);
+  const teacherTimeZone = resolveTeacherTimeZone(bundle.settings, profileTz);
+
   const durationMinutes = durationParam ? Number(durationParam) : bundle.settings.default_duration_minutes;
   if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
     return NextResponse.json({ error: "duration_minutes must be a positive number." }, { status: 400 });
@@ -61,14 +66,17 @@ export async function GET(request: Request) {
     from,
     to,
     now: new Date(),
+    teacherTimeZone,
   });
 
   return NextResponse.json({
     slots,
+    timezone: teacherTimeZone,
     settings: {
       allowed_durations: bundle.settings.allowed_durations,
       default_duration_minutes: bundle.settings.default_duration_minutes,
       auto_confirm: bundle.settings.auto_confirm,
+      slot_increment_minutes: bundle.settings.slot_increment_minutes,
     },
   });
 }

@@ -6,6 +6,8 @@ import {
   getAssignmentParticipants,
   getBusySessionsForParticipants,
   getTeacherAvailabilityBundle,
+  getTeacherProfileTimezone,
+  resolveTeacherTimeZone,
 } from "@/lib/availability/data";
 import { generateAvailabilitySlots } from "@/lib/availability/slot-engine";
 import { sendSessionEmail } from "@/lib/email";
@@ -44,16 +46,19 @@ export async function POST(request: Request) {
 
   const bundle = await getTeacherAvailabilityBundle(participants.teacherId);
 
-  // Recompute availability for the target day server-side — never trust the client's slot list.
-  const dayStart = new Date(scheduledDate);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  const profileTz = await getTeacherProfileTimezone(participants.teacherId);
+  const teacherTimeZone = resolveTeacherTimeZone(bundle.settings, profileTz);
+
+  // Recompute a window one day wider on each side, in the teacher's zone, so a
+  // slot near a zone/day boundary is never dropped from the validation set.
+  const from = new Date(scheduledDate.getTime() - 24 * 60 * 60 * 1000);
+  const to = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000);
 
   const busySessions = await getBusySessionsForParticipants({
     teacherId: participants.teacherId,
     studentId: participants.studentId,
-    from: dayStart,
-    to: dayEnd,
+    from,
+    to,
   });
 
   const slots = generateAvailabilitySlots({
@@ -62,9 +67,10 @@ export async function POST(request: Request) {
     overrides: bundle.overrides,
     busySessions,
     durationMinutes: duration_minutes,
-    from: dayStart,
-    to: dayEnd,
+    from,
+    to,
     now: new Date(),
+    teacherTimeZone,
   });
 
   const matchesSlot = slots.some((slot) => slot.starts_at === scheduledDate.toISOString());

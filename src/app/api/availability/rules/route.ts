@@ -29,6 +29,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "timezone is required." }, { status: 400 });
   }
 
+  const rule_type = body.rule_type ?? "available";
+  if (rule_type !== "available" && rule_type !== "blocked") {
+    return NextResponse.json({ error: "rule_type must be 'available' or 'blocked'." }, { status: 400 });
+  }
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -39,8 +44,9 @@ export async function POST(request: Request) {
       start_time,
       end_time,
       timezone,
+      rule_type,
     })
-    .select("id, teacher_id, weekday, start_time, end_time, timezone, is_active")
+    .select("id, teacher_id, weekday, start_time, end_time, timezone, is_active, rule_type")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

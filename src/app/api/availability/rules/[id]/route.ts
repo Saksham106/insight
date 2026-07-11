@@ -35,6 +35,12 @@ export async function PATCH(
   if (end_time !== undefined) updatePayload.end_time = end_time;
   if (timezone !== undefined) updatePayload.timezone = timezone;
   if (is_active !== undefined) updatePayload.is_active = is_active;
+  if (body.rule_type !== undefined) {
+    if (body.rule_type !== "available" && body.rule_type !== "blocked") {
+      return NextResponse.json({ error: "rule_type must be 'available' or 'blocked'." }, { status: 400 });
+    }
+    updatePayload.rule_type = body.rule_type;
+  }
 
   const supabase = await createClient();
 
@@ -43,7 +49,7 @@ export async function PATCH(
     .update(updatePayload)
     .eq("id", id)
     .eq("teacher_id", profile.id)
-    .select("id, teacher_id, weekday, start_time, end_time, timezone, is_active")
+    .select("id, teacher_id, weekday, start_time, end_time, timezone, is_active, rule_type")
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
