@@ -10,6 +10,11 @@ const DEFAULT_SETTINGS: Omit<BookingSettings, "teacher_id"> = {
   minimum_notice_hours: 12,
   max_days_ahead: 30,
   auto_confirm: true,
+  availability_mode: "open",
+  open_day_start: "08:00",
+  open_day_end: "20:00",
+  timezone: null,
+  slot_increment_minutes: 30,
 };
 
 export async function getTeacherAvailabilityBundle(teacherId: string): Promise<{
@@ -23,7 +28,7 @@ export async function getTeacherAvailabilityBundle(teacherId: string): Promise<{
     admin
       .from("teacher_booking_settings")
       .select(
-        "teacher_id, default_duration_minutes, allowed_durations, buffer_before_minutes, buffer_after_minutes, minimum_notice_hours, max_days_ahead, auto_confirm",
+        "teacher_id, default_duration_minutes, allowed_durations, buffer_before_minutes, buffer_after_minutes, minimum_notice_hours, max_days_ahead, auto_confirm, availability_mode, open_day_start, open_day_end, timezone, slot_increment_minutes",
       )
       .eq("teacher_id", teacherId)
       .maybeSingle(),
@@ -106,4 +111,21 @@ export async function getBusySessionsForParticipants(params: {
       scheduled_at: session.scheduled_at as string,
       duration_minutes: session.duration_minutes as number,
     }));
+}
+
+export function resolveTeacherTimeZone(
+  settings: BookingSettings,
+  profileTimezone: string | null,
+): string {
+  return settings.timezone ?? profileTimezone ?? "UTC";
+}
+
+export async function getTeacherProfileTimezone(teacherId: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("timezone")
+    .eq("id", teacherId)
+    .single();
+  return (data as { timezone: string | null } | null)?.timezone ?? null;
 }
