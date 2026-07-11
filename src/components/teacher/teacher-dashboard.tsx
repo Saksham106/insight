@@ -479,7 +479,7 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
       )}
 
       {/* Availability editor — teacher-managed weekly hours, booking rules, and date overrides */}
-      {view === "schedule" && <AvailabilityEditor />}
+      {view === "schedule" && <AvailabilityEditor sessions={calendarSessions} />}
 
       {/* Calendar — desktop and mobile */}
       {view === "schedule" && (

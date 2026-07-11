@@ -4,10 +4,12 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { TimePicker } from "@/components/ui/time-picker";
 import type { BookingSettings } from "@/lib/availability/types";
 
 interface BookingSettingsFormProps {
   settings: BookingSettings;
+  rulesCount?: number;
   onSaved: (settings: BookingSettings) => void;
 }
 
@@ -18,7 +20,7 @@ function toNumber(value: string) {
   return Number.isNaN(n) ? 0 : n;
 }
 
-export function BookingSettingsForm({ settings, onSaved }: BookingSettingsFormProps) {
+export function BookingSettingsForm({ settings, rulesCount = 0, onSaved }: BookingSettingsFormProps) {
   const [defaultDuration, setDefaultDuration] = useState(settings.default_duration_minutes);
   const [allowedDurations, setAllowedDurations] = useState<number[]>(settings.allowed_durations);
   const [bufferBefore, setBufferBefore] = useState(settings.buffer_before_minutes);
@@ -26,6 +28,11 @@ export function BookingSettingsForm({ settings, onSaved }: BookingSettingsFormPr
   const [minimumNotice, setMinimumNotice] = useState(settings.minimum_notice_hours);
   const [maxDaysAhead, setMaxDaysAhead] = useState(settings.max_days_ahead);
   const [autoConfirm, setAutoConfirm] = useState(settings.auto_confirm);
+  const [availabilityMode, setAvailabilityMode] = useState(settings.availability_mode);
+  const [openDayStart, setOpenDayStart] = useState(settings.open_day_start.slice(0, 5));
+  const [openDayEnd, setOpenDayEnd] = useState(settings.open_day_end.slice(0, 5));
+  const [slotIncrement, setSlotIncrement] = useState(settings.slot_increment_minutes);
+  const [timezone] = useState(settings.timezone);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -50,6 +57,14 @@ export function BookingSettingsForm({ settings, onSaved }: BookingSettingsFormPr
       setError("Default duration must be one of the allowed durations.");
       return;
     }
+    if (availabilityMode === "open" && !(openDayEnd > openDayStart)) {
+      setError("Open hours end must be after the start.");
+      return;
+    }
+    if (availabilityMode === "restricted" && rulesCount === 0) {
+      setError("Students cannot book any time. Add an available window or switch to Open by default.");
+      return;
+    }
 
     setLoading(true);
     const res = await fetch("/api/availability/settings", {
@@ -63,6 +78,11 @@ export function BookingSettingsForm({ settings, onSaved }: BookingSettingsFormPr
         minimum_notice_hours: minimumNotice,
         max_days_ahead: maxDaysAhead,
         auto_confirm: autoConfirm,
+        availability_mode: availabilityMode,
+        open_day_start: openDayStart,
+        open_day_end: openDayEnd,
+        timezone,
+        slot_increment_minutes: slotIncrement,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -90,6 +110,39 @@ export function BookingSettingsForm({ settings, onSaved }: BookingSettingsFormPr
 
   return (
     <form style={{ display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={handleSubmit}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <Label>Booking model</Label>
+        <label style={{ display: "flex", gap: "8px", alignItems: "flex-start", cursor: "pointer" }}>
+          <input type="radio" name="availability_mode" checked={availabilityMode === "open"} onChange={() => { setAvailabilityMode("open"); setSuccess(false); }} />
+          <span className="text-sm text-foreground"><strong>Open by default</strong> — students can book any time in your open hours except the blocks you add.</span>
+        </label>
+        <label style={{ display: "flex", gap: "8px", alignItems: "flex-start", cursor: "pointer" }}>
+          <input type="radio" name="availability_mode" checked={availabilityMode === "restricted"} onChange={() => { setAvailabilityMode("restricted"); setSuccess(false); }} />
+          <span className="text-sm text-foreground"><strong>Specific hours only</strong> — students can book only the hours you mark available.</span>
+        </label>
+      </div>
+
+      {availabilityMode === "open" && (
+        <div className="form-grid-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <Label>Open hours start</Label>
+            <TimePicker value={openDayStart} onChange={(v) => { setOpenDayStart(v); setSuccess(false); }} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <Label>Open hours end</Label>
+            <TimePicker value={openDayEnd} onChange={(v) => { setOpenDayEnd(v); setSuccess(false); }} />
+          </div>
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <Label htmlFor="slot-increment">Slot spacing</Label>
+        <select id="slot-increment" value={slotIncrement} onChange={(e) => { setSlotIncrement(toNumber(e.target.value)); setSuccess(false); }} style={inputStyle}>
+          <option value={15}>Every 15 minutes</option>
+          <option value={30}>Every 30 minutes</option>
+          <option value={60}>Every hour</option>
+        </select>
+      </div>
+
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <Label>Allowed session lengths</Label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
