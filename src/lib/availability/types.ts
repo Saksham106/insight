@@ -7,6 +7,11 @@ export interface BookingSettings {
   minimum_notice_hours: number;
   max_days_ahead: number;
   auto_confirm: boolean;
+  availability_mode: "open" | "restricted";
+  open_day_start: string; // "HH:MM" or "HH:MM:SS"
+  open_day_end: string;
+  timezone: string | null;
+  slot_increment_minutes: number;
 }
 
 export interface AvailabilityRule {
@@ -17,6 +22,7 @@ export interface AvailabilityRule {
   end_time: string;
   timezone: string;
   is_active: boolean;
+  rule_type: "available" | "blocked";
 }
 
 export interface AvailabilityOverride {
@@ -51,4 +57,5 @@ export interface GenerateSlotsInput {
   from: Date;
   to: Date;
   now: Date;
+  teacherTimeZone: string;
 }
