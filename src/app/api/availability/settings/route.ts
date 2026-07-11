@@ -2,7 +2,11 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
-import { getTeacherAvailabilityBundle } from "@/lib/availability/data";
+import {
+  getTeacherAvailabilityBundle,
+  getTeacherProfileTimezone,
+  resolveTeacherTimeZone,
+} from "@/lib/availability/data";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -13,8 +17,13 @@ export async function GET() {
   }
 
   const bundle = await getTeacherAvailabilityBundle(profile.id);
+  const profileTz = await getTeacherProfileTimezone(profile.id);
 
-  return NextResponse.json(bundle);
+  // The exact zone the slot engine will interpret this teacher's wall-clock
+  // times in, so the editor can warn when the browser zone differs from it.
+  const resolvedTimezone = resolveTeacherTimeZone(bundle.settings, profileTz);
+
+  return NextResponse.json({ ...bundle, resolvedTimezone });
 }
 
 export async function PUT(request: Request) {
