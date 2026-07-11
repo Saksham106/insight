@@ -10,6 +10,7 @@ import { ChatDrawer } from "@/components/chat/chat-drawer";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { RequestSessionForm } from "@/components/sessions/request-session-form";
 import { SessionCard, type Session } from "@/components/sessions/session-card";
+import { WeekCalendar } from "@/components/sessions/week-calendar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
@@ -318,6 +319,7 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
   const [showBooking, setShowBooking] = useState(false);
   const [requestDate, setRequestDate] = useState<Date | null>(null);
   const [chatInitialId, setChatInitialId] = useState<string | null>(null);
+  const [calendarMode, setCalendarMode] = useState<"month" | "week">("month");
   const isMobile = useMediaQuery("(max-width: 768px)");
   const isNarrow = useMediaQuery("(max-width: 480px)");
 
@@ -521,22 +523,35 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
                   </p>
                 </div>
               </div>
-              <Button
-                onClick={() => setRequestDate(new Date())}
-                disabled={assignments.length === 0}
-                style={{ display: "flex", alignItems: "center", gap: "6px", width: isMobile ? "100%" : undefined }}
-              >
-                <Plus style={{ height: "16px", width: "16px" }} />
-                Request session
-              </Button>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: isMobile ? "wrap" : undefined }}>
+                <div style={{ display: "flex", gap: "4px" }}>
+                  <Button size="sm" variant={calendarMode === "month" ? "default" : "outline"} onClick={() => setCalendarMode("month")}>Month</Button>
+                  <Button size="sm" variant={calendarMode === "week" ? "default" : "outline"} onClick={() => setCalendarMode("week")}>Week</Button>
+                </div>
+                <Button
+                  onClick={() => setRequestDate(new Date())}
+                  disabled={assignments.length === 0}
+                  style={{ display: "flex", alignItems: "center", gap: "6px", width: isMobile ? "100%" : undefined }}
+                >
+                  <Plus style={{ height: "16px", width: "16px" }} />
+                  Request session
+                </Button>
+              </div>
             </div>
-            <MonthCalendar
-              sessions={calendarSessions}
-              onDateDoubleClick={setRequestDate}
-              currentUserId={studentId}
-              role="student"
-              hint={isMobile ? undefined : "Double-click a date to request a session"}
-            />
+            {calendarMode === "month" ? (
+              <MonthCalendar
+                sessions={calendarSessions}
+                onDateDoubleClick={setRequestDate}
+                currentUserId={studentId}
+                role="student"
+                hint={isMobile ? undefined : "Double-click a date to request a session"}
+              />
+            ) : (
+              <WeekCalendar
+                sessions={calendarSessions}
+                onSlotSelect={(start) => setRequestDate(start)}
+              />
+            )}
           </section>
         )}
 

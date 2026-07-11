@@ -10,6 +10,7 @@ import { ChatDrawer } from "@/components/chat/chat-drawer";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { ScheduleSessionForm } from "@/components/sessions/schedule-session-form";
 import { SessionCard, type Session } from "@/components/sessions/session-card";
+import { WeekCalendar } from "@/components/sessions/week-calendar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
@@ -319,6 +320,7 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date | null>(null);
   const [chatInitialId, setChatInitialId] = useState<string | null>(null);
+  const [calendarMode, setCalendarMode] = useState<"month" | "week">("month");
   const isMobile = useMediaQuery("(max-width: 768px)");
   const isNarrow = useMediaQuery("(max-width: 480px)");
 
@@ -518,22 +520,32 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
                 </p>
               </div>
             </div>
-            <Button
-              onClick={() => setScheduleDate(new Date())}
-              disabled={assignments.length === 0}
-              style={{ display: "flex", alignItems: "center", gap: "6px", width: isMobile ? "100%" : undefined }}
-            >
-              <Plus style={{ height: "16px", width: "16px" }} />
-              Schedule session
-            </Button>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: isMobile ? "wrap" : undefined }}>
+              <div style={{ display: "flex", gap: "4px" }}>
+                <Button size="sm" variant={calendarMode === "month" ? "default" : "outline"} onClick={() => setCalendarMode("month")}>Month</Button>
+                <Button size="sm" variant={calendarMode === "week" ? "default" : "outline"} onClick={() => setCalendarMode("week")}>Week</Button>
+              </div>
+              <Button
+                onClick={() => setScheduleDate(new Date())}
+                disabled={assignments.length === 0}
+                style={{ display: "flex", alignItems: "center", gap: "6px", width: isMobile ? "100%" : undefined }}
+              >
+                <Plus style={{ height: "16px", width: "16px" }} />
+                Schedule session
+              </Button>
+            </div>
           </div>
-          <MonthCalendar
-            sessions={calendarSessions}
-            onDateDoubleClick={setScheduleDate}
-            currentUserId={teacherId}
-            role="teacher"
-            hint={isMobile ? undefined : "Double-click a date to schedule a session"}
-          />
+          {calendarMode === "month" ? (
+            <MonthCalendar
+              sessions={calendarSessions}
+              onDateDoubleClick={setScheduleDate}
+              currentUserId={teacherId}
+              role="teacher"
+              hint={isMobile ? undefined : "Double-click a date to schedule a session"}
+            />
+          ) : (
+            <WeekCalendar sessions={calendarSessions} onSlotSelect={(start) => setScheduleDate(start)} />
+          )}
         </section>
       )}
 
