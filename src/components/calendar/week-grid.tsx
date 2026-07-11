@@ -195,6 +195,10 @@ export function WeekGrid({
                       }}
                       onPointerMove={onPointerMove}
                       onPointerUp={(ev) => {
+                        // Non-interactive blocks (readOnly, or the whole grid in
+                        // view-only mode) are handled by the native onClick below;
+                        // returning here avoids firing onBlockClick twice per click.
+                        if (!interactive) return;
                         ev.stopPropagation();
                         if (!dragMoved) { onBlockClick?.(b); setDraft(null); }
                         else commit();
