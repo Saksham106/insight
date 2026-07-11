@@ -315,6 +315,7 @@ function QuickRequestModal({
 export function StudentDashboard({ assignments, studentId, view = "overview" }: StudentDashboardProps) {
   const [selectedId, setSelectedId] = useState<string>(assignments[0]?.id ?? "");
   const [showRequest, setShowRequest] = useState(false);
+  const [showBooking, setShowBooking] = useState(false);
   const [requestDate, setRequestDate] = useState<Date | null>(null);
   const [chatInitialId, setChatInitialId] = useState<string | null>(null);
   const isMobile = useMediaQuery("(max-width: 768px)");
@@ -569,6 +570,7 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
                       onClick={() => {
                         setSelectedId(a.id);
                         setShowRequest(false);
+                        setShowBooking(false);
                       }}
                       style={{
                         display: "flex",
@@ -630,11 +632,19 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <Button
                         size="sm"
-                        variant={showRequest ? "default" : "outline"}
-                        onClick={() => setShowRequest((v) => !v)}
+                        variant={showBooking ? "default" : "outline"}
+                        onClick={() => { setShowBooking((v) => !v); setShowRequest(false); }}
                         style={{ display: "flex", alignItems: "center", gap: "6px" }}
                       >
-                        {showRequest ? "Close form" : "Request session"}
+                        {showBooking ? "Close" : "Book a time"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { setShowRequest((v) => !v); setShowBooking(false); }}
+                        style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                      >
+                        {showRequest ? "Close" : "Request another time"}
                       </Button>
                       {conversationId && (
                         <Button
@@ -652,6 +662,14 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
                       )}
                     </div>
                   </div>
+
+                  {/* Booking slot picker — toggled */}
+                  {showBooking && (
+                    <SlotPicker
+                      assignments={[{ id: selected.id, teacher: selected.teacher }]}
+                      singleAssignmentId={selected.id}
+                    />
+                  )}
 
                   {/* Request form — toggled */}
                   {showRequest && (
