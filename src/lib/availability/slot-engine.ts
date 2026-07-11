@@ -1,4 +1,4 @@
-import type { AvailabilityRule, AvailabilitySlot, GenerateSlotsInput } from "@/lib/availability/types";
+import type { AvailabilitySlot, GenerateSlotsInput } from "@/lib/availability/types";
 import { addMinutes, intervalsOverlap, type Interval } from "@/lib/availability/time";
 import {
   dateKeysInZone,
