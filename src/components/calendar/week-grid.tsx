@@ -90,7 +90,9 @@ export function WeekGrid({
 
   function beginCreate(e: React.PointerEvent<HTMLDivElement>, dayIdx: number) {
     if (!editable) return;
-    if ((e.target as HTMLElement).dataset.block) return; // started on a block
+    // closest() so a pointerdown on a block's label text (not just the block div
+    // itself) still counts as "started on a block" and doesn't open a create draft.
+    if ((e.target as HTMLElement).closest("[data-block]")) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const startMin = pointerMinutes(e.clientY, e.currentTarget);
     setDragMoved(false);
@@ -208,6 +210,7 @@ export function WeekGrid({
                         position: "absolute", top: `${top}px`, height: `${height}px`, left: "3px", right: "3px",
                         borderRadius: "6px", borderWidth: "1px", borderStyle: "solid", padding: "3px 6px", overflow: "hidden",
                         cursor: interactive ? "grab" : (onBlockClick ? "pointer" : "default"),
+                        touchAction: "none",
                         ...style,
                       }}
                     >
@@ -217,11 +220,11 @@ export function WeekGrid({
                         <>
                           <div
                             onPointerDown={(ev) => { ev.stopPropagation(); (ev.target as HTMLElement).setPointerCapture(ev.pointerId); setDragMoved(false); setDraft({ kind: "resize", id: b.id, dayIdx, startMin: s, endMin: e, edge: "top" }); }}
-                            style={{ position: "absolute", top: 0, left: 0, right: 0, height: "7px", cursor: "ns-resize" }}
+                            style={{ position: "absolute", top: 0, left: 0, right: 0, height: "7px", cursor: "ns-resize", touchAction: "none" }}
                           />
                           <div
                             onPointerDown={(ev) => { ev.stopPropagation(); (ev.target as HTMLElement).setPointerCapture(ev.pointerId); setDragMoved(false); setDraft({ kind: "resize", id: b.id, dayIdx, startMin: s, endMin: e, edge: "bottom" }); }}
-                            style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "7px", cursor: "ns-resize" }}
+                            style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "7px", cursor: "ns-resize", touchAction: "none" }}
                           />
                         </>
                       )}
