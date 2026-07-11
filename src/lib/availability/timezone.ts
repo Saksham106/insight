@@ -1,0 +1,116 @@
+// Dependency-free wall-clock <-> instant conversion built on Intl.DateTimeFormat.
+// Every availability rule and override stores its own IANA timezone; this module
+// is the single place that interprets those wall-clock strings as real instants.
+
+const partsCache = new Map<string, Intl.DateTimeFormat>();
+
+function formatterFor(timeZone: string): Intl.DateTimeFormat {
+  let fmt = partsCache.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      weekday: "short",
+    });
+    partsCache.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+interface ZonedParts {
+  year: number;
+  month: number; // 1-based
+  day: number;
+  hour: number;
+  minute: number;
+  weekday: number; // 0 = Sunday
+}
+
+export function utcToZonedParts(instant: Date, timeZone: string): ZonedParts {
+  const parts = formatterFor(timeZone).formatToParts(instant);
+  const lookup = (type: string) => parts.find((p) => p.type === type)?.value ?? "0";
+  let hour = parseInt(lookup("hour"), 10);
+  if (hour === 24) hour = 0; // some engines emit "24" for midnight
+  return {
+    year: parseInt(lookup("year"), 10),
+    month: parseInt(lookup("month"), 10),
+    day: parseInt(lookup("day"), 10),
+    hour,
+    minute: parseInt(lookup("minute"), 10),
+    weekday: WEEKDAY_INDEX[lookup("weekday")] ?? 0,
+  };
+}
+
+// Minutes east of UTC for a given instant in a zone.
+export function zoneOffsetMinutes(instant: Date, timeZone: string): number {
+  const p = utcToZonedParts(instant, timeZone);
+  // The wall-clock time in the zone, reinterpreted as if it were UTC.
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, 0, 0);
+  // Round to the minute to erase the sub-minute remainder of `instant`.
+  const instantMinutes = Math.round(instant.getTime() / 60000) * 60000;
+  return Math.round((asUtc - instantMinutes) / 60000);
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+// Resolve a wall-clock date+time in a zone to the correct UTC instant.
+// Two-pass offset correction handles DST boundaries. Gap times resolve forward;
+// ambiguous fall-back times resolve to the earlier (first) occurrence.
+export function zonedTimeToUtc(dateKey: string, time: string, timeZone: string): Date {
+  const [y, mo, d] = dateKey.split("-").map(Number);
+  const [h, mi] = time.split(":").map(Number);
+  const naiveUtc = Date.UTC(y, mo - 1, d, h, mi, 0, 0);
+
+  // First guess: treat the wall clock as UTC, then subtract the offset that the
+  // zone has at that guessed instant.
+  const guess = new Date(naiveUtc);
+  const offset1 = zoneOffsetMinutes(guess, timeZone);
+  const candidate1 = new Date(naiveUtc - offset1 * 60000);
+
+  // Re-derive the offset at the candidate. If a DST boundary changed it, correct
+  // once more. Taking the max of the two candidates yields the earlier local
+  // occurrence for fall-back overlaps and pushes gap times forward.
+  const offset2 = zoneOffsetMinutes(candidate1, timeZone);
+  if (offset2 === offset1) return candidate1;
+
+  const candidate2 = new Date(naiveUtc - offset2 * 60000);
+  return new Date(Math.max(candidate1.getTime(), candidate2.getTime()));
+}
+
+export function dateKeyInZone(instant: Date, timeZone: string): string {
+  const p = utcToZonedParts(instant, timeZone);
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+}
+
+export function dateKeysInZone(from: Date, to: Date, timeZone: string): string[] {
+  const keys: string[] = [];
+  const startKey = dateKeyInZone(from, timeZone);
+  const endKey = dateKeyInZone(to, timeZone);
+  // Walk day by day using noon UTC anchors to avoid DST-edge skips.
+  const [sy, sm, sd] = startKey.split("-").map(Number);
+  let cursor = Date.UTC(sy, sm - 1, sd, 12, 0, 0, 0);
+  for (let guard = 0; guard < 400; guard++) {
+    const key = dateKeyInZone(new Date(cursor), timeZone);
+    keys.push(key);
+    if (key >= endKey) break;
+    cursor += 24 * 60 * 60 * 1000;
+  }
+  return keys;
+}
+
+export function weekdayInZone(dateKey: string, timeZone: string): number {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return utcToZonedParts(new Date(Date.UTC(y, m - 1, d, 12, 0, 0, 0)), timeZone).weekday;
+}
