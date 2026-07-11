@@ -209,3 +209,17 @@ test("honors the teacher timezone: Toronto 08:00 envelope starts at 12:00 UTC in
   const first = slots.find((s) => s.starts_at.startsWith("2026-07-14"));
   assert.equal(first.starts_at, "2026-07-14T12:00:00.000Z");
 });
+
+test("slot starts are aligned to the window regardless of now's seconds", () => {
+  const base = {
+    settings: baseSettings, rules: [], overrides: [], busySessions: [],
+    durationMinutes: 60, teacherTimeZone: "UTC",
+    from: new Date("2026-07-14T00:00:00Z"), to: new Date("2026-07-15T00:00:00Z"),
+  };
+  const a = generateAvailabilitySlots({ ...base, now: new Date("2026-07-14T00:00:00.000Z") });
+  const b = generateAvailabilitySlots({ ...base, now: new Date("2026-07-14T00:00:37.512Z") });
+  // Every slot starts on a clean 30-min boundary (no stray seconds/millis).
+  for (const s of a) assert.ok(s.starts_at.endsWith(":00.000Z"), `unaligned: ${s.starts_at}`);
+  // And the sub-minute jitter in `now` doesn't change the slot set.
+  assert.deepEqual(a.map(s => s.starts_at), b.map(s => s.starts_at));
+});

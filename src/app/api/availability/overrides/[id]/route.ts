@@ -24,6 +24,13 @@ export async function PATCH(
     }
     updatePayload.date = date;
   }
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+  if (start_time !== undefined && start_time !== null && (typeof start_time !== "string" || !TIME_RE.test(start_time))) {
+    return NextResponse.json({ error: "start_time must be an HH:MM time." }, { status: 400 });
+  }
+  if (end_time !== undefined && end_time !== null && (typeof end_time !== "string" || !TIME_RE.test(end_time))) {
+    return NextResponse.json({ error: "end_time must be an HH:MM time." }, { status: 400 });
+  }
   if (start_time !== undefined) updatePayload.start_time = start_time;
   if (end_time !== undefined) updatePayload.end_time = end_time;
   if (is_available !== undefined) {

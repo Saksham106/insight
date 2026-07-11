@@ -139,6 +139,13 @@ export function AvailabilityCalendar({ settings, rules, overrides, sessions, tim
 
   const weekLabel = `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${addDays(weekStart, 6).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 
+  function hourOf(t: string) { return parseInt(t.split(":")[0], 10); }
+  const envStart = hourOf(settings.open_day_start);
+  const envEnd = Math.min(24, hourOf(settings.open_day_end) + (settings.open_day_end.slice(3, 5) === "00" ? 0 : 1));
+  const blockHours = blocks.flatMap((b) => [b.start.getHours(), b.end.getHours() + (b.end.getMinutes() > 0 ? 1 : 0)]);
+  const dayStartHour = Math.max(0, Math.min(envStart, ...blockHours, 8));
+  const dayEndHour = Math.min(24, Math.max(envEnd, ...blockHours, 20));
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -158,6 +165,8 @@ export function AvailabilityCalendar({ settings, rules, overrides, sessions, tim
       <WeekGrid
         weekStart={weekStart}
         blocks={blocks}
+        dayStartHour={dayStartHour}
+        dayEndHour={dayEndHour}
         editable
         onCreate={(start, end) => createRule(start, end)}
         onUpdate={(id, start, end) => updateBlock(id, start, end)}

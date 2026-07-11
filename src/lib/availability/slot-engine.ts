@@ -134,12 +134,12 @@ export function generateAvailabilitySlots(input: GenerateSlotsInput): Availabili
     const windows = subtractBlocks(base, blocks);
 
     for (const window of windows) {
-      const windowStart = new Date(Math.max(window.start.getTime(), rangeStart.getTime()));
       for (
-        let start = windowStart;
+        let start = new Date(window.start);
         addMinutes(start, input.durationMinutes) <= window.end;
         start = addMinutes(start, step)
       ) {
+        if (start < rangeStart) continue;
         const candidate = { start, end: addMinutes(start, input.durationMinutes) };
         if (candidate.end > rangeEnd) continue;
         if (busy.some((b) => intervalsOverlap(b, candidate))) continue;

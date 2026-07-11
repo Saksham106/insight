@@ -142,6 +142,13 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
     };
   });
 
+  const slotHours = slots.flatMap((s) => {
+    const st = new Date(s.starts_at); const en = new Date(s.ends_at);
+    return [st.getHours(), en.getHours() + (en.getMinutes() > 0 ? 1 : 0)];
+  });
+  const gridDayStart = slotHours.length ? Math.max(0, Math.min(...slotHours, 8)) : 8;
+  const gridDayEnd = slotHours.length ? Math.min(24, Math.max(...slotHours, 20)) : 20;
+
   if (assignments.length === 0) return null;
 
   return (
@@ -278,6 +285,8 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
           <WeekGrid
             weekStart={weekStart}
             blocks={gridBlocks}
+            dayStartHour={gridDayStart}
+            dayEndHour={gridDayEnd}
             snapMinutes={slotIncrement}
             onBlockClick={(b) => {
               const slot = slots.find((s) => s.starts_at === b.id);

@@ -34,7 +34,7 @@ export async function getTeacherAvailabilityBundle(teacherId: string): Promise<{
       .maybeSingle(),
     admin
       .from("teacher_availability_rules")
-      .select("id, teacher_id, weekday, start_time, end_time, timezone, is_active")
+      .select("id, teacher_id, weekday, start_time, end_time, timezone, is_active, rule_type")
       .eq("teacher_id", teacherId)
       .eq("is_active", true),
     admin
