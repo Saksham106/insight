@@ -210,16 +210,26 @@ test("honors the teacher timezone: Toronto 08:00 envelope starts at 12:00 UTC in
   assert.equal(first.starts_at, "2026-07-14T12:00:00.000Z");
 });
 
-test("slot starts are aligned to the window regardless of now's seconds", () => {
+test("slot starts stay window-aligned when minimum notice pushes rangeStart mid-window", () => {
+  // minimum_notice_hours drives rangeStart INTO the 08:00-20:00 envelope. The old
+  // engine anchored stepping to rangeStart, leaking now's seconds into every slot
+  // start (e.g. 10:00:37); the new engine anchors to the window start and only
+  // filters early candidates, so starts stay on clean 30-min boundaries and are
+  // independent of now's sub-minute value. This case FAILS on the pre-fix anchor.
   const base = {
-    settings: baseSettings, rules: [], overrides: [], busySessions: [],
+    settings: { ...baseSettings, minimum_notice_hours: 2 },
+    rules: [], overrides: [], busySessions: [],
     durationMinutes: 60, teacherTimeZone: "UTC",
     from: new Date("2026-07-14T00:00:00Z"), to: new Date("2026-07-15T00:00:00Z"),
   };
-  const a = generateAvailabilitySlots({ ...base, now: new Date("2026-07-14T00:00:00.000Z") });
-  const b = generateAvailabilitySlots({ ...base, now: new Date("2026-07-14T00:00:37.512Z") });
-  // Every slot starts on a clean 30-min boundary (no stray seconds/millis).
+  // now 08:00:37 + 2h notice => rangeStart 10:00:37 (inside the envelope).
+  const a = generateAvailabilitySlots({ ...base, now: new Date("2026-07-14T08:00:37.512Z") });
+  const b = generateAvailabilitySlots({ ...base, now: new Date("2026-07-14T08:00:52.004Z") });
+  assert.ok(a.length > 0);
+  // Every slot is on a clean minute boundary — would be :37/:52 under the old anchor.
   for (const s of a) assert.ok(s.starts_at.endsWith(":00.000Z"), `unaligned: ${s.starts_at}`);
-  // And the sub-minute jitter in `now` doesn't change the slot set.
-  assert.deepEqual(a.map(s => s.starts_at), b.map(s => s.starts_at));
+  // 10:00 is before rangeStart (10:00:37) so it's dropped; 10:30 is the first kept slot.
+  assert.equal(a[0].starts_at, "2026-07-14T10:30:00.000Z");
+  // Sub-minute jitter in `now` doesn't change the slot set.
+  assert.deepEqual(a.map((s) => s.starts_at), b.map((s) => s.starts_at));
 });
