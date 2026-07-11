@@ -49,14 +49,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 
 const { generateAvailabilitySlots } = require(path.join(__dirname, "slot-engine.ts"));
 
-function localTimes(slots) {
-  return slots.map((slot) => {
-    const date = new Date(slot.starts_at);
-    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-  });
-}
-
-const settings = {
+const baseSettings = {
   teacher_id: "teacher-1",
   default_duration_minutes: 60,
   allowed_durations: [30, 60],
@@ -65,177 +58,154 @@ const settings = {
   minimum_notice_hours: 0,
   max_days_ahead: 30,
   auto_confirm: true,
+  availability_mode: "open",
+  open_day_start: "08:00",
+  open_day_end: "20:00",
+  timezone: "UTC",
+  slot_increment_minutes: 30,
 };
 
-const mondayRule = {
-  id: "rule-1",
-  teacher_id: "teacher-1",
-  weekday: 1,
-  start_time: "09:00",
-  end_time: "11:00",
-  timezone: "America/New_York",
-  is_active: true,
-};
+// A single UTC day. Slot starts are asserted as HH:MM in UTC.
+function utcTimes(slots) {
+  return slots.map((s) => s.starts_at.slice(11, 16));
+}
 
-test("expands a weekly rule into 15-minute stepped slots", () => {
+const JUL14 = { from: new Date("2026-07-14T00:00:00Z"), to: new Date("2026-07-15T00:00:00Z"), now: new Date("2026-07-01T00:00:00Z") };
+
+test("open mode with no rules is bookable across the envelope", () => {
   const slots = generateAvailabilitySlots({
-    settings,
-    rules: [mondayRule],
-    overrides: [],
-    busySessions: [],
-    durationMinutes: 60,
-    from: new Date("2026-07-13T00:00:00"),
-    to: new Date("2026-07-13T23:59:59"),
-    now: new Date("2026-07-12T00:00:00"),
+    settings: baseSettings, rules: [], overrides: [], busySessions: [],
+    durationMinutes: 60, teacherTimeZone: "UTC", ...JUL14,
   });
-
-  assert.deepEqual(localTimes(slots), ["09:00", "09:15", "09:30", "09:45", "10:00"]);
+  const times = utcTimes(slots);
+  assert.equal(times[0], "08:00");            // envelope start
+  assert.equal(times.includes("19:00"), true); // last 60-min slot fits (ends 20:00)
+  assert.equal(times.includes("19:30"), false); // would end 20:30, past envelope
+  assert.equal(times.includes("07:30"), false); // before envelope
 });
 
-test("removes slots overlapping busy sessions", () => {
-  const mondayRuleWide = {
-    ...mondayRule,
-    end_time: "12:00",
-  };
-  const busyStart = new Date(2026, 6, 13, 9, 30).toISOString();
+test("open mode: slot_increment_minutes controls slot starts", () => {
   const slots = generateAvailabilitySlots({
-    settings,
-    rules: [mondayRuleWide],
-    overrides: [],
-    busySessions: [{ id: "session-1", scheduled_at: busyStart, duration_minutes: 60 }],
-    durationMinutes: 60,
-    from: new Date("2026-07-13T00:00:00"),
-    to: new Date("2026-07-13T23:59:59"),
-    now: new Date("2026-07-12T00:00:00"),
+    settings: { ...baseSettings, slot_increment_minutes: 60 },
+    rules: [], overrides: [], busySessions: [],
+    durationMinutes: 60, teacherTimeZone: "UTC", ...JUL14,
   });
-
-  assert.deepEqual(localTimes(slots), ["10:30", "10:45", "11:00"]);
+  assert.deepEqual(utcTimes(slots).slice(0, 3), ["08:00", "09:00", "10:00"]);
 });
 
-test("full-day unavailable override removes the day", () => {
+test("open mode: a blocked weekly rule carves a hole", () => {
+  // 2026-07-14 is a Tuesday (weekday 2).
   const slots = generateAvailabilitySlots({
-    settings,
-    rules: [mondayRule],
-    overrides: [{
-      id: "override-1",
-      teacher_id: "teacher-1",
-      date: "2026-07-13",
-      start_time: null,
-      end_time: null,
-      timezone: "America/New_York",
-      is_available: false,
-      reason: null,
-    }],
-    busySessions: [],
-    durationMinutes: 60,
-    from: new Date("2026-07-13T00:00:00"),
-    to: new Date("2026-07-13T23:59:59"),
-    now: new Date("2026-07-12T00:00:00"),
+    settings: baseSettings,
+    rules: [{ id: "r1", teacher_id: "teacher-1", weekday: 2, start_time: "12:00", end_time: "13:00", timezone: "UTC", is_active: true, rule_type: "blocked" }],
+    overrides: [], busySessions: [],
+    durationMinutes: 30, teacherTimeZone: "UTC", ...JUL14,
   });
+  const times = utcTimes(slots);
+  assert.equal(times.includes("11:30"), true);  // ends 12:00, ok
+  assert.equal(times.includes("12:00"), false); // inside block
+  assert.equal(times.includes("12:30"), false); // inside block
+  assert.equal(times.includes("13:00"), true);  // block end, ok
+});
 
+test("open mode: untimed unavailable override clears the whole day", () => {
+  const slots = generateAvailabilitySlots({
+    settings: baseSettings, rules: [],
+    overrides: [{ id: "o1", teacher_id: "teacher-1", date: "2026-07-14", start_time: null, end_time: null, timezone: "UTC", is_available: false, reason: null }],
+    busySessions: [], durationMinutes: 60, teacherTimeZone: "UTC", ...JUL14,
+  });
   assert.equal(slots.length, 0);
 });
 
-test("available override adds slots on a day without a recurring rule", () => {
+test("open mode: available override adds a window outside the envelope", () => {
   const slots = generateAvailabilitySlots({
-    settings,
-    rules: [],
-    overrides: [{
-      id: "override-1",
-      teacher_id: "teacher-1",
-      date: "2026-07-14",
-      start_time: "14:00",
-      end_time: "15:00",
-      timezone: "America/New_York",
-      is_available: true,
-      reason: null,
-    }],
-    busySessions: [],
-    durationMinutes: 30,
-    from: new Date("2026-07-14T00:00:00"),
-    to: new Date("2026-07-14T23:59:59"),
-    now: new Date("2026-07-12T00:00:00"),
+    settings: baseSettings, rules: [],
+    overrides: [{ id: "o1", teacher_id: "teacher-1", date: "2026-07-14", start_time: "06:00", end_time: "07:00", timezone: "UTC", is_available: true, reason: null }],
+    busySessions: [], durationMinutes: 30, teacherTimeZone: "UTC", ...JUL14,
   });
-
-  assert.deepEqual(localTimes(slots), ["14:00", "14:15", "14:30"]);
+  const times = utcTimes(slots);
+  assert.equal(times.includes("06:00"), true);
+  assert.equal(times.includes("06:30"), true);
 });
 
-test("partial unavailable override splits the window around the block", () => {
-  const mondayRuleWide = {
-    ...mondayRule,
-    start_time: "09:00",
-    end_time: "17:00",
-  };
+test("blocked rule beats an available override on the same range", () => {
   const slots = generateAvailabilitySlots({
-    settings,
-    rules: [mondayRuleWide],
-    overrides: [{
-      id: "override-1",
-      teacher_id: "teacher-1",
-      date: "2026-07-13",
-      start_time: "12:00",
-      end_time: "13:00",
-      timezone: "America/New_York",
-      is_available: false,
-      reason: null,
-    }],
-    busySessions: [],
-    durationMinutes: 30,
-    from: new Date("2026-07-13T00:00:00"),
-    to: new Date("2026-07-13T23:59:59"),
-    now: new Date("2026-07-12T00:00:00"),
+    settings: baseSettings,
+    rules: [{ id: "r1", teacher_id: "teacher-1", weekday: 2, start_time: "10:00", end_time: "11:00", timezone: "UTC", is_active: true, rule_type: "blocked" }],
+    overrides: [{ id: "o1", teacher_id: "teacher-1", date: "2026-07-14", start_time: "10:00", end_time: "11:00", timezone: "UTC", is_available: true, reason: null }],
+    busySessions: [], durationMinutes: 30, teacherTimeZone: "UTC", ...JUL14,
   });
-
-  const times = localTimes(slots);
-
-  // Slots before the block remain, including one ending exactly at the block start.
-  assert.ok(times.includes("11:30"));
-  // Slots after the block remain, including one starting exactly at the block end.
-  assert.ok(times.includes("13:00"));
-  // No slot overlaps the 12:00-13:00 blocked segment.
-  for (const time of times) {
-    const [hour, minute] = time.split(":").map(Number);
-    const minutesFromMidnight = hour * 60 + minute;
-    const overlapsBlock = minutesFromMidnight < 13 * 60 && minutesFromMidnight + 30 > 12 * 60;
-    assert.equal(overlapsBlock, false, `slot at ${time} overlaps the blocked segment`);
-  }
+  const times = utcTimes(slots);
+  assert.equal(times.includes("10:00"), false);
+  assert.equal(times.includes("10:30"), false);
 });
 
-test("overlapping recurring rule and available override do not produce duplicate slots", () => {
-  const mondayRuleWide = {
-    ...mondayRule,
-    start_time: "09:00",
-    end_time: "17:00",
-  };
+test("restricted mode with no rules yields nothing", () => {
   const slots = generateAvailabilitySlots({
-    settings,
-    rules: [mondayRuleWide],
-    overrides: [{
-      id: "override-1",
-      teacher_id: "teacher-1",
-      date: "2026-07-13",
-      start_time: "10:00",
-      end_time: "11:00",
-      timezone: "America/New_York",
-      is_available: true,
-      reason: null,
-    }],
-    busySessions: [],
-    durationMinutes: 30,
-    from: new Date("2026-07-13T00:00:00"),
-    to: new Date("2026-07-13T23:59:59"),
-    now: new Date("2026-07-12T00:00:00"),
+    settings: { ...baseSettings, availability_mode: "restricted" },
+    rules: [], overrides: [], busySessions: [],
+    durationMinutes: 60, teacherTimeZone: "UTC", ...JUL14,
   });
+  assert.equal(slots.length, 0);
+});
 
-  // Verify no duplicate starts_at values
-  const startTimes = slots.map((s) => s.starts_at);
-  const uniqueStartTimes = new Set(startTimes);
-  assert.equal(uniqueStartTimes.size, slots.length, "found duplicate slot start times");
+test("restricted mode honors an available rule", () => {
+  const slots = generateAvailabilitySlots({
+    settings: { ...baseSettings, availability_mode: "restricted" },
+    rules: [{ id: "r1", teacher_id: "teacher-1", weekday: 2, start_time: "09:00", end_time: "11:00", timezone: "UTC", is_active: true, rule_type: "available" }],
+    overrides: [], busySessions: [],
+    durationMinutes: 60, teacherTimeZone: "UTC", ...JUL14,
+  });
+  assert.deepEqual(utcTimes(slots), ["09:00", "09:30", "10:00"]);
+});
 
-  // Verify the overlapping region (10:00-11:00) is still available with expected slots
-  const times = localTimes(slots);
-  assert.ok(times.includes("10:00"));
-  assert.ok(times.includes("10:15"));
-  assert.ok(times.includes("10:30"));
-  assert.ok(times.includes("10:45"));
+test("busy sessions block overlapping slots with buffers", () => {
+  const slots = generateAvailabilitySlots({
+    settings: { ...baseSettings, buffer_after_minutes: 15 },
+    rules: [], overrides: [],
+    busySessions: [{ id: "s1", scheduled_at: "2026-07-14T10:00:00Z", duration_minutes: 60 }],
+    durationMinutes: 30, teacherTimeZone: "UTC", ...JUL14,
+  });
+  const times = utcTimes(slots);
+  assert.equal(times.includes("09:30"), true); // ends exactly at 10:00 (buffer_before=0) — adjacent, not overlapping
+  assert.equal(times.includes("10:00"), false);
+  assert.equal(times.includes("11:00"), false); // inside 15-min after-buffer (ends 11:15)
+  assert.equal(times.includes("11:30"), true);  // clear of buffer
+});
+
+test("minimum notice removes near-term slots", () => {
+  const slots = generateAvailabilitySlots({
+    settings: { ...baseSettings, minimum_notice_hours: 12 },
+    rules: [], overrides: [], busySessions: [],
+    durationMinutes: 60, teacherTimeZone: "UTC",
+    from: new Date("2026-07-14T00:00:00Z"), to: new Date("2026-07-15T00:00:00Z"),
+    now: new Date("2026-07-14T09:00:00Z"), // +12h = 21:00, past the envelope
+  });
+  assert.equal(slots.length, 0);
+});
+
+test("max days ahead clamps the range", () => {
+  const slots = generateAvailabilitySlots({
+    settings: { ...baseSettings, max_days_ahead: 1 },
+    rules: [], overrides: [], busySessions: [],
+    durationMinutes: 60, teacherTimeZone: "UTC",
+    from: new Date("2026-07-14T00:00:00Z"), to: new Date("2026-07-20T00:00:00Z"),
+    now: new Date("2026-07-14T00:00:00Z"),
+  });
+  // Only Jul 14 (now+1 day) is in range.
+  const days = new Set(slots.map((s) => s.starts_at.slice(0, 10)));
+  assert.deepEqual([...days], ["2026-07-14"]);
+});
+
+test("honors the teacher timezone: Toronto 08:00 envelope starts at 12:00 UTC in July", () => {
+  const slots = generateAvailabilitySlots({
+    settings: { ...baseSettings, timezone: "America/Toronto" },
+    rules: [], overrides: [], busySessions: [],
+    durationMinutes: 60, teacherTimeZone: "America/Toronto",
+    from: new Date("2026-07-14T00:00:00Z"), to: new Date("2026-07-16T00:00:00Z"),
+    now: new Date("2026-07-01T00:00:00Z"),
+  });
+  // First Toronto slot of Jul 14 is 08:00 EDT = 12:00Z.
+  const first = slots.find((s) => s.starts_at.startsWith("2026-07-14"));
+  assert.equal(first.starts_at, "2026-07-14T12:00:00.000Z");
 });
