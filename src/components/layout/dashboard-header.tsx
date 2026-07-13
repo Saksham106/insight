@@ -61,7 +61,7 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { notifications, unreadCount, markAllRead } = useNotifications(userId);
-  const chatUnread = useChatUnreadTotal(userId, role);
+  const chatUnread = useChatUnreadTotal();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click

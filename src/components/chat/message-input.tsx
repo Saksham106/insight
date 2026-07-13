@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Paperclip, Send, X } from "lucide-react";
 
+import { compressImage } from "@/lib/chat-attachments";
 import { containsContactInfo } from "@/lib/validators/contact-info";
 import { createClient } from "@/lib/supabase/client";
 
@@ -71,15 +72,17 @@ export function MessageInput({ conversationId, onSend, disabled }: MessageInputP
     let attachment: FileAttachment | null = null;
     if (file) {
       const supabase = createClient();
-      const path = `${conversationId}/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage.from("chat-attachments").upload(path, file);
+      // Downscale large images before they cross the network; PDFs/GIFs pass through
+      const upload = await compressImage(file);
+      const path = `${conversationId}/${Date.now()}_${upload.name}`;
+      const { error: uploadError } = await supabase.storage.from("chat-attachments").upload(path, upload);
       if (uploadError) {
         setError("Failed to upload file: " + uploadError.message);
         setSending(false);
         return;
       }
       const { data: { publicUrl } } = supabase.storage.from("chat-attachments").getPublicUrl(path);
-      attachment = { url: publicUrl, name: file.name, type: file.type };
+      attachment = { url: publicUrl, name: upload.name, type: upload.type };
     }
 
     const sendError = await onSend(trimmed || null, attachment);
@@ -208,6 +211,10 @@ export function MessageInput({ conversationId, onSend, disabled }: MessageInputP
       </div>
 
       <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf" style={{ display: "none" }} onChange={handleFileChange} />
+
+      {sending && file && (
+        <p className="text-xs text-muted" style={{ paddingLeft: "4px" }}>Uploading {file.name}…</p>
+      )}
 
       {error && <p className="text-sm text-error" style={{ paddingLeft: "4px" }}>{error}</p>}
     </div>

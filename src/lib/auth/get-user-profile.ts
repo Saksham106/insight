@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import { createClient } from "@/lib/supabase/server";
 
 export type UserRole = "admin" | "teacher" | "student" | "parent";
@@ -10,7 +12,9 @@ export interface UserProfile {
   avatar_url: string | null;
 }
 
-export async function getUserProfile(): Promise<UserProfile | null> {
+// cache() dedupes within a render pass — the layout and page both call this,
+// which previously cost two getUser() round trips plus two profiles queries.
+export const getUserProfile = cache(async (): Promise<UserProfile | null> => {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
@@ -43,4 +47,4 @@ export async function getUserProfile(): Promise<UserProfile | null> {
   }
 
   return data as UserProfile;
-}
+});

@@ -1,5 +1,8 @@
+"use client";
+
 import { FileText } from "lucide-react";
 
+import { useSignedAttachmentUrls } from "@/lib/chat-attachments";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -37,6 +40,10 @@ function formatTime(d: Date) {
 }
 
 export function MessageList({ messages, currentUserId, adminView = false }: MessageListProps) {
+  // Signed URLs keep working after the bucket goes private; falls back to the
+  // stored URL while resolving.
+  const signedUrls = useSignedAttachmentUrls(messages.map((m) => m.file_url));
+
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       {messages.map((msg, i) => {
@@ -64,6 +71,7 @@ export function MessageList({ messages, currentUserId, adminView = false }: Mess
 
         const isImage = msg.file_type?.startsWith("image/");
         const hasFile = !!msg.file_url;
+        const fileHref = msg.file_url ? (signedUrls[msg.file_url] ?? msg.file_url) : null;
 
         return (
           <div key={msg.id}>
@@ -134,10 +142,12 @@ export function MessageList({ messages, currentUserId, adminView = false }: Mess
               >
                 {/* Image attachment */}
                 {hasFile && isImage && (
-                  <a href={msg.file_url!} target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>
+                  <a href={fileHref!} target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>
                     <img
-                      src={msg.file_url!}
+                      src={fileHref!}
                       alt={msg.file_name ?? "image"}
+                      loading="lazy"
+                      decoding="async"
                       style={{ maxWidth: "220px", maxHeight: "220px", borderRadius: "12px", display: "block", objectFit: "cover" }}
                     />
                   </a>
@@ -146,7 +156,7 @@ export function MessageList({ messages, currentUserId, adminView = false }: Mess
                 {/* Non-image file */}
                 {hasFile && !isImage && (
                   <a
-                    href={msg.file_url!}
+                    href={fileHref!}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{

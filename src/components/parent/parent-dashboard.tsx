@@ -68,7 +68,7 @@ export function ParentDashboard({ childProfiles, parentId, view = "overview" }: 
         name: contactName(a.teacher?.full_name ?? "Teacher", child.full_name),
       })),
   ), [childProfiles]);
-  const { unread: chatUnread, total: totalUnread } = useUnreadCounts(chatContacts, parentId);
+  const { unread: chatUnread, total: totalUnread } = useUnreadCounts(chatContacts);
 
   // All sessions across all children, tagged with teacher name for the calendar.
   const calendarSessions = childProfiles.flatMap((child) =>

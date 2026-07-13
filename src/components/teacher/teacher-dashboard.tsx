@@ -363,7 +363,7 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
   const chatContacts = useMemo(() => assignments
     .filter((a) => a.conversation?.[0]?.id)
     .map((a) => ({ conversationId: a.conversation![0].id, name: a.student?.full_name ?? "Student" })), [assignments]);
-  const { unread: chatUnread, total: totalUnread } = useUnreadCounts(chatContacts, teacherId);
+  const { unread: chatUnread, total: totalUnread } = useUnreadCounts(chatContacts);
   const copy = viewCopy[view];
 
   return (

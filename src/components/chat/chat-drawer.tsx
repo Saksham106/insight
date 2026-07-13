@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, X } from "lucide-react";
 
 import { MessageInput, type FileAttachment } from "@/components/chat/message-input";
 import { MessageList } from "@/components/chat/message-list";
 import type { ChatMessage } from "@/components/chat/chat-window";
-import type { ChatContact } from "@/lib/chat-types";
+import { MESSAGE_PAGE_SIZE, type ChatContact } from "@/lib/chat-types";
 import { createClient } from "@/lib/supabase/client";
 import { markRead, useUnreadCounts } from "@/lib/use-unread-counts";
 
@@ -26,13 +26,15 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
   const [activeId, setActiveId] = useState(initialConversationId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileView, setMobileView] = useState<"chat" | "picker">("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
 
-  const { unread, markAsRead } = useUnreadCounts(contacts, currentUserId);
+  const { unread, markAsRead } = useUnreadCounts(contacts);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
@@ -71,44 +73,86 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
     setMobileView("chat");
   }, [activeId, currentUserId, markAsRead]);
 
-  // Fetch messages for active conversation
+  // Fetch the latest page for the active conversation (older loads on demand)
   useEffect(() => {
     setLoading(true);
+    setHasMore(false);
     supabase
       .from("messages")
       .select("id, body, created_at, sender_id, file_url, file_name, file_type, sender:sender_id (id, full_name)")
       .eq("conversation_id", activeId)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE)
       .then(({ data }) => {
         setMessages(
-          (data ?? []).map((m) => ({ ...m, sender: Array.isArray(m.sender) ? m.sender[0] : m.sender })) as ChatMessage[],
+          (data ?? []).reverse().map((m) => ({ ...m, sender: Array.isArray(m.sender) ? m.sender[0] : m.sender })) as ChatMessage[],
         );
+        setHasMore((data ?? []).length === MESSAGE_PAGE_SIZE);
         setLoading(false);
       });
   }, [activeId, supabase]);
+
+  // Sender names seen so far; lets the realtime handler build messages from the
+  // INSERT payload without a per-message round trip.
+  const senderNamesRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    messages.forEach((m) => { if (m.sender) senderNamesRef.current.set(m.sender.id, m.sender.full_name); });
+  }, [messages]);
 
   // Realtime: active conversation messages
   useEffect(() => {
     const ch = supabase
       .channel(`drawer-msg-${activeId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, async (payload) => {
-        const { data } = await supabase
-          .from("messages")
-          .select("id, body, created_at, sender_id, file_url, file_name, file_type, sender:sender_id (id, full_name)")
-          .eq("id", payload.new.id)
-          .single();
-        if (data) {
-          const sender = Array.isArray(data.sender) ? data.sender[0] : data.sender;
-          setMessages((prev) => [...prev, { ...data, sender } as ChatMessage]);
-          markRead(currentUserId, activeId);
+        const row = payload.new as Omit<ChatMessage, "sender">;
+        let sender: ChatMessage["sender"];
+        const known = senderNamesRef.current.get(row.sender_id);
+        if (known !== undefined) {
+          sender = { id: row.sender_id, full_name: known };
+        } else {
+          const { data } = await supabase.from("profiles").select("id, full_name").eq("id", row.sender_id).single();
+          senderNamesRef.current.set(row.sender_id, data?.full_name ?? "User");
+          sender = data ?? { id: row.sender_id, full_name: "User" };
         }
+        setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, { ...row, sender }]));
+        markRead(currentUserId, activeId);
       })
       .subscribe();
     return () => { void supabase.removeChannel(ch); };
   }, [activeId, currentUserId, supabase]);
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  // scrollHeight captured before a prepend so older messages don't yank the view
+  const prependHeightRef = useRef<number | null>(null);
+
+  const loadOlder = useCallback(async () => {
+    const oldest = messages[0]?.created_at;
+    if (!oldest || loadingOlder) return;
+    setLoadingOlder(true);
+    const { data } = await supabase
+      .from("messages")
+      .select("id, body, created_at, sender_id, file_url, file_name, file_type, sender:sender_id (id, full_name)")
+      .eq("conversation_id", activeId)
+      .lt("created_at", oldest)
+      .order("created_at", { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE);
+    const older = (data ?? [])
+      .reverse()
+      .map((m) => ({ ...m, sender: Array.isArray(m.sender) ? m.sender[0] : m.sender }) as ChatMessage);
+    prependHeightRef.current = scrollRef.current?.scrollHeight ?? null;
+    setMessages((prev) => [...older, ...prev]);
+    setHasMore((data ?? []).length === MESSAGE_PAGE_SIZE);
+    setLoadingOlder(false);
+  }, [activeId, loadingOlder, messages, supabase]);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (prependHeightRef.current !== null) {
+      el.scrollTop += el.scrollHeight - prependHeightRef.current;
+      prependHeightRef.current = null;
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages]);
 
   const handleSend = async (body: string | null, attachment?: FileAttachment | null) => {
@@ -276,7 +320,22 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
             {loading ? (
               <p className="text-sm text-muted">Loading…</p>
             ) : messages.length > 0 ? (
-              <MessageList messages={messages} currentUserId={currentUserId} adminView={adminView} />
+              <>
+                {hasMore && (
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
+                    <button
+                      type="button"
+                      onClick={() => void loadOlder()}
+                      disabled={loadingOlder}
+                      className="text-xs text-muted"
+                      style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "999px", padding: "4px 12px", cursor: loadingOlder ? "default" : "pointer" }}
+                    >
+                      {loadingOlder ? "Loading…" : "Load earlier messages"}
+                    </button>
+                  </div>
+                )}
+                <MessageList messages={messages} currentUserId={currentUserId} adminView={adminView} />
+              </>
             ) : (
               <p className="text-sm text-muted">No messages yet. Say hello!</p>
             )}

@@ -23,10 +23,12 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  // Calling getUser() refreshes the session token if it's close to expiry.
-  // Do NOT remove this — it's what keeps the server-side session in sync with
+  // This call refreshes the session token if it's close to expiry.
+  // Do NOT remove it — it's what keeps the server-side session in sync with
   // the browser cookie and prevents the login redirect loop.
-  await supabase.auth.getUser();
+  // getClaims() verifies the JWT locally (JWKS) instead of getUser()'s
+  // network round trip to the Auth server on every request.
+  await supabase.auth.getClaims();
 
   return supabaseResponse;
 }

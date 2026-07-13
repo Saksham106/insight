@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { ChatWindow, type ChatMessage } from "@/components/chat/chat-window";
 import { requireRole } from "@/lib/auth/require-role";
+import { MESSAGE_PAGE_SIZE } from "@/lib/chat-types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClientWithBypass } from "@/lib/supabase/server";
 
@@ -30,7 +31,8 @@ export default async function ChatPage({ params }: ChatPageProps) {
     .from("messages")
     .select("id, body, created_at, sender_id, file_url, file_name, file_type, sender:sender_id (id, full_name)")
     .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(MESSAGE_PAGE_SIZE);
 
   const assignment = Array.isArray(conversation.assignment)
     ? conversation.assignment[0]
@@ -69,12 +71,15 @@ export default async function ChatPage({ params }: ChatPageProps) {
         ? `Chat with ${teacherName}`
         : `${teacherName} and ${studentName}`;
 
-  const normalizedMessages = (messages ?? []).map((message) => {
-    const sender = Array.isArray(message.sender)
-      ? message.sender[0]
-      : message.sender;
-    return { ...message, sender } as ChatMessage;
-  });
+  const normalizedMessages = (messages ?? [])
+    .slice()
+    .reverse()
+    .map((message) => {
+      const sender = Array.isArray(message.sender)
+        ? message.sender[0]
+        : message.sender;
+      return { ...message, sender } as ChatMessage;
+    });
 
   return (
     <ChatWindow
@@ -82,6 +87,7 @@ export default async function ChatPage({ params }: ChatPageProps) {
       currentUserId={profile.id}
       title={title}
       initialMessages={normalizedMessages}
+      initialHasMore={(messages ?? []).length === MESSAGE_PAGE_SIZE}
     />
   );
 }
