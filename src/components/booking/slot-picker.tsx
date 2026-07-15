@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { AvailabilitySlot } from "@/lib/availability/types";
-import { WeekGrid, type WeekGridBlock } from "@/components/calendar/week-grid";
 
 import { BookSessionModal } from "./book-session-modal";
 
@@ -39,6 +38,10 @@ function startOfWeek(date: Date) {
   return d;
 }
 
+function dayKey(date: Date) {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+}
+
 function formatWeekRange(start: Date) {
   const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
   const startLabel = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -49,24 +52,19 @@ function formatWeekRange(start: Date) {
 function groupSlotsByDay(slots: AvailabilitySlot[]) {
   const groups = new Map<string, AvailabilitySlot[]>();
   for (const slot of slots) {
-    const start = new Date(slot.starts_at);
-    const key = [start.getFullYear(), String(start.getMonth() + 1).padStart(2, "0"), String(start.getDate()).padStart(2, "0")].join("-");
+    const key = dayKey(new Date(slot.starts_at));
     const existing = groups.get(key);
-    if (existing) {
-      existing.push(slot);
-    } else {
-      groups.set(key, [slot]);
-    }
+    if (existing) existing.push(slot);
+    else groups.set(key, [slot]);
   }
-  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+  return groups;
 }
 
-function formatDayLabel(key: string) {
+function formatSelectedDayLabel(key: string) {
   const date = new Date(`${key}T12:00:00`);
-  const today = new Date();
-  const todayKey = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
-  const label = date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-  return key === todayKey ? `Today, ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : label;
+  const todayKey = dayKey(new Date());
+  const label = date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return key === todayKey ? `Today · ${label}` : label;
 }
 
 export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps) {
@@ -79,10 +77,8 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [slotIncrement, setSlotIncrement] = useState(30);
-  const [teacherTimeZone, setTeacherTimeZone] = useState<string | null>(null);
 
   const selectedAssignment = assignments.find((a) => a.id === assignmentId) ?? null;
 
@@ -109,7 +105,7 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
       if (cancelled) return;
 
       if (!res.ok) {
-        setError(data.error ?? "Could not load available times.");
+        setError((data as { error?: string }).error ?? "Could not load available times.");
         setSlots([]);
         setLoading(false);
         return;
@@ -119,8 +115,6 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
       setSlots(response.slots);
       setAllowedDurations(response.settings.allowed_durations);
       if (!duration) setDuration(response.settings.default_duration_minutes);
-      setSlotIncrement(response.settings.slot_increment_minutes);
-      setTeacherTimeZone((data as { timezone?: string }).timezone ?? null);
       setLoading(false);
     })();
 
@@ -129,25 +123,37 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
     };
   }, [assignmentId, weekStart, duration, refreshKey]);
 
-  const dayGroups = groupSlotsByDay(slots);
+  const dayGroups = useMemo(() => groupSlotsByDay(slots), [slots]);
 
-  const gridBlocks: WeekGridBlock[] = slots.map((s) => {
-    const start = new Date(s.starts_at);
-    return {
-      id: s.starts_at,
-      start,
-      end: new Date(s.ends_at),
-      variant: "slot",
-      label: start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-    };
-  });
+  // The seven calendar days of the visible week, each annotated with whether it
+  // has any bookable slots. Past days (before today) are never selectable.
+  const days = useMemo(() => {
+    const todayKey = dayKey(new Date());
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000);
+      const key = dayKey(date);
+      const daySlots = dayGroups.get(key) ?? [];
+      return {
+        key,
+        date,
+        isPast: key < todayKey,
+        hasSlots: daySlots.length > 0,
+        count: daySlots.length,
+      };
+    });
+  }, [weekStart, dayGroups]);
 
-  const slotHours = slots.flatMap((s) => {
-    const st = new Date(s.starts_at); const en = new Date(s.ends_at);
-    return [st.getHours(), en.getHours() + (en.getMinutes() > 0 ? 1 : 0)];
-  });
-  const gridDayStart = slotHours.length ? Math.max(0, Math.min(...slotHours, 8)) : 8;
-  const gridDayEnd = slotHours.length ? Math.min(24, Math.max(...slotHours, 20)) : 20;
+  // Keep a sensible day selected: prefer the current selection if it still has
+  // slots, otherwise fall back to the first day of the week that does.
+  useEffect(() => {
+    if (loading) return;
+    const stillValid = selectedDayKey && (dayGroups.get(selectedDayKey)?.length ?? 0) > 0;
+    if (stillValid) return;
+    const firstOpen = days.find((d) => d.hasSlots && !d.isPast);
+    setSelectedDayKey(firstOpen?.key ?? null);
+  }, [loading, days, dayGroups, selectedDayKey]);
+
+  const selectedDaySlots = selectedDayKey ? dayGroups.get(selectedDayKey) ?? [] : [];
 
   if (assignments.length === 0) return null;
 
@@ -157,43 +163,39 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
         className="border border-border bg-surface"
         style={{
           display: "flex",
-          flexDirection: isMobile ? "column" : "row",
-          alignItems: isMobile ? "stretch" : "center",
-          justifyContent: "space-between",
-          gap: "14px",
+          alignItems: "center",
+          gap: "12px",
           borderRadius: "12px",
           padding: isMobile ? "14px" : "16px 18px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
-          <div
-            style={{
-              width: "38px",
-              height: "38px",
-              borderRadius: "10px",
-              backgroundColor: "rgba(27,53,96,0.08)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <CalendarClock size={18} color="var(--color-navy)" />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
-            <p className="text-sm font-semibold text-navy">Find a time</p>
-            <p className="text-sm text-muted" style={{ lineHeight: 1.45 }}>
-              Book directly from your teacher&apos;s open availability.
-            </p>
-          </div>
+        <div
+          style={{
+            width: "38px",
+            height: "38px",
+            borderRadius: "10px",
+            backgroundColor: "rgba(27,53,96,0.08)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <CalendarClock size={18} color="var(--color-navy)" />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
+          <p className="text-sm font-semibold text-navy">Find a time</p>
+          <p className="text-sm text-muted" style={{ lineHeight: 1.45 }}>
+            Pick a day, then choose from your teacher&apos;s open times.
+          </p>
         </div>
       </div>
 
       <div
         className="border border-border bg-surface"
-        style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px", display: "flex", flexDirection: "column", gap: "16px" }}
+        style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px", display: "flex", flexDirection: "column", gap: "18px" }}
       >
-        {/* Controls */}
+        {/* Controls: teacher + duration */}
         <div
           style={{
             display: "flex",
@@ -237,8 +239,11 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
               ))}
             </select>
           </div>
+        </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: isMobile ? "0" : "auto" }}>
+        {/* Week nav + day strip */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
             <Button
               type="button"
               variant="outline"
@@ -248,7 +253,7 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
             >
               <ChevronLeft style={{ height: "16px", width: "16px" }} />
             </Button>
-            <p className="text-sm text-foreground" style={{ whiteSpace: "nowrap" }}>
+            <p className="text-sm font-medium text-foreground" style={{ whiteSpace: "nowrap" }}>
               {formatWeekRange(weekStart)}
             </p>
             <Button
@@ -260,20 +265,66 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
             >
               <ChevronRight style={{ height: "16px", width: "16px" }} />
             </Button>
-            {!isMobile && (
-              <Button type="button" variant="outline" size="sm" onClick={() => setViewMode((v) => (v === "grid" ? "list" : "grid"))}>
-                {viewMode === "grid" ? "List" : "Grid"}
-              </Button>
-            )}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              gap: "6px",
+            }}
+          >
+            {days.map((d) => {
+              const selectable = d.hasSlots && !d.isPast;
+              const isSelected = d.key === selectedDayKey;
+              return (
+                <button
+                  key={d.key}
+                  type="button"
+                  disabled={!selectable}
+                  onClick={() => setSelectedDayKey(d.key)}
+                  aria-pressed={isSelected}
+                  className="border"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "2px",
+                    padding: "8px 2px",
+                    borderRadius: "10px",
+                    cursor: selectable ? "pointer" : "default",
+                    borderColor: isSelected ? "var(--color-navy)" : "var(--color-border)",
+                    background: isSelected ? "var(--color-navy)" : "var(--color-background)",
+                    color: isSelected ? "#ffffff" : selectable ? "var(--color-foreground)" : "var(--color-muted)",
+                    opacity: selectable || isSelected ? 1 : 0.45,
+                  }}
+                  suppressHydrationWarning
+                >
+                  <span style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    {d.date.toLocaleDateString("en-US", { weekday: "short" })}
+                  </span>
+                  <span style={{ fontSize: "16px", fontWeight: 700, lineHeight: 1.1 }}>{d.date.getDate()}</span>
+                  <span
+                    aria-hidden
+                    style={{
+                      width: "5px",
+                      height: "5px",
+                      borderRadius: "9999px",
+                      background: isSelected ? "#ffffff" : selectable ? "var(--color-navy)" : "transparent",
+                    }}
+                  />
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Slots */}
+        {/* Times for the selected day */}
         {loading && <p className="text-sm text-muted">Loading available times...</p>}
 
         {!loading && error && <p className="text-sm text-error">{error}</p>}
 
-        {!loading && !error && dayGroups.length === 0 && (
+        {!loading && !error && selectedDaySlots.length === 0 && (
           <EmptyState
             icon={CalendarClock}
             title="No open times this week"
@@ -281,52 +332,41 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
           />
         )}
 
-        {!loading && !error && !isMobile && viewMode === "grid" && dayGroups.length > 0 && (
-          <WeekGrid
-            weekStart={weekStart}
-            blocks={gridBlocks}
-            dayStartHour={gridDayStart}
-            dayEndHour={gridDayEnd}
-            snapMinutes={slotIncrement}
-            onBlockClick={(b) => {
-              const slot = slots.find((s) => s.starts_at === b.id);
-              if (slot) setSelectedSlot(slot);
-            }}
-          />
-        )}
-
-        {!loading && !error && (isMobile || viewMode === "list") && dayGroups.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            {dayGroups.map(([dayKey, daySlots]) => (
-              <div key={dayKey} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted">{formatDayLabel(dayKey)}</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                  {daySlots.map((slot) => {
-                    const start = new Date(slot.starts_at);
-                    const timeLabel = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-                    return (
-                      <button
-                        key={slot.starts_at}
-                        type="button"
-                        onClick={() => setSelectedSlot(slot)}
-                        className="border border-border bg-background hover:bg-soft"
-                        style={{
-                          borderRadius: "9999px",
-                          padding: "8px 16px",
-                          fontSize: "14px",
-                          fontWeight: 500,
-                          color: "var(--color-foreground)",
-                          cursor: "pointer",
-                        }}
-                        suppressHydrationWarning
-                      >
-                        {timeLabel}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+        {!loading && !error && selectedDayKey && selectedDaySlots.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <p className="text-sm font-semibold text-navy">{formatSelectedDayLabel(selectedDayKey)}</p>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(120px, 1fr))",
+                gap: "8px",
+              }}
+            >
+              {selectedDaySlots.map((slot) => {
+                const start = new Date(slot.starts_at);
+                const timeLabel = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+                return (
+                  <button
+                    key={slot.starts_at}
+                    type="button"
+                    onClick={() => setSelectedSlot(slot)}
+                    className="border border-border bg-background hover:bg-soft"
+                    style={{
+                      borderRadius: "10px",
+                      padding: "12px 10px",
+                      fontSize: "15px",
+                      fontWeight: 600,
+                      color: "var(--color-navy)",
+                      cursor: "pointer",
+                      textAlign: "center",
+                    }}
+                    suppressHydrationWarning
+                  >
+                    {timeLabel}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
