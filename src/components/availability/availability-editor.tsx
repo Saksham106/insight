@@ -5,12 +5,11 @@ import { CalendarClock } from "lucide-react";
 
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { AvailabilityOverride, AvailabilityRule, BookingSettings } from "@/lib/availability/types";
-import type { Session } from "@/components/sessions/session-card";
 
-import { AvailabilityCalendar } from "./availability-calendar";
 import { BookingSettingsForm } from "./booking-settings-form";
+import { WeeklyHoursEditor } from "./weekly-hours-editor";
 
-export function AvailabilityEditor({ sessions = [] }: { sessions?: Session[] }) {
+export function AvailabilityEditor() {
   const [settings, setSettings] = useState<BookingSettings | null>(null);
   const [rules, setRules] = useState<AvailabilityRule[]>([]);
   const [overrides, setOverrides] = useState<AvailabilityOverride[]>([]);
@@ -99,7 +98,7 @@ export function AvailabilityEditor({ sessions = [] }: { sessions?: Session[] }) 
           style={{ borderRadius: "10px", padding: "10px 14px", backgroundColor: "rgba(216,162,74,0.10)", lineHeight: 1.45 }}
         >
           Your device is set to <span className="font-semibold">{browserTimezone}</span>, but your availability is managed
-          in <span className="font-semibold">{timezone}</span>. Drag times as they should appear in {timezone}, not your local time.
+          in <span className="font-semibold">{timezone}</span>. Enter times as they should appear in {timezone}, not your local time.
         </p>
       )}
 
@@ -110,12 +109,11 @@ export function AvailabilityEditor({ sessions = [] }: { sessions?: Session[] }) 
       {!loading && !error && settings && (
         <>
           <div className="border border-border bg-surface" style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <p className="text-sm font-semibold text-navy">Your availability</p>
-            <AvailabilityCalendar
+            <p className="text-sm font-semibold text-navy">Your weekly hours</p>
+            <WeeklyHoursEditor
               settings={settings}
               rules={rules}
               overrides={overrides}
-              sessions={sessions}
               timezone={timezone}
               onRulesChange={setRules}
               onOverridesChange={setOverrides}
