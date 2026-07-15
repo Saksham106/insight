@@ -200,7 +200,7 @@ export function AdminDashboard({
         </>
       )}
 
-      {view === "sessions" && <AdminSessionsSection sessions={sessions} />}
+      {view === "sessions" && <AdminSessionsSection sessions={sessions} assignments={assignments} />}
     </div>
   );
 }

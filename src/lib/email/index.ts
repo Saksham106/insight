@@ -6,7 +6,8 @@ export type SessionEmailEvent =
   | "proposed"    // new session created — notify other party
   | "confirmed"   // session confirmed — notify proposer
   | "cancelled"   // session cancelled — notify other party
-  | "rescheduled"; // session rescheduled — notify other party
+  | "rescheduled" // session rescheduled — notify other party
+  | "scheduled";  // admin scheduled a confirmed session — notify both parties
 
 interface SessionEmailOptions {
   event: SessionEmailEvent;
@@ -118,6 +119,15 @@ const configs: Record<SessionEmailEvent, (o: SessionEmailOptions) => { subject: 
            <p style="margin:0 0 4px;color:#374151;"><strong>${o.actorName}</strong> has proposed a new time for your session.</p>
            ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes, o.recipientTimezone)}
            <p style="color:#374151;">Please log in to confirm or suggest a different time.</p>`,
+  }),
+  scheduled: (o) => ({
+    subject: `New session scheduled with ${o.actorName}`,
+    title: "A session has been scheduled",
+    preheader: `Insight Academy scheduled a session for you with ${o.actorName}.`,
+    body: `<p style="margin:16px 0;color:#374151;">Hi ${o.recipientName},</p>
+           <p style="margin:0 0 4px;color:#374151;">Insight Academy has scheduled a tutoring session for you with <strong>${o.actorName}</strong>.</p>
+           ${sessionDetailsHtml(o.scheduledAt, o.durationMinutes, o.notes, o.recipientTimezone)}
+           <p style="color:#374151;">This session is confirmed — no action needed. See you then!</p>`,
   }),
 };
 
