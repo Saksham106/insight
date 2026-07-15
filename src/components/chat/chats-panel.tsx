@@ -40,7 +40,9 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
   const supabase = useMemo(() => createClient(), []);
 
   const loadConversations = useCallback(async () => {
-    const res = await fetch("/api/chat/conversations");
+    // Unique URL + no-store defeats any HTTP/304 caching so a just-created
+    // conversation always shows up on the immediate post-create refresh.
+    const res = await fetch(`/api/chat/conversations?t=${Date.now()}`, { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     if (res.ok) setConversations((data.conversations as ConversationSummary[]) ?? []);
     setLoading(false);
@@ -308,7 +310,7 @@ function NewChatModal({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch("/api/chat/contacts");
+      const res = await fetch("/api/chat/contacts", { cache: "no-store" });
       const data = await res.json().catch(() => ({}));
       if (cancelled) return;
       if (res.ok) setContacts((data.contacts as ChattableContact[]) ?? []);

@@ -7,6 +7,7 @@ import { AssignStudentForm } from "@/components/admin/assign-student-form";
 import { AssignmentsTable } from "@/components/admin/assignments-table";
 import { ComposeEmailButton } from "@/components/admin/compose-email-button";
 import { InviteUserForm } from "@/components/admin/invite-user-form";
+import { ChatsPanel } from "@/components/chat/chats-panel";
 import { ParentsTable } from "@/components/admin/parents-table";
 import { StudentsTable } from "@/components/admin/students-table";
 import { TeachersTable } from "@/components/admin/teachers-table";
@@ -19,7 +20,7 @@ import type {
   TeacherRow,
 } from "@/lib/dashboard-data";
 
-export type AdminDashboardView = "overview" | "users" | "assignments" | "sessions";
+export type AdminDashboardView = "overview" | "users" | "assignments" | "sessions" | "chats";
 
 interface AdminDashboardProps {
   view: AdminDashboardView;
@@ -30,6 +31,7 @@ interface AdminDashboardProps {
   sessions: AdminSession[];
   labels: Label[];
   links: ParentStudentLink[];
+  currentUserId?: string;
 }
 
 const viewCopy: Record<AdminDashboardView, { title: string; description: string }> = {
@@ -48,6 +50,10 @@ const viewCopy: Record<AdminDashboardView, { title: string; description: string 
   sessions: {
     title: "Sessions",
     description: "View every scheduled, pending, and past session.",
+  },
+  chats: {
+    title: "Chats",
+    description: "Message anyone at the academy, or start a group chat.",
   },
 };
 
@@ -121,6 +127,7 @@ export function AdminDashboard({
   sessions,
   labels,
   links,
+  currentUserId,
 }: AdminDashboardProps) {
   const copy = viewCopy[view];
   const totalTeachers = teachers.length;
@@ -154,7 +161,7 @@ export function AdminDashboard({
             {copy.description}
           </p>
         </div>
-        <ComposeEmailButton teachers={teachers} students={students} />
+        {view !== "chats" && <ComposeEmailButton teachers={teachers} students={students} />}
       </div>
 
       {view === "overview" && (
@@ -201,6 +208,8 @@ export function AdminDashboard({
       )}
 
       {view === "sessions" && <AdminSessionsSection sessions={sessions} assignments={assignments} />}
+
+      {view === "chats" && currentUserId && <ChatsPanel currentUserId={currentUserId} />}
     </div>
   );
 }

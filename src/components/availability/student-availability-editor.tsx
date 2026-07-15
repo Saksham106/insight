@@ -80,21 +80,26 @@ export function StudentAvailabilityEditor() {
       {!loading && error && <p className="text-sm text-error">{error}</p>}
 
       {!loading && !error && (
-        <div
+        <details
           className="border border-border bg-surface"
           style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px" }}
         >
-          <WeeklyHoursEditor
-            mode="restricted"
-            rules={rules}
-            overrides={overrides}
-            timezone={tz}
-            onRulesChange={setRules}
-            onOverridesChange={setOverrides}
-            rulesEndpoint="/api/student-availability/rules"
-            overridesEndpoint="/api/student-availability/overrides"
-          />
-        </div>
+          <summary className="text-sm font-semibold text-navy" style={{ cursor: "pointer" }}>
+            Set the times you can meet
+          </summary>
+          <div style={{ marginTop: "16px" }}>
+            <WeeklyHoursEditor
+              mode="restricted"
+              rules={rules}
+              overrides={overrides}
+              timezone={tz}
+              onRulesChange={setRules}
+              onOverridesChange={setOverrides}
+              rulesEndpoint="/api/student-availability/rules"
+              overridesEndpoint="/api/student-availability/overrides"
+            />
+          </div>
+        </details>
       )}
     </section>
   );

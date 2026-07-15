@@ -108,17 +108,19 @@ export function AvailabilityEditor() {
 
       {!loading && !error && settings && (
         <>
-          <div className="border border-border bg-surface" style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <p className="text-sm font-semibold text-navy">Your weekly hours</p>
-            <WeeklyHoursEditor
-              mode={settings.availability_mode}
-              rules={rules}
-              overrides={overrides}
-              timezone={timezone}
-              onRulesChange={setRules}
-              onOverridesChange={setOverrides}
-            />
-          </div>
+          <details open className="border border-border bg-surface" style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px" }}>
+            <summary className="text-sm font-semibold text-navy" style={{ cursor: "pointer" }}>Your weekly hours</summary>
+            <div style={{ marginTop: "16px" }}>
+              <WeeklyHoursEditor
+                mode={settings.availability_mode}
+                rules={rules}
+                overrides={overrides}
+                timezone={timezone}
+                onRulesChange={setRules}
+                onOverridesChange={setOverrides}
+              />
+            </div>
+          </details>
 
           <details className="border border-border bg-surface" style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px" }}>
             <summary className="text-sm font-semibold text-navy" style={{ cursor: "pointer" }}>Booking rules</summary>
