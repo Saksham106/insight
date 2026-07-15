@@ -15,6 +15,7 @@ const roleRedirects: Record<string, string> = {
   admin: "/admin",
   teacher: "/teacher",
   student: "/student",
+  parent: "/parent",
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
