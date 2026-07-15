@@ -14,9 +14,11 @@ export interface BookingSettings {
   slot_increment_minutes: number;
 }
 
-export interface AvailabilityRule {
+// Owner-agnostic shapes used by the availability editor UI (works for both the
+// teacher-owned and student-owned availability tables). The concrete row types
+// below extend these with their owner id column.
+export interface WeeklyAvailabilityRule {
   id: string;
-  teacher_id: string;
   weekday: number;
   start_time: string;
   end_time: string;
@@ -25,15 +27,22 @@ export interface AvailabilityRule {
   rule_type: "available" | "blocked";
 }
 
-export interface AvailabilityOverride {
+export interface DateAvailabilityOverride {
   id: string;
-  teacher_id: string;
   date: string;
   start_time: string | null;
   end_time: string | null;
   timezone: string;
   is_available: boolean;
   reason: string | null;
+}
+
+export interface AvailabilityRule extends WeeklyAvailabilityRule {
+  teacher_id: string;
+}
+
+export interface AvailabilityOverride extends DateAvailabilityOverride {
+  teacher_id: string;
 }
 
 export interface BusySession {

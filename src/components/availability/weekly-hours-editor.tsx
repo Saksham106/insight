@@ -7,15 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TimePicker } from "@/components/ui/time-picker";
-import type { AvailabilityOverride, AvailabilityRule, BookingSettings } from "@/lib/availability/types";
+import type { DateAvailabilityOverride, WeeklyAvailabilityRule } from "@/lib/availability/types";
 
 interface Props {
-  settings: BookingSettings;
-  rules: AvailabilityRule[];
-  overrides: AvailabilityOverride[];
+  // "open" = bookable by default, add times to block off; "restricted" = only the
+  // added times are bookable. Teacher availability has both; student availability
+  // is always "restricted".
+  mode: "open" | "restricted";
+  rules: WeeklyAvailabilityRule[];
+  overrides: DateAvailabilityOverride[];
   timezone: string;
-  onRulesChange: (rules: AvailabilityRule[]) => void;
-  onOverridesChange: (overrides: AvailabilityOverride[]) => void;
+  onRulesChange: (rules: WeeklyAvailabilityRule[]) => void;
+  onOverridesChange: (overrides: DateAvailabilityOverride[]) => void;
+  rulesEndpoint?: string;
+  overridesEndpoint?: string;
 }
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -34,12 +39,21 @@ function formatOverrideDate(date: string) {
   return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
-export function WeeklyHoursEditor({ settings, rules, overrides, timezone, onRulesChange, onOverridesChange }: Props) {
+export function WeeklyHoursEditor({
+  mode,
+  rules,
+  overrides,
+  timezone,
+  onRulesChange,
+  onOverridesChange,
+  rulesEndpoint = "/api/availability/rules",
+  overridesEndpoint = "/api/availability/overrides",
+}: Props) {
   const [error, setError] = useState<string | null>(null);
 
   // In "open" mode a teacher is bookable by default and paints time OFF (blocked);
   // in "restricted" mode they paint the hours students CAN book (available).
-  const isOpen = settings.availability_mode === "open";
+  const isOpen = mode === "open";
   const ruleType: "available" | "blocked" = isOpen ? "blocked" : "available";
   const rangeNoun = isOpen ? "blocked" : "available";
 
@@ -55,7 +69,7 @@ export function WeeklyHoursEditor({ settings, rules, overrides, timezone, onRule
 
   async function addRange(weekday: number) {
     setError(null);
-    const res = await fetch("/api/availability/rules", {
+    const res = await fetch(rulesEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ weekday, start_time: "09:00", end_time: "17:00", timezone, rule_type: ruleType }),
@@ -65,10 +79,10 @@ export function WeeklyHoursEditor({ settings, rules, overrides, timezone, onRule
       setError(data.error ?? "Could not add that time.");
       return;
     }
-    onRulesChange([...rules, data.rule as AvailabilityRule]);
+    onRulesChange([...rules, data.rule as WeeklyAvailabilityRule]);
   }
 
-  async function patchRule(id: string, patch: Partial<Pick<AvailabilityRule, "start_time" | "end_time">>) {
+  async function patchRule(id: string, patch: Partial<Pick<WeeklyAvailabilityRule, "start_time" | "end_time">>) {
     const target = rules.find((r) => r.id === id);
     if (!target) return;
     const nextStart = hhmm(patch.start_time ?? target.start_time);
@@ -80,7 +94,7 @@ export function WeeklyHoursEditor({ settings, rules, overrides, timezone, onRule
     setError(null);
     const prev = rules;
     onRulesChange(rules.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-    const res = await fetch(`/api/availability/rules/${id}`, {
+    const res = await fetch(`${rulesEndpoint}/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -95,7 +109,7 @@ export function WeeklyHoursEditor({ settings, rules, overrides, timezone, onRule
     setError(null);
     const prev = rules;
     onRulesChange(rules.map((r) => (r.id === id ? { ...r, is_active: false } : r)));
-    const res = await fetch(`/api/availability/rules/${id}`, { method: "DELETE" });
+    const res = await fetch(`${rulesEndpoint}/${id}`, { method: "DELETE" });
     if (!res.ok) {
       onRulesChange(prev);
       setError("Could not remove that time.");
@@ -167,6 +181,7 @@ export function WeeklyHoursEditor({ settings, rules, overrides, timezone, onRule
         overrides={overrides}
         timezone={timezone}
         rangeNoun={rangeNoun}
+        overridesEndpoint={overridesEndpoint}
         onError={setError}
         onOverridesChange={onOverridesChange}
       />
@@ -175,14 +190,15 @@ export function WeeklyHoursEditor({ settings, rules, overrides, timezone, onRule
 }
 
 interface DateOverridesProps {
-  overrides: AvailabilityOverride[];
+  overrides: DateAvailabilityOverride[];
   timezone: string;
   rangeNoun: string;
+  overridesEndpoint: string;
   onError: (message: string | null) => void;
-  onOverridesChange: (overrides: AvailabilityOverride[]) => void;
+  onOverridesChange: (overrides: DateAvailabilityOverride[]) => void;
 }
 
-function DateOverrides({ overrides, timezone, rangeNoun, onError, onOverridesChange }: DateOverridesProps) {
+function DateOverrides({ overrides, timezone, rangeNoun, overridesEndpoint, onError, onOverridesChange }: DateOverridesProps) {
   const [date, setDate] = useState("");
   const [isAvailable, setIsAvailable] = useState(false);
   const [start, setStart] = useState("09:00");
@@ -208,7 +224,7 @@ function DateOverrides({ overrides, timezone, rangeNoun, onError, onOverridesCha
     }
 
     setSaving(true);
-    const res = await fetch("/api/availability/overrides", {
+    const res = await fetch(overridesEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -219,7 +235,7 @@ function DateOverrides({ overrides, timezone, rangeNoun, onError, onOverridesCha
       onError(data.error ?? "Could not add that override.");
       return;
     }
-    onOverridesChange([...overrides, data.override as AvailabilityOverride]);
+    onOverridesChange([...overrides, data.override as DateAvailabilityOverride]);
     setDate("");
   }
 
@@ -227,7 +243,7 @@ function DateOverrides({ overrides, timezone, rangeNoun, onError, onOverridesCha
     onError(null);
     const prev = overrides;
     onOverridesChange(overrides.filter((o) => o.id !== id));
-    const res = await fetch(`/api/availability/overrides/${id}`, { method: "DELETE" });
+    const res = await fetch(`${overridesEndpoint}/${id}`, { method: "DELETE" });
     if (!res.ok) {
       onOverridesChange(prev);
       onError("Could not remove that override.");

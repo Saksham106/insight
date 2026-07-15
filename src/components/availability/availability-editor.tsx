@@ -4,15 +4,15 @@ import { useEffect, useState } from "react";
 import { CalendarClock } from "lucide-react";
 
 import { useMediaQuery } from "@/lib/use-media-query";
-import type { AvailabilityOverride, AvailabilityRule, BookingSettings } from "@/lib/availability/types";
+import type { BookingSettings, DateAvailabilityOverride, WeeklyAvailabilityRule } from "@/lib/availability/types";
 
 import { BookingSettingsForm } from "./booking-settings-form";
 import { WeeklyHoursEditor } from "./weekly-hours-editor";
 
 export function AvailabilityEditor() {
   const [settings, setSettings] = useState<BookingSettings | null>(null);
-  const [rules, setRules] = useState<AvailabilityRule[]>([]);
-  const [overrides, setOverrides] = useState<AvailabilityOverride[]>([]);
+  const [rules, setRules] = useState<WeeklyAvailabilityRule[]>([]);
+  const [overrides, setOverrides] = useState<DateAvailabilityOverride[]>([]);
   const [resolvedTimezone, setResolvedTimezone] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,8 +31,8 @@ export function AvailabilityEditor() {
         return;
       }
       setSettings(data.settings as BookingSettings);
-      setRules(data.rules as AvailabilityRule[]);
-      setOverrides(data.overrides as AvailabilityOverride[]);
+      setRules(data.rules as WeeklyAvailabilityRule[]);
+      setOverrides(data.overrides as DateAvailabilityOverride[]);
       setResolvedTimezone((data.resolvedTimezone as string | undefined) ?? null);
       setLoading(false);
     })();
@@ -111,7 +111,7 @@ export function AvailabilityEditor() {
           <div className="border border-border bg-surface" style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
             <p className="text-sm font-semibold text-navy">Your weekly hours</p>
             <WeeklyHoursEditor
-              settings={settings}
+              mode={settings.availability_mode}
               rules={rules}
               overrides={overrides}
               timezone={timezone}

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { SlotPicker } from "@/components/booking/slot-picker";
+import { StudentAvailabilityEditor } from "@/components/availability/student-availability-editor";
 import { ChatDrawer } from "@/components/chat/chat-drawer";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { RequestSessionForm } from "@/components/sessions/request-session-form";
@@ -485,6 +486,9 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
             assignments={assignments.map((a) => ({ id: a.id, teacher: a.teacher }))}
           />
         )}
+
+        {/* Your own availability — intersects with the teacher's open times */}
+        {view === "schedule" && <StudentAvailabilityEditor />}
 
         {/* Calendar — desktop and mobile */}
         {view === "schedule" && (
