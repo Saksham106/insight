@@ -1,15 +1,12 @@
 import Link from "next/link";
 import { CalendarDays, Link2, UserPlus } from "lucide-react";
 
-import { AdminFormsGrid } from "@/components/admin/admin-forms-grid";
 import { AdminSessionsSection } from "@/components/admin/admin-sessions-section";
 import { AdminStats } from "@/components/admin/admin-stats";
 import { AssignStudentForm } from "@/components/admin/assign-student-form";
 import { AssignmentsTable } from "@/components/admin/assignments-table";
 import { ComposeEmailButton } from "@/components/admin/compose-email-button";
-import { CreateParentForm } from "@/components/admin/create-parent-form";
-import { CreateStudentForm } from "@/components/admin/create-student-form";
-import { CreateTeacherForm } from "@/components/admin/create-teacher-form";
+import { InviteUserForm } from "@/components/admin/invite-user-form";
 import { ParentsTable } from "@/components/admin/parents-table";
 import { StudentsTable } from "@/components/admin/students-table";
 import { TeachersTable } from "@/components/admin/teachers-table";
@@ -173,11 +170,7 @@ export function AdminDashboard({
 
       {view === "users" && (
         <>
-          <AdminFormsGrid>
-            <CreateTeacherForm />
-            <CreateStudentForm />
-            <CreateParentForm />
-          </AdminFormsGrid>
+          <InviteUserForm />
 
           <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <h2 className="text-lg font-semibold text-navy">Teachers</h2>

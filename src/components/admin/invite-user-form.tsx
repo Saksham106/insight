@@ -8,13 +8,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function CreateTeacherForm() {
+type Role = "teacher" | "student" | "parent";
+
+const ROLES: { value: Role; label: string }[] = [
+  { value: "teacher", label: "Teacher" },
+  { value: "student", label: "Student" },
+  { value: "parent", label: "Parent" },
+];
+
+export function InviteUserForm() {
   const router = useRouter();
+  const [role, setRole] = useState<Role>("student");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [statusType, setStatusType] = useState<"success" | "warning" | "error">("success");
-  const [pendingResend, setPendingResend] = useState<{ email: string; fullName: string } | null>(null);
+  const [pendingResend, setPendingResend] = useState<{ email: string; fullName: string; role: Role } | null>(null);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
@@ -29,7 +38,7 @@ export function CreateTeacherForm() {
     const response = await fetch("/api/admin/invite-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName, email, role: "teacher" }),
+      body: JSON.stringify({ fullName, email, role }),
     });
 
     const data = await response.json();
@@ -42,7 +51,7 @@ export function CreateTeacherForm() {
     }
 
     if (response.status === 409 && data.alreadyInvited) {
-      setPendingResend({ email, fullName });
+      setPendingResend({ email, fullName, role });
       setStatusType("warning");
       setStatus("This user was invited but hasn't logged in yet.");
       return;
@@ -50,7 +59,7 @@ export function CreateTeacherForm() {
 
     if (!response.ok) {
       setStatusType("error");
-      setStatus(data.error ?? "Failed to invite teacher.");
+      setStatus(data.error ?? "Failed to send invite.");
       return;
     }
 
@@ -74,7 +83,7 @@ export function CreateTeacherForm() {
     const response = await fetch("/api/admin/invite-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...pendingResend, role: "teacher", resend: true }),
+      body: JSON.stringify({ ...pendingResend, resend: true }),
     });
 
     const data = await response.json();
@@ -102,23 +111,60 @@ export function CreateTeacherForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base text-navy">Invite teacher</CardTitle>
+        <CardTitle className="text-base text-navy">Invite user</CardTitle>
       </CardHeader>
       <CardContent>
         <form style={{ display: "flex", flexDirection: "column", gap: "12px" }} onSubmit={handleSubmit}>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <Label htmlFor="teacher-name">Full name</Label>
+            <Label htmlFor="invite-role">Role</Label>
+            <div
+              id="invite-role"
+              role="group"
+              aria-label="Role"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: "8px",
+              }}
+            >
+              {ROLES.map((option) => {
+                const selected = role === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setRole(option.value)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      border: selected ? "1px solid var(--color-navy)" : "1px solid var(--color-border)",
+                      background: selected ? "var(--color-navy)" : "var(--color-surface)",
+                      color: selected ? "#ffffff" : "var(--color-navy)",
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <Label htmlFor="invite-name">Full name</Label>
             <Input
-              id="teacher-name"
+              id="invite-name"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
               required
             />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <Label htmlFor="teacher-email">Email</Label>
+            <Label htmlFor="invite-email">Email</Label>
             <Input
-              id="teacher-email"
+              id="invite-email"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
