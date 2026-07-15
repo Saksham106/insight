@@ -70,9 +70,9 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
     markRead(currentUserId, id);
   };
 
-  const handleCreated = (conversationId: string) => {
+  const handleCreated = async (conversationId: string) => {
     setShowNew(false);
-    void loadConversations();
+    await loadConversations();
     openConversation(conversationId);
   };
 
