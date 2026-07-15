@@ -42,26 +42,20 @@ interface UnreadProviderProps {
 // Mounted once in the dashboard layout: one conversation-ID fetch, one aggregated
 // RPC, and one realtime channel for the whole session — instead of per-conversation
 // count queries duplicated across the header, dashboard body, and drawer.
-export function UnreadProvider({ userId, role, children }: UnreadProviderProps) {
+export function UnreadProvider({ userId, children }: UnreadProviderProps) {
   const supabase = useMemo(() => createClient(), []);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const convIdsRef = useRef<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
-    // Parents and admins have no direct FK column; RLS scopes what they can see.
-    let query = supabase
-      .from("teacher_student_assignments")
-      .select("conversation:conversations (id)")
-      .eq("is_active", true);
-    if (role === "teacher") query = query.eq("teacher_id", userId);
-    else if (role === "student") query = query.eq("student_id", userId);
-    const { data } = await query;
+    // Membership is the single source of truth — covers 1:1 (backfilled) and
+    // group conversations. RLS lets a user read their own participant rows.
+    const { data } = await supabase
+      .from("conversation_participants")
+      .select("conversation_id")
+      .eq("user_id", userId);
 
-    const ids: string[] = [];
-    (data ?? []).forEach((row) => {
-      const conv = Array.isArray(row.conversation) ? row.conversation : row.conversation ? [row.conversation as { id: string }] : [];
-      conv.forEach((c) => ids.push(c.id));
-    });
+    const ids: string[] = (data ?? []).map((row) => row.conversation_id as string);
     convIdsRef.current = new Set(ids);
 
     if (ids.length === 0) { setUnread({}); return; }
@@ -74,7 +68,7 @@ export function UnreadProvider({ userId, role, children }: UnreadProviderProps) 
       next[row.conversation_id] = Number(row.unread_count) || 0;
     });
     setUnread(next);
-  }, [role, supabase, userId]);
+  }, [supabase, userId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
