@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, Link2, UserPlus } from "lucide-react";
+import { Bot, CalendarDays, Link2, UserPlus } from "lucide-react";
 
 import { AdminSessionsSection } from "@/components/admin/admin-sessions-section";
 import { AdminStats } from "@/components/admin/admin-stats";
@@ -75,6 +75,12 @@ const overviewLinks = [
     icon: CalendarDays,
     title: "Sessions",
     description: "Track scheduled and pending sessions.",
+  },
+  {
+    href: "/admin/hermes",
+    icon: Bot,
+    title: "Hermes Assistant",
+    description: "Import WhatsApp contacts and review assistant activity.",
   },
 ];
 
