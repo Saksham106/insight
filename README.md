@@ -68,6 +68,24 @@ npm run dev
 | ADMIN_EMAIL | Yes | Admin notification recipient. |
 | NEXT_PUBLIC_DEV_BYPASS_AUTH | No | Set to true to bypass auth in dev only. |
 | NEXT_PUBLIC_DEV_BYPASS_ROLE | No | Role to use with auth bypass: admin, teacher, student. |
+| WHATSAPP_CLOUD_ACCESS_TOKEN | For WhatsApp | Permanent Meta system-user token; server-only. |
+| WHATSAPP_CLOUD_PHONE_NUMBER_ID | For WhatsApp | Meta phone-number ID, not the visible phone number. |
+| WHATSAPP_CLOUD_APP_SECRET | For WhatsApp | Meta app secret used to verify raw webhook signatures. |
+| WHATSAPP_CLOUD_VERIFY_TOKEN | For WhatsApp | Random callback verification token shared with Meta. |
+| WHATSAPP_CLOUD_API_VERSION | No | Pinned Graph API version. |
+| HERMES_FORWARD_URL | For WhatsApp | Existing Hermes Cloud API webhook URL used after Insight policy checks. |
+| HERMES_TOOL_SHARED_SECRET | For WhatsApp | Random HMAC secret shared only by Insight and Hermes. |
+| HERMES_ADMIN_WHATSAPP_E164 | For WhatsApp | Swati's verified WhatsApp number in E.164 format; this is the only scheduling administrator. |
+| WHATSAPP_SENDER_SHARED_SECRET | For WhatsApp | Separate random HMAC secret used only for Insight's private sender dispatch. Never install it on Hermes. |
+| HERMES_IMPORT_SIGNING_SECRET | For WhatsApp | Random server-only secret for short-lived import previews. |
+| WHATSAPP_TEMPLATE_LOCALE | No | Approved template locale, normally `en_US`. |
+| WHATSAPP_TEMPLATE_PERMISSION_REQUEST | For first contact | Approved fixed opt-in/opt-out introduction template name. |
+| WHATSAPP_TEMPLATE_AVAILABILITY_REQUEST | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_TIME_PROPOSAL | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_CLASS_CONFIRMATION | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_RESCHEDULE_REQUEST | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_CLASS_REMINDER | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_HUMAN_ATTENTION | For proactive outreach | Approved Meta template name. |
 
 Note: Do not commit .env.local. Share secrets out of band.
 
@@ -95,10 +113,57 @@ Admins invite teachers and students (parents) from the /admin page. Invited user
 7. Try sending a phone number or email address and confirm it is blocked.
 8. Confirm unrelated teachers/students cannot access each other.
 
+## Hermes WhatsApp Operations
+
+The `/admin/hermes` area is a separate academy contact directory inside the existing Supabase project. It does not create Auth users or modify portal records unless Swati explicitly confirms a suggested exact-name match.
+
+### Import contacts
+
+1. On Swati's iPhone, export only the academy contacts as a `.vcf` file.
+2. Upload it at `/admin/hermes`. The preview retains only names and phone numbers.
+3. Resolve duplicate or invalid numbers. Confirm any portal match explicitly; first-name-only matches are never linked.
+4. Classify unmatched people as teacher, student, parent, employee, or other.
+5. Attest that the selected contacts consented to academy WhatsApp messages, then commit the import.
+
+Imported contacts default to direct communication after that attestation and can message Kitty immediately; no second Fly allowlist update is required. Insight is the single inbound authorization gate and forwards only imported, active, consent-attested, classified contacts whose communication policy is `direct`. Use an individual contact's policy to require approval, contact a guardian only, pause messages, or opt out. An inbound `STOP` also opts the contact out immediately.
+
+### Meta templates
+
+Create fixed-purpose Utility templates in WhatsApp Manager for availability requests, proposed times, confirmations, rescheduling, reminders, and human-attention notices. Put only approved template names in the matching environment variables. Do not let Hermes generate template names or categories. A recipient outside their own 24-hour service window can receive only one of these approved templates.
+
+### Approval-first pilot
+
+Keep the first rollout approval-first: Hermes may collect availability and propose times, but it must create a pending approval before class confirmation. Swati approves or rejects it in `/admin/hermes`. Unknown, unclassified, paused, guardian-only, approval-required, and opted-out contacts fail closed. Hermes receives no Supabase service key or Meta access token.
+
+### Swati's two Hermes channels
+
+Swati's default Photon/iMessage profile remains her private personal assistant and keeps its Google Workspace access. The `academy` WhatsApp Cloud profile is the business-facing assistant for imported teachers, students, parents, and employees. For the initial pilot, Swati should start Academy scheduling work by messaging Kitty on WhatsApp; iMessage instructions do not yet create an Insight scheduling case automatically.
+
+Keep profile memories isolated. In particular, do not set `memory.mnemosyne.profile_isolation` to `false`: an external Academy conversation must not read, influence, or retrieve Swati's private-profile memory. Cross-channel coordination belongs in the guarded `hermes_*` scheduling tables and narrow Insight tool API, not in shared conversational memory.
+
+### Deployment and activation
+
+1. Apply `supabase/migrations/20260716124117_add_hermes_assistant.sql` and run Supabase security/performance advisors.
+2. Deploy Insight with all server secrets, while leaving Meta's current callback unchanged.
+3. Create the `academy` profile from the current model/WhatsApp configuration, copy `infra/hermes-plugins/insight-scheduling` into that profile's `plugins` directory, and enable it with `--no-allow-tool-override`.
+4. Configure `platform_toolsets.whatsapp_cloud` for the business-facing profile. Disable terminal, code execution, image generation, computer control, delegation, and TTS. Retain the pilot-useful web/browser, file, vision, skills, todo, memory, session-search, clarification, cron, and `insight_scheduling` toolsets. Copy `infra/hermes-profiles/academy/SOUL.md` to the profile root and `AGENTS.md` to its working directory.
+5. Keep Meta's callback on Insight and set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=true` only in the Academy profile. Insight verifies Meta signatures and filters contacts before re-signing eligible payloads for Hermes. Keep the old explicit allowlist value for rollback.
+6. Run `hermes -p academy config check` and `hermes -p academy tools list --platform whatsapp_cloud`. Confirm that the six disallowed toolsets are disabled and `insight_scheduling` is enabled before activating the profile.
+7. Verify the Insight webhook GET challenge, signed tool calls, admin import, approval controls, and a test Meta send.
+8. Change Meta's callback last to `https://<insight-host>/api/whatsapp/webhook` and subscribe to `messages`.
+
+Useful endpoints are `/api/whatsapp/webhook` (Meta callback), `/api/whatsapp/send` (signed internal sender), `/api/hermes/tools` (signed Hermes actions), and `/admin/hermes` (human operations). Do not call either signed API from a browser or expose its shared secret.
+
+### Rollback
+
+If inbound handling fails, first set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=false` on the Academy profile so its preserved explicit allowlist becomes authoritative, then restore Meta's callback to the exact URL stored in `HERMES_FORWARD_URL`; no database rollback is required. Keep the Insight tables for audit and delivery diagnosis. If outbound handling fails, pause affected contacts or remove the approved template environment variables, which makes proactive outreach fail closed. Never delete message or audit rows during incident response.
+
 ## Future Improvements (Not Implemented)
 
 - Admin conversation search and filters
 - File attachments and lesson materials
 - Scheduled session reminders
+- Default-profile/iMessage intake into the shared Insight scheduling queue
+- WhatsApp approval notifications and approve/reject replies for Swati
 - Parent-only and student-only sub-roles
 - Audit log for admin actions

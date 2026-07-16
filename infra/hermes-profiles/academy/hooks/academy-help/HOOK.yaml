@@ -1,0 +1,5 @@
+name: academy-help
+description: Replace internal Hermes command help with contact-safe Academy guidance.
+events:
+  - command:help
+  - command:whoami

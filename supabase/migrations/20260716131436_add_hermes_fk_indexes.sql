@@ -1,0 +1,14 @@
+create index if not exists hermes_approvals_case_id_idx on public.hermes_approvals(case_id);
+create index if not exists hermes_approvals_decided_by_idx on public.hermes_approvals(decided_by);
+create index if not exists hermes_audit_actor_contact_idx on public.hermes_audit_events(actor_contact_id);
+create index if not exists hermes_audit_actor_profile_idx on public.hermes_audit_events(actor_profile_id);
+create index if not exists hermes_relationships_confirmed_by_idx on public.hermes_contact_relationships(confirmed_by);
+create index if not exists hermes_contacts_consent_attested_by_idx on public.hermes_contacts(consent_attested_by);
+create index if not exists hermes_contacts_import_batch_idx on public.hermes_contacts(import_batch_id);
+create index if not exists hermes_contacts_profile_link_confirmed_by_idx on public.hermes_contacts(profile_link_confirmed_by);
+create index if not exists hermes_import_batches_imported_by_idx on public.hermes_import_batches(imported_by);
+create index if not exists hermes_messages_case_id_idx on public.hermes_messages(case_id);
+create index if not exists hermes_cases_created_by_idx on public.hermes_scheduling_cases(created_by);
+create index if not exists hermes_cases_assignment_idx on public.hermes_scheduling_cases(insight_assignment_id);
+create index if not exists hermes_cases_session_idx on public.hermes_scheduling_cases(insight_session_id);
+create index if not exists hermes_cases_requested_by_idx on public.hermes_scheduling_cases(requested_by_contact_id);
