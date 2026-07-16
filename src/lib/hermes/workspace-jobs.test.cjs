@@ -11,7 +11,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } = require(path.join(__dirname, "workspace-jobs.ts"));
+const { calendarEventJobIdempotencyKey, parseCalendarEventPayload, parseCalendarEventResult, parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } = require(path.join(__dirname, "workspace-jobs.ts"));
 
 test("normalizes bounded freebusy windows and discards extra fields", () => {
   assert.deepEqual(parseFreeBusyPayload({
@@ -60,4 +60,39 @@ test("builds stable idempotency keys from sorted normalized windows", () => {
   assert.equal(workspaceJobIdempotencyKey("case-1", a), workspaceJobIdempotencyKey("case-1", b));
   assert.notEqual(workspaceJobIdempotencyKey("case-1", a), workspaceJobIdempotencyKey("case-2", a));
   assert.match(workspaceJobIdempotencyKey("case-1", a), /^freebusy:[a-f0-9]{64}$/);
+});
+
+test("normalizes a bounded private Calendar event job and discards arbitrary fields", () => {
+  const payload = parseCalendarEventPayload({
+    start: "2026-07-20T09:00:00+07:00",
+    end: "2026-07-20T10:00:00+07:00",
+    timezone: "Asia/Ho_Chi_Minh",
+    summary: "  Insight class with Asha  ",
+    eventId: "insight0abc123",
+    proposalVersion: 2,
+    attendees: ["private@example.com"],
+  });
+  assert.deepEqual(payload, {
+    start: "2026-07-20T02:00:00.000Z",
+    end: "2026-07-20T03:00:00.000Z",
+    timezone: "Asia/Ho_Chi_Minh",
+    summary: "Insight class with Asha",
+    eventId: "insight0abc123",
+    proposalVersion: 2,
+  });
+  assert.match(calendarEventJobIdempotencyKey("case-1", payload), /^event:[a-f0-9]{64}$/);
+  assert.equal(calendarEventJobIdempotencyKey("case-1", payload), calendarEventJobIdempotencyKey("case-1", { ...payload }));
+});
+
+test("rejects malformed Calendar event payloads and minimizes results", () => {
+  const base = { start: "2026-07-20T09:00:00Z", end: "2026-07-20T10:00:00Z", timezone: "UTC", summary: "Class", eventId: "insight0abc123", proposalVersion: 1 };
+  assert.throws(() => parseCalendarEventPayload({ ...base, end: base.start }), /invalid_calendar_event_window/);
+  assert.throws(() => parseCalendarEventPayload({ ...base, timezone: "bad timezone" }), /invalid_timezone/);
+  assert.throws(() => parseCalendarEventPayload({ ...base, summary: "x".repeat(241) }), /invalid_calendar_event_summary/);
+  assert.throws(() => parseCalendarEventPayload({ ...base, eventId: "INVALID-ID" }), /invalid_calendar_event_id/);
+  assert.throws(() => parseCalendarEventPayload({ ...base, proposalVersion: 0 }), /invalid_proposal_version/);
+  assert.deepEqual(parseCalendarEventResult({ eventId: "insight0abc123", etag: '"abc"', createdAt: "2026-07-16T12:00:00Z", summary: "drop" }), {
+    eventId: "insight0abc123", etag: '"abc"', createdAt: "2026-07-16T12:00:00.000Z",
+  });
+  assert.throws(() => parseCalendarEventResult({ eventId: "bad-id", etag: "x", createdAt: "bad" }), /invalid_calendar_event_result/);
 });
