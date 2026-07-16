@@ -94,3 +94,24 @@ test("Workspace jobs are server-only, leased transactionally, and service-role c
   assert.match(sql, /grant execute on function public\.complete_hermes_workspace_job[^;]+to service_role/);
   assert.match(sql, /add column if not exists workspace_state text not null default 'not_required'/);
 });
+
+test("Calendar event jobs bind explicit tutor ownership, job type, and server-only links", () => {
+  const sql = fs.readFileSync(
+    path.join(migrationsDir, "20260716152000_add_hermes_calendar_event_jobs.sql"),
+    "utf8",
+  ).toLowerCase();
+  assert.match(sql, /add column if not exists tutor_kind text not null default 'academy_tutor'/);
+  assert.match(sql, /tutor_kind in \('swati', 'academy_tutor'\)/);
+  assert.match(sql, /job_type in \('calendar_freebusy', 'calendar_create_event'\)/);
+  assert.match(sql, /create table public\.hermes_calendar_links/);
+  assert.match(sql, /case_id uuid not null unique/);
+  assert.match(sql, /calendar_event_id text not null unique/);
+  assert.match(sql, /enable row level security/);
+  assert.match(sql, /revoke all on table public\.hermes_calendar_links from anon, authenticated/);
+  assert.match(sql, /job_type = p_job_type/);
+  assert.match(sql, /error_code = 'calendar_conflict'/);
+  assert.match(sql, /workspace_state = 'stale'/);
+  assert.match(sql, /status = 'needs_attention'/);
+  assert.match(sql, /insert into public\.hermes_calendar_links/);
+  assert.match(sql, /grant execute on function public\.complete_hermes_workspace_job\(uuid, text, text, text, jsonb, text\) to service_role/);
+});
