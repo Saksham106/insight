@@ -34,7 +34,7 @@ create table if not exists public.hermes_contacts (
   communication_policy text not null default 'direct'
     check (communication_policy in ('direct', 'guardian_only', 'approval_required', 'paused', 'opted_out')),
   consent_status text not null default 'attested'
-    check (consent_status in ('attested', 'withdrawn')),
+    check (consent_status in ('attested', 'pending', 'withdrawn')),
   consent_source text not null default 'admin_attestation'
     check (consent_source in ('admin_attestation', 'whatsapp', 'written')),
   consent_attested_by uuid references public.profiles(id) on delete set null,
@@ -130,6 +130,7 @@ create table if not exists public.hermes_messages (
   error_code text,
   error_detail text,
   occurred_at timestamptz not null default now(),
+  forwarded_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
