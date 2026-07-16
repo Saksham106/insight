@@ -11,7 +11,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { academyInformation, canTransitionCase, communicationDecision, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } = require(path.join(__dirname, "cases.ts"));
+const { academyInformation, canTransitionCase, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } = require(path.join(__dirname, "cases.ts"));
 const { signServiceRequest, verifyServiceRequest } = require(path.join(__dirname, "auth.ts"));
 
 test("tool authentication rejects invalid and expired signatures", () => {
@@ -58,6 +58,23 @@ test("derives the actor only from a direct WhatsApp Cloud session", () => {
   assert.equal(parseWhatsAppToolActor({ platform: "whatsapp_cloud", chatId: "84917583553" }), null);
   assert.equal(parseWhatsAppToolActor({ platform: "telegram", chatId: "84917583553", userId: "84917583553" }), null);
   assert.equal(parseWhatsAppToolActor({ platform: "whatsapp_cloud", chatId: "+84 hello" }), null);
+});
+
+test("derives the iMessage administrator only from a verified direct session", () => {
+  const crypto = require("node:crypto");
+  const stableId = "photon:swati:verified";
+  const digest = crypto.createHash("sha256").update(stableId).digest("hex");
+  assert.deepEqual(
+    parseIMessageAdminActor(
+      { platform: "imessage", chatId: stableId, userId: stableId },
+      digest,
+    ),
+    { stableId },
+  );
+  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: stableId, userId: "other" }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "whatsapp_cloud", chatId: stableId, userId: stableId }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: stableId, userId: stableId }, "0".repeat(64)), null);
+  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: "", userId: "" }, digest), null);
 });
 
 test("case contacts receive only their own participant record", () => {
