@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { filterWebhookPayload, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } = require(path.join(__dirname, "webhook.ts"));
+const { filterWebhookPayload, isInboundContactEligible, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } = require(path.join(__dirname, "webhook.ts"));
 
 const fixture = {
   object: "whatsapp_business_account",
@@ -68,6 +68,17 @@ test("recognizes explicit WhatsApp opt-out commands without guessing from ordina
   assert.equal(isWhatsAppOptOut(null), false);
 });
 
+test("forwards only imported active consent-attested classified direct contacts", () => {
+  const eligible = { isActive: true, consentStatus: "attested", role: "student", communicationPolicy: "direct" };
+  assert.equal(isInboundContactEligible(eligible), true);
+  assert.equal(isInboundContactEligible({ ...eligible, role: "unclassified" }), false);
+  assert.equal(isInboundContactEligible({ ...eligible, isActive: false }), false);
+  assert.equal(isInboundContactEligible({ ...eligible, consentStatus: "pending" }), false);
+  for (const communicationPolicy of ["paused", "guardian_only", "approval_required", "opted_out"]) {
+    assert.equal(isInboundContactEligible({ ...eligible, communicationPolicy }), false);
+  }
+});
+
 test("webhook route handles verification, raw signatures, idempotency, and forwarding", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"), "utf8");
   assert.match(source, /export async function GET/);
@@ -77,4 +88,5 @@ test("webhook route handles verification, raw signatures, idempotency, and forwa
   assert.match(source, /HERMES_FORWARD_URL/);
   assert.match(source, /forwarded_at/);
   assert.match(source, /consent_status: "withdrawn"/);
+  assert.match(source, /isInboundContactEligible/);
 });

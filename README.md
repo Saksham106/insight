@@ -125,7 +125,7 @@ The `/admin/hermes` area is a separate academy contact directory inside the exis
 4. Classify unmatched people as teacher, student, parent, employee, or other.
 5. Attest that the selected contacts consented to academy WhatsApp messages, then commit the import.
 
-Imported contacts default to direct communication after that attestation. Use an individual contact's policy to require approval, contact a guardian only, pause messages, or opt out. An inbound `STOP` also opts the contact out immediately.
+Imported contacts default to direct communication after that attestation and can message Kitty immediately; no second Fly allowlist update is required. Insight is the single inbound authorization gate and forwards only imported, active, consent-attested, classified contacts whose communication policy is `direct`. Use an individual contact's policy to require approval, contact a guardian only, pause messages, or opt out. An inbound `STOP` also opts the contact out immediately.
 
 ### Meta templates
 
@@ -141,15 +141,16 @@ Keep the first rollout approval-first: Hermes may collect availability and propo
 2. Deploy Insight with all server secrets, while leaving Meta's current callback unchanged.
 3. Create the `academy` profile from the current model/WhatsApp configuration with `--no-skills`, copy `infra/hermes-plugins/insight-scheduling` into that profile's `plugins` directory, and enable it with `--no-allow-tool-override`.
 4. Set the Academy profile's WhatsApp toolsets to exactly `insight_scheduling` and `clarify`; disable inherited plugins, memory, terminal, file, code, browser, delegation, session search, and Workspace tools. Copy `infra/hermes-profiles/academy/SOUL.md` to the profile root and `AGENTS.md` to its working directory.
-5. Run `hermes -p academy config check` and `hermes -p academy tools list --summary`. Do not activate the profile unless WhatsApp reports only `insight_scheduling` and `clarify`.
-6. Verify the Insight webhook GET challenge, signed tool calls, admin import, approval controls, and a test Meta send.
-7. Change Meta's callback last to `https://<insight-host>/api/whatsapp/webhook` and subscribe to `messages`.
+5. Keep Meta's callback on Insight and set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=true` only in the Academy profile. Insight verifies Meta signatures and filters contacts before re-signing eligible payloads for Hermes. Keep the old explicit allowlist value for rollback.
+6. Run `hermes -p academy config check` and `hermes -p academy tools list --summary`. Do not activate the profile unless WhatsApp reports only `insight_scheduling` and `clarify`.
+7. Verify the Insight webhook GET challenge, signed tool calls, admin import, approval controls, and a test Meta send.
+8. Change Meta's callback last to `https://<insight-host>/api/whatsapp/webhook` and subscribe to `messages`.
 
 Useful endpoints are `/api/whatsapp/webhook` (Meta callback), `/api/whatsapp/send` (signed internal sender), `/api/hermes/tools` (signed Hermes actions), and `/admin/hermes` (human operations). Do not call either signed API from a browser or expose its shared secret.
 
 ### Rollback
 
-If inbound handling fails, restore Meta's callback to the exact URL stored in `HERMES_FORWARD_URL`; no database rollback is required. Keep the Insight tables for audit and delivery diagnosis. If outbound handling fails, pause affected contacts or remove the approved template environment variables, which makes proactive outreach fail closed. Never delete message or audit rows during incident response.
+If inbound handling fails, first set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=false` on the Academy profile so its preserved explicit allowlist becomes authoritative, then restore Meta's callback to the exact URL stored in `HERMES_FORWARD_URL`; no database rollback is required. Keep the Insight tables for audit and delivery diagnosis. If outbound handling fails, pause affected contacts or remove the approved template environment variables, which makes proactive outreach fail closed. Never delete message or audit rows during incident response.
 
 ## Future Improvements (Not Implemented)
 

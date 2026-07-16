@@ -29,6 +29,13 @@ class AcademyProfileTests(unittest.TestCase):
         self.assertIn("long_running_notifications: false", readme)
         self.assertIn('tool_progress: "off"', readme)
 
+    def test_insight_is_the_single_inbound_contact_gate(self):
+        readme = (PROFILE_DIR / "README.md").read_text()
+        self.assertIn("WHATSAPP_CLOUD_ALLOW_ALL_USERS=true", readme)
+        self.assertIn("Meta callback must remain the signed Insight webhook", readme)
+        self.assertIn("imported, active, consent-attested, classified", readme)
+        self.assertIn("communication_policy=direct", readme)
+
     def test_academy_help_hook_is_registered_for_help_and_whoami(self):
         hook_dir = PROFILE_DIR / "hooks" / "academy-help"
         manifest = (hook_dir / "HOOK.yaml").read_text()

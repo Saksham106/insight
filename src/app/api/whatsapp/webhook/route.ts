@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { filterWebhookPayload, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } from "@/lib/hermes/webhook";
+import { filterWebhookPayload, isInboundContactEligible, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } from "@/lib/hermes/webhook";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(request: Request) {
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const e164 = `+${event.waId.replace(/\D/g, "")}`;
     let { data: contact } = await supabase
       .from("hermes_contacts")
-      .select("id, communication_policy, consent_status, is_active")
+      .select("id, role, communication_policy, consent_status, is_active")
       .eq("whatsapp_e164", e164)
       .is("deleted_at", null)
       .maybeSingle();
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
         consent_status: "pending",
         consent_source: "whatsapp",
         consent_attested_by: null,
-      }).select("id, communication_policy, consent_status, is_active").single();
+      }).select("id, role, communication_policy, consent_status, is_active").single();
       contact = created.data;
       if (contact) await supabase.from("hermes_audit_events").insert({ actor_type: "system", actor_contact_id: contact.id, event_type: "unknown_contact_received", entity_type: "hermes_contact", entity_id: contact.id });
     }
@@ -70,7 +70,12 @@ export async function POST(request: Request) {
       : { last_inbound_at: event.occurredAt, service_window_expires_at: windowExpiry }
     ).eq("id", contact.id);
     if (optedOut) await supabase.from("hermes_audit_events").insert({ actor_type: "contact", actor_contact_id: contact.id, event_type: "contact_opted_out", entity_type: "hermes_contact", entity_id: contact.id, metadata: { source: "whatsapp" } });
-    const eligible = !optedOut && contact.is_active && contact.consent_status === "attested" && contact.communication_policy === "direct";
+    const eligible = !optedOut && isInboundContactEligible({
+      isActive: contact.is_active,
+      consentStatus: contact.consent_status,
+      role: contact.role,
+      communicationPolicy: contact.communication_policy,
+    });
 
     const { data: inserted } = await supabase.from("hermes_messages").upsert({
       contact_id: contact.id,

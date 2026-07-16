@@ -41,6 +41,18 @@ The onboarding setting disables Hermes's generic first-contact request to build 
 
 Copy `hooks/academy-help` to the profile's `hooks/academy-help` directory. This supported Hermes gateway hook replaces `/help` and `/whoami` output for non-admin WhatsApp contacts with the small Academy help message while leaving Swati's operator help intact.
 
-Do not enable terminal, file, code execution, browser, delegation, cross-session search, general memory, or unrestricted Google Workspace tools for this profile. Keep the pilot `WHATSAPP_CLOUD_ALLOWED_USERS` list explicit until end-to-end testing passes.
+## Inbound authorization boundary
+
+Insight is the single contact-authorization gate. Set this in the Academy profile `.env`:
+
+```dotenv
+WHATSAPP_CLOUD_ALLOW_ALL_USERS=true
+```
+
+This setting removes Hermes's duplicate phone allowlist; it does not make the Academy publicly conversational. The Meta callback must remain the signed Insight webhook. Insight verifies Meta's signature and forwards only an imported, active, consent-attested, classified contact with `communication_policy=direct`. Unknown, unclassified, paused, guardian-only, approval-required, and opted-out contacts are recorded safely and are not forwarded to Kitty. Insight re-signs the filtered payload with the Meta app secret before sending it to the Academy Cloud adapter.
+
+Keep the previous `WHATSAPP_CLOUD_ALLOWED_USERS` value as rollback data. If Meta's callback is ever restored directly to Hermes, set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=false` before or at the same time so the explicit Hermes allowlist becomes authoritative again.
+
+Do not enable terminal, file, code execution, browser, delegation, cross-session search, general memory, or unrestricted Google Workspace tools for this profile.
 
 The deployed Hermes revision must provide `gateway.session_context` backed by Python `ContextVar`, and its WhatsApp Cloud adapter must set equal DM `chat_id` and `user_id` values while rejecting group-shaped payloads. Fail the deployment if that integration probe or `hermes -p academy config check` fails.

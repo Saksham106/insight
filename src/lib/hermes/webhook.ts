@@ -19,6 +19,18 @@ export function isWhatsAppOptOut(body: string | null) {
   return ["stop", "unsubscribe", "cancel", "end", "quit", "opt out", "please stop", "please unsubscribe"].includes(normalized);
 }
 
+export function isInboundContactEligible(contact: {
+  isActive: boolean;
+  consentStatus: string;
+  role: string;
+  communicationPolicy: string;
+}) {
+  return contact.isActive
+    && contact.consentStatus === "attested"
+    && contact.role !== "unclassified"
+    && contact.communicationPolicy === "direct";
+}
+
 function timestampToIso(value: unknown) {
   const seconds = Number(value);
   return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
