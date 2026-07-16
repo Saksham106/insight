@@ -389,7 +389,17 @@ export default function LandingPage() {
           }}
         >
           <span className="text-sm font-medium text-navy">Insight Academy</span>
-          <span className="text-sm text-muted">Private tutoring management</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "18px", flexWrap: "wrap" }}>
+            <span className="text-sm text-muted">Private tutoring management</span>
+            <nav aria-label="Legal links" style={{ display: "flex", gap: "14px" }}>
+              <Link href="/privacy" className="text-sm text-slate" style={{ textDecoration: "none" }}>
+                Privacy
+              </Link>
+              <Link href="/terms" className="text-sm text-slate" style={{ textDecoration: "none" }}>
+                Terms
+              </Link>
+            </nav>
+          </div>
         </div>
       </footer>
     </div>
