@@ -74,6 +74,26 @@ The every-minute no-agent schedule remains paused until all staging probes pass.
 
 Do not use an agent cron for this worker. Do not enable Calendar event writes in this read-only phase.
 
+## Private Calendar event writes
+
+Calendar writes are a separate fail-closed capability. Keep this Insight server flag disabled until its staging probes pass:
+
+```dotenv
+HERMES_CALENDAR_WRITES_ENABLED=false
+```
+
+For an explicitly Swati-taught case, consuming her exact approval creates one typed `calendar_create_event` job. The worker derives `primary`, checks the deterministic event ID with `gws calendar events get`, performs a final free/busy check, and only then calls `gws calendar events insert`. The event is private and busy, has no attendees, description, reminders, recurrence, attachments, or conference data, and stores only opaque Insight identifiers in private extended properties. Kitty cannot send a participant confirmation until the Calendar job is ready.
+
+In staging, upgrade the default profile's `gws` OAuth authorization to the minimum Calendar event-write scope. Create a synthetic Swati case with no real participant data, approve its exact time, and verify all of the following before enabling production:
+
+1. The event appears once on the primary calendar with the expected private visibility and deterministic event ID.
+2. Interrupt the worker after `events insert`, let the lease expire, and run it again. `events get` must recover the same event without a duplicate.
+3. Add a conflicting Calendar event before the final check. The job must return `calendar_conflict`, the case must become stale/needs-attention, and no participant confirmation may be sent.
+4. Inspect the queue, result, logs, and audit metadata for absence of Google response bodies, event descriptions, attendees, and chat content.
+5. Disable `HERMES_CALENDAR_WRITES_ENABLED` and pause the no-agent schedule. New Swati confirmations must fail closed while other tutor cases remain usable.
+
+Rollback is to disable the flag first, pause the worker, and leave jobs/audit rows intact. Calendar events already created are not deleted automatically; compare the server-only Calendar link to the event ID and perform manual cleanup in Google Calendar if the approved class is cancelled. Calendar update/cancel, Meet creation, and reminders are not included yet.
+
 ## Rollback
 
 1. Set `HERMES_IMESSAGE_INTAKE_ENABLED=false` on Insight first.

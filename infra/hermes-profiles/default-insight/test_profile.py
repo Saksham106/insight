@@ -49,6 +49,20 @@ class DefaultInsightProfileTests(unittest.TestCase):
         self.assertIn("academy profile", source)
         self.assertIn("does not", source)
 
+    def test_docs_keep_calendar_writes_disabled_until_idempotency_probes_pass(self):
+        source = (PROFILE_DIR / "README.md").read_text().lower()
+        for required in (
+            "hermes_calendar_writes_enabled=false",
+            "calendar_create_event",
+            "deterministic event id",
+            "events insert",
+            "events get",
+            "calendar_conflict",
+            "manual cleanup",
+            "confirmation",
+        ):
+            self.assertIn(required, source)
+
 
 if __name__ == "__main__":
     unittest.main()

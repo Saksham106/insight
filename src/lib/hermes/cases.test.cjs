@@ -164,6 +164,8 @@ test("tool route records explicit tutor ownership and fail-closed Calendar write
   assert.match(route, /p_calendar_writes_enabled/);
   assert.match(route, /calendar_create_event/);
   assert.match(env, /HERMES_CALENDAR_WRITES_ENABLED=false/);
+  assert.match(route, /intent === "class_confirmation"/);
+  assert.match(route, /workspace_state/);
 });
 
 test("Hermes skill identifies automation, honors STOP, forbids transcript sharing, and escalates", () => {

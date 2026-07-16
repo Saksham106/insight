@@ -155,6 +155,8 @@ def _recover_existing_event(case_id, payload):
             or _iso(decoded["end"]["dateTime"]) != _iso(payload["end"])
             or private.get("insightCaseId") != case_id
             or private.get("insightProposalVersion") != str(payload["proposalVersion"])
+            or decoded.get("visibility") != "private"
+            or decoded.get("transparency", "opaque") != "opaque"
         ):
             raise ValueError("event_mismatch")
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):

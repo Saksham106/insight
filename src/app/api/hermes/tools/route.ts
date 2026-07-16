@@ -297,6 +297,19 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         if (!["permission_request", "availability_request", "time_proposal", "class_confirmation", "reschedule_request", "class_reminder", "human_attention"].includes(intent)) return failure("Invalid intent");
         const idempotencyKey = stringValue(payload, "idempotencyKey", 128);
         const caseId = stringValue(payload, "caseId", 80);
+        if (intent === "class_confirmation") {
+          const { data: caseRecord, error: caseError } = await supabase
+            .from("hermes_scheduling_cases")
+            .select("id, status, tutor_kind, workspace_state")
+            .eq("id", caseId)
+            .maybeSingle();
+          if (caseError) throw caseError;
+          if (!caseRecord) return failure("Case not found", 404);
+          if (caseRecord.status !== "confirmed") return failure("Class is not confirmed", 409);
+          if (caseRecord.tutor_kind === "swati" && caseRecord.workspace_state !== "ready") {
+            return failure("Swati's Calendar event is not ready", 409);
+          }
+        }
         const senderSecret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
         if (!senderSecret) return failure("Sender unavailable", 503);
         const senderBody = JSON.stringify({ contactId, caseId, intent, text: typeof payload.text === "string" ? payload.text.slice(0, 2000) : undefined, bodyParameters: Array.isArray(payload.bodyParameters) ? payload.bodyParameters.slice(0, 10).map(String) : undefined, idempotencyKey, approvalId: typeof payload.approvalId === "string" ? payload.approvalId : undefined });

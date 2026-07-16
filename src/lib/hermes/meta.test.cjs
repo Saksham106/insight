@@ -73,4 +73,7 @@ test("sender route is internal-authenticated and idempotent", () => {
   assert.match(source, /verifyServiceRequest/);
   assert.match(source, /idempotencyKey/);
   assert.match(source, /hermes_messages/);
+  assert.match(source, /tutor_kind/);
+  assert.match(source, /workspace_state/);
+  assert.match(source, /class_confirmation/);
 });

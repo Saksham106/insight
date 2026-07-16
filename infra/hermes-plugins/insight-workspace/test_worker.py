@@ -125,6 +125,7 @@ class WorkerTests(unittest.TestCase):
         existing = subprocess.CompletedProcess([], 0, stdout=json.dumps({
             "id": "insight0abc123", "etag": '"etag-1"', "created": "2026-07-16T12:00:00Z",
             "start": {"dateTime": self.event_payload["start"]}, "end": {"dateTime": self.event_payload["end"]},
+            "visibility": "private", "transparency": "opaque",
             "extendedProperties": {"private": {"insightCaseId": "case-opaque-1", "insightProposalVersion": "2"}},
         }), stderr="")
         with patch.object(self.worker.subprocess, "run", return_value=existing) as run:
@@ -152,6 +153,7 @@ class WorkerTests(unittest.TestCase):
         existing = subprocess.CompletedProcess([], 0, stdout=json.dumps({
             "id": "insight0abc123", "etag": '"etag-1"', "created": "2026-07-16T12:00:00Z",
             "start": {"dateTime": self.event_payload["start"]}, "end": {"dateTime": self.event_payload["end"]},
+            "visibility": "private", "transparency": "opaque",
             "extendedProperties": {"private": {"insightCaseId": "case-opaque-1", "insightProposalVersion": "2"}},
         }), stderr="")
         with patch.object(self.worker.subprocess, "run", return_value=existing) as run:

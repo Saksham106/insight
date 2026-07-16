@@ -41,7 +41,7 @@ begin
       raise exception 'invalid_calendar_resolution';
     end;
     if v_end <= v_start or v_end - v_start > interval '24 hours'
-      or coalesce(p_resolution->>'timezone', '') !~ '^(UTC|[A-Za-z_]+/[A-Za-z0-9_+.-]+)$' then
+      or coalesce(p_resolution->>'timezone', '') !~ '^(UTC|[A-Za-z_]+(/[A-Za-z0-9_+.-]+)+)$' then
       raise exception 'invalid_calendar_resolution';
     end if;
     v_event_id := 'insight' || substr(encode(digest(
