@@ -139,6 +139,8 @@ Keep the first rollout approval-first: Hermes may collect availability and propo
 
 Swati's default Photon/iMessage profile remains her private personal assistant and keeps its Google Workspace access. The `academy` WhatsApp Cloud profile is the business-facing assistant for imported teachers, students, parents, and employees. For the initial pilot, Swati should start Academy scheduling work by messaging Kitty on WhatsApp; iMessage instructions do not yet create an Insight scheduling case automatically.
 
+The repository now includes a disabled-by-default first phase of shared iMessage intake. It is not active merely because the application is deployed. Follow `infra/hermes-profiles/default-insight/README.md`, keep `HERMES_IMESSAGE_INTAKE_ENABLED=false` until the staging identity probes pass, and do not copy the default profile's `HERMES_ADMIN_TOOL_SHARED_SECRET` or `insight-admin` plugin into the Academy profile.
+
 Keep profile memories isolated. In particular, do not set `memory.mnemosyne.profile_isolation` to `false`: an external Academy conversation must not read, influence, or retrieve Swati's private-profile memory. Cross-channel coordination belongs in the guarded `hermes_*` scheduling tables and narrow Insight tool API, not in shared conversational memory.
 
 ### Deployment and activation
@@ -163,7 +165,7 @@ If inbound handling fails, first set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=false` on t
 - Admin conversation search and filters
 - File attachments and lesson materials
 - Scheduled session reminders
-- Default-profile/iMessage intake into the shared Insight scheduling queue
+- Production activation of the feature-flagged default-profile/iMessage intake after the Photon identity probe
 - WhatsApp approval notifications and approve/reject replies for Swati
 - Parent-only and student-only sub-roles
 - Audit log for admin actions
