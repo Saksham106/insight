@@ -63,3 +63,14 @@ test("Hermes migration indexes case, message, and attention access paths", () =>
     assert.match(sql, new RegExp(`create index.*${index}`));
   }
 });
+
+test("Hermes scheduling cases record their intake channel and actor kind", () => {
+  const originMigration = fs.readFileSync(
+    path.join(migrationsDir, "20260716150000_add_hermes_case_origin.sql"),
+    "utf8",
+  );
+  assert.match(originMigration, /add column if not exists origin_platform text not null default 'whatsapp_cloud'/i);
+  assert.match(originMigration, /origin_platform in \('whatsapp_cloud', 'imessage', 'admin'\)/i);
+  assert.match(originMigration, /add column if not exists origin_actor_kind text not null default 'admin'/i);
+  assert.match(originMigration, /origin_actor_kind in \('admin', 'contact'\)/i);
+});
