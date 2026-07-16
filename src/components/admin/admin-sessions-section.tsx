@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 
 import { CalendarDays } from "lucide-react";
 
+import { AdminScheduleSessionForm } from "@/components/sessions/admin-schedule-session-form";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { SessionCard, type Session } from "@/components/sessions/session-card";
 import { Button } from "@/components/ui/button";
@@ -11,11 +12,20 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 type AdminSession = Session & { teacherName: string; studentName: string };
 
-interface AdminSessionsSectionProps {
-  sessions: AdminSession[];
+interface AdminScheduleAssignment {
+  id: string;
+  is_active: boolean;
+  teacher: { id: string; full_name: string } | null;
+  student: { id: string; full_name: string } | null;
 }
 
-export function AdminSessionsSection({ sessions }: AdminSessionsSectionProps) {
+interface AdminSessionsSectionProps {
+  sessions: AdminSession[];
+  assignments: AdminScheduleAssignment[];
+}
+
+export function AdminSessionsSection({ sessions, assignments }: AdminSessionsSectionProps) {
+  const schedulableAssignments = assignments.filter((a) => a.is_active);
   const [view, setView] = useState<"entries" | "calendar">("entries");
   const [isMobile, setIsMobile] = useState(false);
 
@@ -36,7 +46,10 @@ export function AdminSessionsSection({ sessions }: AdminSessionsSectionProps) {
   }));
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+    <section style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <AdminScheduleSessionForm assignments={schedulableAssignments} />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h2 className="text-lg font-semibold text-navy">All sessions</h2>
         {!isMobile && (
@@ -77,7 +90,7 @@ export function AdminSessionsSection({ sessions }: AdminSessionsSectionProps) {
       ) : (
         <MonthCalendar sessions={calendarSessions} />
       )}
-
+      </div>
     </section>
   );
 }

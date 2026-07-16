@@ -4,11 +4,17 @@ import { getUserProfile } from "@/lib/auth/get-user-profile";
 import {
   getAssignmentParticipants,
   getBusySessionsForParticipants,
+  getStudentAvailabilityBundle,
   getTeacherAvailabilityBundle,
   getTeacherProfileTimezone,
   resolveTeacherTimeZone,
 } from "@/lib/availability/data";
 import { generateAvailabilitySlots } from "@/lib/availability/slot-engine";
+import {
+  filterSlotsByStudentAvailability,
+  studentAvailableIntervals,
+  studentHasAvailability,
+} from "@/lib/availability/student-availability";
 
 export async function GET(request: Request) {
   const profile = await getUserProfile();
@@ -57,7 +63,7 @@ export async function GET(request: Request) {
     to,
   });
 
-  const slots = generateAvailabilitySlots({
+  let slots = generateAvailabilitySlots({
     settings: bundle.settings,
     rules: bundle.rules,
     overrides: bundle.overrides,
@@ -68,6 +74,20 @@ export async function GET(request: Request) {
     now: new Date(),
     teacherTimeZone,
   });
+
+  // Intersect with the student's own published availability, if any. A student
+  // who hasn't set availability is unrestricted, so slots are left untouched.
+  const studentAvailability = await getStudentAvailabilityBundle(participants.studentId);
+  if (studentHasAvailability(studentAvailability.rules, studentAvailability.overrides)) {
+    const intervals = studentAvailableIntervals(
+      studentAvailability.rules,
+      studentAvailability.overrides,
+      studentAvailability.timezone,
+      from,
+      to,
+    );
+    slots = filterSlotsByStudentAvailability(slots, intervals);
+  }
 
   return NextResponse.json({
     slots,

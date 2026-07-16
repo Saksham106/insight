@@ -6,7 +6,7 @@ import {
   zonedTimeToUtc,
 } from "@/lib/availability/timezone";
 
-function mergeOverlappingIntervals(intervals: Interval[]): Interval[] {
+export function mergeOverlappingIntervals(intervals: Interval[]): Interval[] {
   if (intervals.length === 0) return [];
   const sorted = [...intervals].sort((a, b) => a.start.getTime() - b.start.getTime());
   // Clone so we never mutate the caller's interval objects.
@@ -31,7 +31,7 @@ function subtractInterval(window: Interval, block: Interval): Interval[] {
   return pieces.filter((p) => p.end.getTime() - p.start.getTime() > 0);
 }
 
-function subtractBlocks(windows: Interval[], blocks: Interval[]): Interval[] {
+export function subtractBlocks(windows: Interval[], blocks: Interval[]): Interval[] {
   let result = windows;
   for (const block of blocks) {
     result = result.flatMap((w) => subtractInterval(w, block));

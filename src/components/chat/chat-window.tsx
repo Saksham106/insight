@@ -118,13 +118,26 @@ export function ChatWindow({
   }, [messages]);
 
   const handleSend = async (body: string | null, attachment?: FileAttachment | null) => {
-    const { error } = await supabase.from("messages").insert({
-      conversation_id: conversationId,
-      sender_id: currentUserId,
-      body: body ?? null,
-      ...(attachment ? { file_url: attachment.url, file_name: attachment.name, file_type: attachment.type } : {}),
-    });
-    return error ? error.message : null;
+    const { data, error } = await supabase
+      .from("messages")
+      .insert({
+        conversation_id: conversationId,
+        sender_id: currentUserId,
+        body: body ?? null,
+        ...(attachment ? { file_url: attachment.url, file_name: attachment.name, file_type: attachment.type } : {}),
+      })
+      .select("id, body, created_at, sender_id, file_url, file_name, file_type")
+      .single();
+
+    if (error) return error.message;
+
+    // Append immediately so the sender sees their own message without waiting on
+    // the realtime echo; the realtime handler dedupes by id.
+    if (data) {
+      const sender = await resolveSender(data.sender_id);
+      setMessages((current) => (current.some((m) => m.id === data.id) ? current : [...current, { ...data, sender } as ChatMessage]));
+    }
+    return null;
   };
 
   return (

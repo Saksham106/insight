@@ -4,16 +4,15 @@ import { useEffect, useState } from "react";
 import { CalendarClock } from "lucide-react";
 
 import { useMediaQuery } from "@/lib/use-media-query";
-import type { AvailabilityOverride, AvailabilityRule, BookingSettings } from "@/lib/availability/types";
-import type { Session } from "@/components/sessions/session-card";
+import type { BookingSettings, DateAvailabilityOverride, WeeklyAvailabilityRule } from "@/lib/availability/types";
 
-import { AvailabilityCalendar } from "./availability-calendar";
 import { BookingSettingsForm } from "./booking-settings-form";
+import { WeeklyHoursEditor } from "./weekly-hours-editor";
 
-export function AvailabilityEditor({ sessions = [] }: { sessions?: Session[] }) {
+export function AvailabilityEditor() {
   const [settings, setSettings] = useState<BookingSettings | null>(null);
-  const [rules, setRules] = useState<AvailabilityRule[]>([]);
-  const [overrides, setOverrides] = useState<AvailabilityOverride[]>([]);
+  const [rules, setRules] = useState<WeeklyAvailabilityRule[]>([]);
+  const [overrides, setOverrides] = useState<DateAvailabilityOverride[]>([]);
   const [resolvedTimezone, setResolvedTimezone] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +31,8 @@ export function AvailabilityEditor({ sessions = [] }: { sessions?: Session[] }) 
         return;
       }
       setSettings(data.settings as BookingSettings);
-      setRules(data.rules as AvailabilityRule[]);
-      setOverrides(data.overrides as AvailabilityOverride[]);
+      setRules(data.rules as WeeklyAvailabilityRule[]);
+      setOverrides(data.overrides as DateAvailabilityOverride[]);
       setResolvedTimezone((data.resolvedTimezone as string | undefined) ?? null);
       setLoading(false);
     })();
@@ -99,7 +98,7 @@ export function AvailabilityEditor({ sessions = [] }: { sessions?: Session[] }) 
           style={{ borderRadius: "10px", padding: "10px 14px", backgroundColor: "rgba(216,162,74,0.10)", lineHeight: 1.45 }}
         >
           Your device is set to <span className="font-semibold">{browserTimezone}</span>, but your availability is managed
-          in <span className="font-semibold">{timezone}</span>. Drag times as they should appear in {timezone}, not your local time.
+          in <span className="font-semibold">{timezone}</span>. Enter times as they should appear in {timezone}, not your local time.
         </p>
       )}
 
@@ -109,18 +108,19 @@ export function AvailabilityEditor({ sessions = [] }: { sessions?: Session[] }) 
 
       {!loading && !error && settings && (
         <>
-          <div className="border border-border bg-surface" style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <p className="text-sm font-semibold text-navy">Your availability</p>
-            <AvailabilityCalendar
-              settings={settings}
-              rules={rules}
-              overrides={overrides}
-              sessions={sessions}
-              timezone={timezone}
-              onRulesChange={setRules}
-              onOverridesChange={setOverrides}
-            />
-          </div>
+          <details open className="border border-border bg-surface" style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px" }}>
+            <summary className="text-sm font-semibold text-navy" style={{ cursor: "pointer" }}>Your weekly hours</summary>
+            <div style={{ marginTop: "16px" }}>
+              <WeeklyHoursEditor
+                mode={settings.availability_mode}
+                rules={rules}
+                overrides={overrides}
+                timezone={timezone}
+                onRulesChange={setRules}
+                onOverridesChange={setOverrides}
+              />
+            </div>
+          </details>
 
           <details className="border border-border bg-surface" style={{ borderRadius: "12px", padding: isMobile ? "14px" : "20px" }}>
             <summary className="text-sm font-semibold text-navy" style={{ cursor: "pointer" }}>Booking rules</summary>

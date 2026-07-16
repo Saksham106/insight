@@ -1,6 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
-import type { AvailabilityOverride, AvailabilityRule, BookingSettings, BusySession } from "./types";
+import type {
+  AvailabilityOverride,
+  AvailabilityRule,
+  BookingSettings,
+  BusySession,
+  DateAvailabilityOverride,
+  WeeklyAvailabilityRule,
+} from "./types";
 
 const DEFAULT_SETTINGS: Omit<BookingSettings, "teacher_id"> = {
   default_duration_minutes: 60,
@@ -52,6 +59,36 @@ export async function getTeacherAvailabilityBundle(teacherId: string): Promise<{
     rules: (rulesRows ?? []) as AvailabilityRule[],
     overrides: (overridesRows ?? []) as AvailabilityOverride[],
   };
+}
+
+// Student-owned availability. A student with no rows here is unrestricted, so
+// callers must check `studentHasAvailability` before applying it as a filter.
+export async function getStudentAvailabilityBundle(studentId: string): Promise<{
+  rules: WeeklyAvailabilityRule[];
+  overrides: DateAvailabilityOverride[];
+  timezone: string;
+}> {
+  const admin = createAdminClient();
+
+  const [{ data: profileRow }, { data: rulesRows }, { data: overridesRows }] = await Promise.all([
+    admin.from("profiles").select("timezone").eq("id", studentId).maybeSingle(),
+    admin
+      .from("student_availability_rules")
+      .select("id, weekday, start_time, end_time, timezone, is_active, rule_type")
+      .eq("student_id", studentId)
+      .eq("is_active", true),
+    admin
+      .from("student_availability_overrides")
+      .select("id, date, start_time, end_time, timezone, is_available, reason")
+      .eq("student_id", studentId),
+  ]);
+
+  const rules = (rulesRows ?? []) as WeeklyAvailabilityRule[];
+  const overrides = (overridesRows ?? []) as DateAvailabilityOverride[];
+  const profileTz = (profileRow as { timezone: string | null } | null)?.timezone ?? null;
+  const timezone = profileTz ?? rules[0]?.timezone ?? overrides[0]?.timezone ?? "UTC";
+
+  return { rules, overrides, timezone };
 }
 
 export async function getAssignmentParticipants(assignmentId: string): Promise<{

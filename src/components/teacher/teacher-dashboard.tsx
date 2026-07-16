@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 
 import { AvailabilityEditor } from "@/components/availability/availability-editor";
 import { ChatDrawer } from "@/components/chat/chat-drawer";
+import { ChatsPanel } from "@/components/chat/chats-panel";
 import { MonthCalendar } from "@/components/sessions/month-calendar";
 import { ScheduleSessionForm } from "@/components/sessions/schedule-session-form";
 import { SessionCard, type Session } from "@/components/sessions/session-card";
@@ -481,7 +482,7 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
       )}
 
       {/* Availability editor — teacher-managed weekly hours, booking rules, and date overrides */}
-      {view === "schedule" && <AvailabilityEditor sessions={calendarSessions} />}
+      {view === "schedule" && <AvailabilityEditor />}
 
       {/* Calendar — desktop and mobile */}
       {view === "schedule" && (
@@ -686,51 +687,8 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
         )}
       </section>}
 
-      {/* Chats view */}
-      {view === "chats" && (
-        <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {chatContacts.length === 0 ? (
-            <EmptyState icon={Users} title="No conversations yet" description="Once you're paired with a student, your chat will appear here." />
-          ) : (
-            chatContacts.map((contact) => {
-              const count = chatUnread[contact.conversationId] ?? 0;
-              const initials = contact.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-              return (
-                <div
-                  key={contact.conversationId}
-                  className="border border-border bg-surface"
-                  style={{ borderRadius: "12px", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px" }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                    <div style={{ position: "relative", flexShrink: 0 }}>
-                      <div style={{ width: "40px", height: "40px", borderRadius: "50%", backgroundColor: "var(--color-navy)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: 600 }}>
-                        {initials}
-                      </div>
-                      {count > 0 && (
-                        <span style={{ position: "absolute", top: "-3px", right: "-3px", backgroundColor: "#ef4444", color: "white", fontSize: "10px", fontWeight: 700, borderRadius: "999px", minWidth: "17px", height: "17px", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
-                          {count > 99 ? "99+" : count}
-                        </span>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-navy">{contact.name}</p>
-                      {count > 0 && <p className="text-xs text-muted" style={{ marginTop: "2px" }}>{count} unread message{count !== 1 ? "s" : ""}</p>}
-                    </div>
-                  </div>
-                  <Button size="sm" onClick={() => setChatInitialId(contact.conversationId)} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "6px" }}>
-                    Open chat
-                    {count > 0 && (
-                      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
-                        {count > 99 ? "99+" : count}
-                      </span>
-                    )}
-                  </Button>
-                </div>
-              );
-            })
-          )}
-        </section>
-      )}
+      {/* Chats view — WhatsApp-style 1:1 + group conversations */}
+      {view === "chats" && <ChatsPanel currentUserId={teacherId} />}
 
       {/* Quick-schedule modal — triggered by double-clicking a calendar date */}
       {scheduleDate && (
