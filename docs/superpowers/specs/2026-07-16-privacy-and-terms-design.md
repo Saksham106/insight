@@ -25,8 +25,10 @@ or published as part of this work.
   a particular company form or registered office.
 - The agency began operating in 2018. This is background only; it is not the
   effective date of either legal document.
-- `[EFFECTIVE DATE]` remains in both documents until the publication date is
-  approved.
+- The displayed effective date for both documents is July 1, 2020. Because the
+  current wording describes features and providers introduced or changed after
+  that date, a qualified lawyer should confirm whether the pages should also
+  display a separate "Last updated" date before publication.
 
 ## Verified Product and Data Audit
 
@@ -348,6 +350,6 @@ state that both documents require review by a qualified lawyer familiar with
 Vietnamese law and relevant international privacy, consumer, education, and
 children's-privacy rules.
 
-No deployment or publication is authorized. `[EFFECTIVE DATE]` must be replaced
-with the approved publication date only after wording and legal review are
-complete.
+No deployment or publication is authorized. The July 1, 2020 effective date and
+the possible need for a separate "Last updated" date must be confirmed during
+wording and legal review.
