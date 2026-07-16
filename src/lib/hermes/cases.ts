@@ -30,10 +30,25 @@ export type HermesToolActorScope = "admin" | "self" | "case_member" | "self_case
 export function toolActorScope(action: string, actorKind: HermesToolActorKind): HermesToolActorScope {
   if (actorKind === "admin") return "admin";
   if (actorKind !== "contact") return "denied";
-  if (action === "get_contact" || action === "list_my_cases") return "self";
+  if (action === "get_academy_info" || action === "get_contact" || action === "list_my_cases") return "self";
   if (action === "get_case" || action === "request_reschedule" || action === "escalate_to_swati") return "case_member";
   if (action === "record_availability") return "self_case_member";
   return "denied";
+}
+
+export type AcademyInformationTopic = "about" | "scheduling" | "privacy" | "ai_assistant" | "subjects" | "contact";
+
+export function academyInformation(topic: AcademyInformationTopic) {
+  const sources = ["https://myinsightacademy.com"];
+  const answers: Record<AcademyInformationTopic, string> = {
+    about: "MyInsightAcademy, also known as Insight Academy, is a tutoring service operated by Swati Goel. Its primary operations are in Vietnam, with some online tutors based in India or Singapore.",
+    scheduling: "MyInsightAcademy helps students, parents, and tutors coordinate lessons. A lesson is not confirmed until the relevant people agree and Swati approves the exact arrangement. Rescheduling depends on student and tutor availability.",
+    privacy: "MyInsightAcademy uses contact, tutoring, and scheduling information only for authorized service operations. Kitty must not reveal another person's private messages, phone number, availability, or records.",
+    ai_assistant: "Kitty is MyInsightAcademy's automated WhatsApp assistant. Kitty can answer ordinary tutoring questions, help coordinate lessons, and pass sensitive or uncertain matters to Swati. People can reply STOP to opt out.",
+    subjects: "The current verified public information does not contain a complete subject catalog. Kitty should ask what subject and level the person needs, then ask Swati to confirm current tutor availability rather than inventing an offering.",
+    contact: "For official information, use https://myinsightacademy.com or ask Kitty to pass the question to Swati. Instagram: https://www.instagram.com/insight.e.academy/.",
+  };
+  return { topic, answer: answers[topic], sources };
 }
 
 export interface CommunicationContact {

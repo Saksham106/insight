@@ -11,6 +11,7 @@ import uuid
 
 
 ACTIONS = (
+    "get_academy_info",
     "search_contacts",
     "get_contact",
     "create_case",

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
-import { communicationDecision, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
+import { academyInformation, communicationDecision, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
+import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ACTIONS = ["search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"] as const;
+const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"] as const;
 type Action = (typeof ACTIONS)[number];
 type JsonObject = Record<string, unknown>;
 const CONTACT_FIELDS = "id, display_name, role, timezone, communication_policy, consent_status, is_active";
@@ -69,6 +70,11 @@ export async function POST(request: Request) {
 
   try {
     switch (action as Action) {
+      case "get_academy_info": {
+        const topic = stringValue(payload, "topic", 40) as AcademyInformationTopic;
+        if (!["about", "scheduling", "privacy", "ai_assistant", "subjects", "contact"].includes(topic)) return failure("Invalid Academy information topic");
+        return NextResponse.json(academyInformation(topic));
+      }
       case "search_contacts": {
         const query = stringValue(payload, "query", 100);
         let builder = supabase.from("hermes_contacts").select(CONTACT_FIELDS).eq("is_active", true).is("deleted_at", null).limit(10);

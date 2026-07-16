@@ -11,7 +11,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { canTransitionCase, communicationDecision, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } = require(path.join(__dirname, "cases.ts"));
+const { academyInformation, canTransitionCase, communicationDecision, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } = require(path.join(__dirname, "cases.ts"));
 const { signServiceRequest, verifyServiceRequest } = require(path.join(__dirname, "auth.ts"));
 
 test("tool authentication rejects invalid and expired signatures", () => {
@@ -83,6 +83,17 @@ test("gives Swati broad scheduling scope and contacts only self or case-member s
   assert.equal(toolActorScope("request_reschedule", "contact"), "case_member");
   assert.equal(toolActorScope("send_message", "contact"), "denied");
   assert.equal(toolActorScope("search_contacts", "unknown"), "denied");
+  assert.equal(toolActorScope("get_academy_info", "contact"), "self");
+});
+
+test("Academy information is a small verified public knowledge surface", () => {
+  const about = academyInformation("about");
+  assert.match(about.answer, /tutoring/i);
+  assert.match(about.answer, /Vietnam/i);
+  assert.equal(about.sources.includes("https://myinsightacademy.com"), true);
+  const subjects = academyInformation("subjects");
+  assert.match(subjects.answer, /confirm/i);
+  assert.equal(JSON.stringify(subjects).includes("phone"), false);
 });
 
 test("tool route requires signed replay-protected requests and audits actions", () => {
@@ -90,7 +101,7 @@ test("tool route requires signed replay-protected requests and audits actions", 
   assert.match(source, /verifyServiceRequest/);
   assert.match(source, /hermes_audit_events/);
   assert.match(source, /request_id/);
-  for (const action of ["search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"]) assert.match(source, new RegExp(action));
+  for (const action of ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"]) assert.match(source, new RegExp(action));
   assert.match(source, /parseWhatsAppToolActor/);
   assert.match(source, /HERMES_ADMIN_WHATSAPP_E164/);
 });
