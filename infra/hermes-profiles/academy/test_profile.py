@@ -21,6 +21,14 @@ class AcademyProfileTests(unittest.TestCase):
         self.assertIn('allow_admin_from: ["84917583553"]', readme)
         self.assertIn("user_allowed_commands: []", readme)
 
+    def test_whatsapp_cloud_display_is_customer_quiet(self):
+        readme = (PROFILE_DIR / "README.md").read_text()
+        self.assertIn("busy_ack_detail: false", readme)
+        self.assertIn("busy_steer_ack_enabled: false", readme)
+        self.assertIn("interim_assistant_messages: false", readme)
+        self.assertIn("long_running_notifications: false", readme)
+        self.assertIn('tool_progress: "off"', readme)
+
     def test_academy_help_hook_is_registered_for_help_and_whoami(self):
         hook_dir = PROFILE_DIR / "hooks" / "academy-help"
         manifest = (hook_dir / "HOOK.yaml").read_text()

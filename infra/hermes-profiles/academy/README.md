@@ -19,6 +19,16 @@ onboarding:
 memory:
   user_profile_enabled: false
 
+display:
+  platforms:
+    # The official Meta adapter uses the whatsapp_cloud platform key.
+    whatsapp_cloud:
+      busy_ack_detail: false
+      busy_steer_ack_enabled: false
+      interim_assistant_messages: false
+      long_running_notifications: false
+      tool_progress: "off"
+
 gateway:
   platforms:
     whatsapp_cloud:
@@ -27,7 +37,7 @@ gateway:
       user_allowed_commands: []
 ```
 
-The onboarding setting disables Hermes's generic first-contact request to build a personal user profile. The memory setting independently prevents `USER.md` profile loading for external contacts. The WhatsApp Cloud command policy makes Swati the only slash-command administrator; ordinary contacts can still chat normally and use the Academy capabilities through natural language.
+The onboarding setting disables Hermes's generic first-contact request to build a personal user profile. The memory setting independently prevents `USER.md` profile loading for external contacts. The display overrides keep customer-facing Cloud API chats limited to Kitty's final answer rather than internal progress or busy-state commentary. The WhatsApp Cloud command policy makes Swati the only slash-command administrator; ordinary contacts can still chat normally and use the Academy capabilities through natural language.
 
 Copy `hooks/academy-help` to the profile's `hooks/academy-help` directory. This supported Hermes gateway hook replaces `/help` and `/whoami` output for non-admin WhatsApp contacts with the small Academy help message while leaving Swati's operator help intact.
 
