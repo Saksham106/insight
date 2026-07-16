@@ -13,6 +13,12 @@ export function verifyMetaSignature(rawBody: Buffer, header: string | null, appS
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
+export function isWhatsAppOptOut(body: string | null) {
+  if (!body) return false;
+  const normalized = body.trim().toLowerCase().replace(/[.!]+$/g, "").replace(/\s+/g, " ");
+  return ["stop", "unsubscribe", "cancel", "end", "quit", "opt out", "please stop", "please unsubscribe"].includes(normalized);
+}
+
 function timestampToIso(value: unknown) {
   const seconds = Number(value);
   return Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : new Date(0).toISOString();

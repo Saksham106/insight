@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { projectWebhookEvents, verifyMetaSignature } = require(path.join(__dirname, "webhook.ts"));
+const { isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } = require(path.join(__dirname, "webhook.ts"));
 
 const fixture = {
   object: "whatsapp_business_account",
@@ -43,6 +43,14 @@ test("ignores malformed and unsupported changes without throwing", () => {
   assert.deepEqual(projectWebhookEvents(null), []);
 });
 
+test("recognizes explicit WhatsApp opt-out commands without guessing from ordinary text", () => {
+  assert.equal(isWhatsAppOptOut("STOP"), true);
+  assert.equal(isWhatsAppOptOut(" unsubscribe "), true);
+  assert.equal(isWhatsAppOptOut("Please stop"), true);
+  assert.equal(isWhatsAppOptOut("don't stop trying"), false);
+  assert.equal(isWhatsAppOptOut(null), false);
+});
+
 test("webhook route handles verification, raw signatures, idempotency, and forwarding", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"), "utf8");
   assert.match(source, /export async function GET/);
@@ -51,4 +59,5 @@ test("webhook route handles verification, raw signatures, idempotency, and forwa
   assert.match(source, /idempotency_key/);
   assert.match(source, /HERMES_FORWARD_URL/);
   assert.match(source, /forwarded_at/);
+  assert.match(source, /consent_status: "withdrawn"/);
 });

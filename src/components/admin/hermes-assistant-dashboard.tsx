@@ -1,6 +1,7 @@
 import { AlertCircle, Bot, Clock3, MessageSquareText, Users } from "lucide-react";
 
 import { HermesContactImport } from "@/components/admin/hermes-contact-import";
+import { HermesApprovalActions } from "@/components/admin/hermes-approval-actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -70,7 +71,7 @@ export function HermesAssistantDashboard({ contacts, cases, approvals, messages,
           <CardContent>
             {attentionContacts.length === 0 && approvals.length === 0 ? <Empty>Nothing needs your attention.</Empty> : (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {approvals.map((approval) => <p key={approval.id} className="text-sm">Approval needed: {approval.action.replaceAll("_", " ")}</p>)}
+                {approvals.map((approval) => <div key={approval.id} style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }}><p className="text-sm">Approval needed: {approval.action.replaceAll("_", " ")}</p><HermesApprovalActions approvalId={approval.id} /></div>)}
                 {attentionContacts.map((contact) => <p key={contact.id} className="text-sm">Review {contact.display_name}: {contact.role === "unclassified" ? "choose a role" : contact.communication_policy.replaceAll("_", " ")}</p>)}
               </div>
             )}

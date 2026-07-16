@@ -40,3 +40,13 @@ test("contact mutation routes authorize administrators before privileged access"
     assert.match(source, /profile\.role !== "admin"/);
   }
 });
+
+test("pending approvals expose approve and reject controls through an admin-only route", () => {
+  const dashboard = read("src/components/admin/hermes-approval-actions.tsx");
+  assert.match(dashboard, /Approve/);
+  assert.match(dashboard, /Reject/);
+  const route = read("src/app/api/admin/hermes/approvals/[id]/route.ts");
+  assert.match(route, /getUserProfile\(\)/);
+  assert.match(route, /profile\.role !== "admin"/);
+  assert.match(route, /decided_by/);
+});

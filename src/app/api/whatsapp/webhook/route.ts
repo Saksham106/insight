@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { projectWebhookEvents, verifyMetaSignature } from "@/lib/hermes/webhook";
+import { isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } from "@/lib/hermes/webhook";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(request: Request) {
@@ -65,8 +65,13 @@ export async function POST(request: Request) {
     }
 
     const windowExpiry = new Date(new Date(event.occurredAt).getTime() + 24 * 60 * 60 * 1000).toISOString();
-    await supabase.from("hermes_contacts").update({ last_inbound_at: event.occurredAt, service_window_expires_at: windowExpiry }).eq("id", contact.id);
-    const eligible = contact.is_active && contact.consent_status === "attested" && contact.communication_policy === "direct";
+    const optedOut = event.messageType === "text" && isWhatsAppOptOut(event.body);
+    await supabase.from("hermes_contacts").update(optedOut
+      ? { last_inbound_at: event.occurredAt, service_window_expires_at: windowExpiry, communication_policy: "opted_out", consent_status: "withdrawn" }
+      : { last_inbound_at: event.occurredAt, service_window_expires_at: windowExpiry }
+    ).eq("id", contact.id);
+    if (optedOut) await supabase.from("hermes_audit_events").insert({ actor_type: "contact", actor_contact_id: contact.id, event_type: "contact_opted_out", entity_type: "hermes_contact", entity_id: contact.id, metadata: { source: "whatsapp" } });
+    const eligible = !optedOut && contact.is_active && contact.consent_status === "attested" && contact.communication_policy === "direct";
 
     const { data: inserted } = await supabase.from("hermes_messages").upsert({
       contact_id: contact.id,

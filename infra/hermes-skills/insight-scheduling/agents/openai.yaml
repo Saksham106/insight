@@ -1,0 +1,4 @@
+interface:
+  display_name: "Insight Scheduling"
+  short_description: "Coordinate tutoring classes safely on WhatsApp"
+  default_prompt: "Use $insight-scheduling to coordinate a tutoring class with approved academy contacts."
