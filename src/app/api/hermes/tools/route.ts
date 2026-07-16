@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
-import { communicationDecision, projectContact, sanitizeAvailability } from "@/lib/hermes/cases";
+import { communicationDecision, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ACTIONS = ["search_contacts", "get_contact", "create_case", "get_case", "record_availability", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"] as const;
+const ACTIONS = ["search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"] as const;
 type Action = (typeof ACTIONS)[number];
 type JsonObject = Record<string, unknown>;
 const CONTACT_FIELDS = "id, display_name, role, timezone, communication_policy, consent_status, is_active";
@@ -29,16 +29,42 @@ export async function POST(request: Request) {
 
   let parsed: JsonObject;
   try { parsed = objectValue(JSON.parse(rawBody)); } catch { return failure("Invalid JSON"); }
-  const action = parsed.action;
-  if (typeof action !== "string" || !ACTIONS.includes(action as Action)) return failure("Unsupported action");
-  let payload: JsonObject;
-  try { payload = objectValue(parsed.payload ?? {}); } catch { return failure("Invalid payload"); }
-
   const supabase = createAdminClient();
-  const { error: replayError } = await supabase.from("hermes_audit_events").insert({ actor_type: "hermes", event_type: "tool_request", entity_type: "tool", request_id: auth.requestId, metadata: { action } });
+  const requestedAction = typeof parsed.action === "string" ? parsed.action.slice(0, 80) : "invalid";
+  const { error: replayError } = await supabase.from("hermes_audit_events").insert({ actor_type: "hermes", event_type: "tool_request", entity_type: "tool", request_id: auth.requestId, metadata: { action: requestedAction, authorization: "pending" } });
   if (replayError) return failure(replayError.code === "23505" ? "Replay rejected" : "Audit unavailable", replayError.code === "23505" ? 409 : 503);
+  const finalizeRequest = async (update: JsonObject) => {
+    const { data, error } = await supabase.from("hermes_audit_events").update(update).eq("request_id", auth.requestId).select("id").maybeSingle();
+    return !error && Boolean(data);
+  };
+  const rejectRequest = async (error: string, status: number, reason: string) => {
+    const recorded = await finalizeRequest({ event_type: "tool_rejected", metadata: { action: requestedAction, authorization: reason } });
+    return recorded ? failure(error, status) : failure("Audit unavailable", 503);
+  };
+  const action = parsed.action;
+  if (typeof action !== "string" || !ACTIONS.includes(action as Action)) return rejectRequest("Unsupported action", 400, "unsupported_action");
+  let payload: JsonObject;
+  try { payload = objectValue(parsed.payload ?? {}); } catch { return rejectRequest("Invalid payload", 400, "invalid_payload"); }
+
+  const actor = parseWhatsAppToolActor(parsed.actor);
+  if (!actor) {
+    return rejectRequest("A direct WhatsApp session is required", 403, "invalid_session");
+  }
+  const adminE164 = process.env.HERMES_ADMIN_WHATSAPP_E164;
+  const { data: actorContact } = actor.e164 === adminE164 ? { data: null } : await supabase.from("hermes_contacts").select(CONTACT_FIELDS).eq("whatsapp_e164", actor.e164).eq("is_active", true).is("deleted_at", null).maybeSingle();
+  const actorKind = actor.e164 === adminE164 ? "admin" : actorContact && communicationDecision({ consentStatus: actorContact.consent_status, communicationPolicy: actorContact.communication_policy, isActive: actorContact.is_active }).allowed ? "contact" : "unknown";
+  const actorScope = toolActorScope(action, actorKind);
+  const actorType = actorKind === "admin" ? "admin" : actorKind === "contact" ? "contact" : "hermes";
+  const authorizationRecorded = await finalizeRequest({ actor_type: actorType, actor_contact_id: actorContact?.id ?? null, event_type: actorScope === "denied" ? "tool_rejected" : "tool_request", metadata: { action, actorKind, authorization: actorScope === "denied" ? "denied" : "allowed" } });
+  if (!authorizationRecorded) return failure("Audit unavailable", 503);
+  if (actorScope === "denied") return failure("This action is not available for this WhatsApp contact", 403);
   const audit = async (eventType: string, entityType: string, entityId?: string, metadata: JsonObject = {}) => {
-    await supabase.from("hermes_audit_events").insert({ actor_type: "hermes", event_type: eventType, entity_type: entityType, entity_id: entityId ?? null, metadata });
+    await supabase.from("hermes_audit_events").insert({ actor_type: actorType, actor_contact_id: actorContact?.id ?? null, event_type: eventType, entity_type: entityType, entity_id: entityId ?? null, metadata: { actorKind, ...metadata } });
+  };
+  const requireCaseMembership = async (caseId: string) => {
+    if (actorKind === "admin") return true;
+    const { data } = await supabase.from("hermes_case_participants").select("id").eq("case_id", caseId).eq("contact_id", actorContact!.id).maybeSingle();
+    return Boolean(data);
   };
 
   try {
@@ -52,7 +78,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ contacts: (data ?? []).map(projectContact) });
       }
       case "get_contact": {
-        const contactId = stringValue(payload, "contactId", 80);
+        const contactId = actorKind === "contact" ? actorContact!.id : stringValue(payload, "contactId", 80);
         const { data, error } = await supabase.from("hermes_contacts").select(CONTACT_FIELDS).eq("id", contactId).eq("is_active", true).is("deleted_at", null).maybeSingle();
         if (error) throw error;
         if (!data) return failure("Contact not found", 404);
@@ -84,22 +110,40 @@ export async function POST(request: Request) {
       }
       case "get_case": {
         const caseId = stringValue(payload, "caseId", 80);
+        if (!(await requireCaseMembership(caseId))) return rejectRequest("Contact is not a case participant", 403, "case_membership_denied");
         const { data: caseRecord, error } = await supabase.from("hermes_scheduling_cases").select("id, title, status, timezone, proposed_times, resolution, human_takeover, created_at, updated_at").eq("id", caseId).maybeSingle();
         if (error) throw error;
         if (!caseRecord) return failure("Case not found", 404);
         const { data: participants, error: participantsError } = await supabase.from("hermes_case_participants").select("contact_id, participant_role, availability, response_status, contact:hermes_contacts(id, display_name, role, timezone, communication_policy, consent_status, is_active)").eq("case_id", caseId);
         if (participantsError) throw participantsError;
-        return NextResponse.json({ case: caseRecord, participants: (participants ?? []).map((item) => ({ contact: item.contact ? projectContact(Array.isArray(item.contact) ? item.contact[0] : item.contact) : null, participantRole: item.participant_role, availability: item.availability, responseStatus: item.response_status })) });
+        return NextResponse.json({ case: caseRecord, participants: projectCaseParticipantsForActor(participants ?? [], actorKind, actorContact?.id ?? null) });
+      }
+      case "list_my_cases": {
+        if (!actorContact) return rejectRequest("This action is only available to an academy contact", 403, "contact_required");
+        const { data, error } = await supabase.from("hermes_case_participants").select("participant_role, response_status, availability, case:hermes_scheduling_cases(id, title, status, timezone, proposed_times, resolution, human_takeover, updated_at)").eq("contact_id", actorContact.id).order("updated_at", { referencedTable: "hermes_scheduling_cases", ascending: false }).limit(20);
+        if (error) throw error;
+        return NextResponse.json({ contact: projectContact(actorContact), cases: (data ?? []).map((item) => ({ participantRole: item.participant_role, responseStatus: item.response_status, availability: item.availability, case: Array.isArray(item.case) ? item.case[0] : item.case })).filter((item) => item.case) });
       }
       case "record_availability": {
         const caseId = stringValue(payload, "caseId", 80);
-        const contactId = stringValue(payload, "contactId", 80);
+        const contactId = actorKind === "contact" ? actorContact!.id : stringValue(payload, "contactId", 80);
+        if (!(await requireCaseMembership(caseId))) return rejectRequest("Contact is not a case participant", 403, "case_membership_denied");
         const availability = sanitizeAvailability(payload.availability);
         const { data: participant, error } = await supabase.from("hermes_case_participants").update({ availability, response_status: "responded" }).eq("case_id", caseId).eq("contact_id", contactId).select("id").maybeSingle();
         if (error) throw error;
-        if (!participant) return failure("Contact is not a case participant", 403);
+        if (!participant) return rejectRequest("Contact is not a case participant", 403, "case_membership_denied");
         await audit("availability_recorded", "scheduling_case", caseId, { contactId, windowCount: availability.length });
         return NextResponse.json({ recorded: true, windowCount: availability.length });
+      }
+      case "request_reschedule": {
+        const caseId = stringValue(payload, "caseId", 80);
+        const reason = stringValue(payload, "reason", 500);
+        if (!(await requireCaseMembership(caseId))) return rejectRequest("Contact is not a case participant", 403, "case_membership_denied");
+        const { data: changed, error } = await supabase.from("hermes_scheduling_cases").update({ status: "needs_attention", human_takeover: true }).eq("id", caseId).neq("status", "cancelled").select("id").maybeSingle();
+        if (error) throw error;
+        if (!changed) return failure("Case is unavailable", 409);
+        await audit("reschedule_requested", "scheduling_case", caseId, { reason });
+        return NextResponse.json({ status: "needs_attention", humanTakeover: true });
       }
       case "propose_times": {
         const caseId = stringValue(payload, "caseId", 80);
@@ -130,7 +174,7 @@ export async function POST(request: Request) {
       case "send_message": {
         const contactId = stringValue(payload, "contactId", 80);
         const intent = stringValue(payload, "intent", 40) as WhatsAppIntent;
-        if (!["availability_request", "time_proposal", "class_confirmation", "reschedule_request", "class_reminder", "human_attention"].includes(intent)) return failure("Invalid intent");
+        if (!["permission_request", "availability_request", "time_proposal", "class_confirmation", "reschedule_request", "class_reminder", "human_attention"].includes(intent)) return failure("Invalid intent");
         const idempotencyKey = stringValue(payload, "idempotencyKey", 128);
         const caseId = stringValue(payload, "caseId", 80);
         const senderSecret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
@@ -146,6 +190,7 @@ export async function POST(request: Request) {
       case "escalate_to_swati": {
         const caseId = stringValue(payload, "caseId", 80);
         const reason = stringValue(payload, "reason", 500);
+        if (!(await requireCaseMembership(caseId))) return rejectRequest("Contact is not a case participant", 403, "case_membership_denied");
         const { data: existing } = await supabase.from("hermes_scheduling_cases").select("id").eq("id", caseId).maybeSingle();
         if (!existing) return failure("Case not found", 404);
         const { error } = await supabase.from("hermes_scheduling_cases").update({ status: "needs_attention", human_takeover: true }).eq("id", caseId);

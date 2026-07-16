@@ -1,6 +1,7 @@
 import type { CommunicationPolicy } from "./types";
 
 export type WhatsAppIntent =
+  | "permission_request"
   | "availability_request"
   | "time_proposal"
   | "class_confirmation"
@@ -67,6 +68,7 @@ export function classifyMetaFailure(httpStatus: number, graphCode?: number) {
 export function templateMapFromEnv(env: NodeJS.ProcessEnv): TemplateMap {
   const locale = env.WHATSAPP_TEMPLATE_LOCALE ?? "en_US";
   const entries: Array<[WhatsAppIntent, string | undefined]> = [
+    ["permission_request", env.WHATSAPP_TEMPLATE_PERMISSION_REQUEST],
     ["availability_request", env.WHATSAPP_TEMPLATE_AVAILABILITY_REQUEST],
     ["time_proposal", env.WHATSAPP_TEMPLATE_TIME_PROPOSAL],
     ["class_confirmation", env.WHATSAPP_TEMPLATE_CLASS_CONFIRMATION],

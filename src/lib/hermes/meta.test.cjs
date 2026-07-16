@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { buildGraphMessageRequest, classifyMetaFailure, selectWhatsAppDelivery } = require(path.join(__dirname, "meta.ts"));
+const { buildGraphMessageRequest, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv } = require(path.join(__dirname, "meta.ts"));
 
 const templates = {
   availability_request: { name: "class_availability_request", locale: "en_US" },
@@ -43,6 +43,13 @@ test("fails closed for communication policy and consent restrictions", () => {
 
 test("fails closed when a required approved template is missing", () => {
   assert.deepEqual(selectWhatsAppDelivery(contact({ serviceWindowExpiresAt: null }), "class_confirmation", new Date(), templates), { kind: "blocked", reason: "template_unavailable" });
+});
+
+test("maps the fixed permission request template from the environment", () => {
+  assert.deepEqual(templateMapFromEnv({ WHATSAPP_TEMPLATE_PERMISSION_REQUEST: "academy_whatsapp_permission" }).permission_request, {
+    name: "academy_whatsapp_permission",
+    locale: "en_US",
+  });
 });
 
 test("builds fixed text and template Graph payloads", () => {

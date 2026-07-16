@@ -11,7 +11,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { canTransitionCase, communicationDecision, projectContact, sanitizeAvailability } = require(path.join(__dirname, "cases.ts"));
+const { canTransitionCase, communicationDecision, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } = require(path.join(__dirname, "cases.ts"));
 const { signServiceRequest, verifyServiceRequest } = require(path.join(__dirname, "auth.ts"));
 
 test("tool authentication rejects invalid and expired signatures", () => {
@@ -52,12 +52,47 @@ test("availability is bounded structured data and never stores a transcript", ()
   assert.throws(() => sanitizeAvailability(Array.from({ length: 51 }, () => ({ start: "2026-07-20T09:00:00Z", end: "2026-07-20T10:00:00Z" }))), /invalid_availability/);
 });
 
+test("derives the actor only from a direct WhatsApp Cloud session", () => {
+  assert.deepEqual(parseWhatsAppToolActor({ platform: "whatsapp_cloud", chatId: "84917583553", userId: "84917583553" }), { e164: "+84917583553" });
+  assert.equal(parseWhatsAppToolActor({ platform: "whatsapp_cloud", chatId: "84917583553", userId: "84900000000" }), null);
+  assert.equal(parseWhatsAppToolActor({ platform: "whatsapp_cloud", chatId: "84917583553" }), null);
+  assert.equal(parseWhatsAppToolActor({ platform: "telegram", chatId: "84917583553", userId: "84917583553" }), null);
+  assert.equal(parseWhatsAppToolActor({ platform: "whatsapp_cloud", chatId: "+84 hello" }), null);
+});
+
+test("case contacts receive only their own participant record", () => {
+  const participants = [
+    { contact_id: "student-1", participant_role: "student", availability: [{ start: "2026-07-20T09:00:00Z", end: "2026-07-20T10:00:00Z" }], response_status: "responded", contact: { id: "student-1", display_name: "Asha", role: "student", timezone: "Asia/Ho_Chi_Minh", communication_policy: "direct", consent_status: "attested" } },
+    { contact_id: "teacher-1", participant_role: "teacher", availability: [{ start: "2026-07-20T13:00:00Z", end: "2026-07-20T14:00:00Z" }], response_status: "responded", contact: { id: "teacher-1", display_name: "Private Teacher", role: "teacher", timezone: "Asia/Kolkata", communication_policy: "direct", consent_status: "attested" } },
+  ];
+  const projected = projectCaseParticipantsForActor(participants, "contact", "student-1");
+  assert.equal(projected.length, 1);
+  assert.equal(projected[0].contact.id, "student-1");
+  assert.equal(JSON.stringify(projected).includes("Private Teacher"), false);
+  assert.equal(JSON.stringify(projected).includes("13:00:00Z"), false);
+  assert.equal(projectCaseParticipantsForActor(participants, "admin", null).length, 2);
+});
+
+test("gives Swati broad scheduling scope and contacts only self or case-member scope", () => {
+  assert.equal(toolActorScope("search_contacts", "admin"), "admin");
+  assert.equal(toolActorScope("confirm_class", "admin"), "admin");
+  assert.equal(toolActorScope("get_contact", "contact"), "self");
+  assert.equal(toolActorScope("record_availability", "contact"), "self_case_member");
+  assert.equal(toolActorScope("list_my_cases", "contact"), "self");
+  assert.equal(toolActorScope("get_case", "contact"), "case_member");
+  assert.equal(toolActorScope("request_reschedule", "contact"), "case_member");
+  assert.equal(toolActorScope("send_message", "contact"), "denied");
+  assert.equal(toolActorScope("search_contacts", "unknown"), "denied");
+});
+
 test("tool route requires signed replay-protected requests and audits actions", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
   assert.match(source, /verifyServiceRequest/);
   assert.match(source, /hermes_audit_events/);
   assert.match(source, /request_id/);
-  for (const action of ["search_contacts", "get_contact", "create_case", "get_case", "record_availability", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"]) assert.match(source, new RegExp(action));
+  for (const action of ["search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"]) assert.match(source, new RegExp(action));
+  assert.match(source, /parseWhatsAppToolActor/);
+  assert.match(source, /HERMES_ADMIN_WHATSAPP_E164/);
 });
 
 test("Hermes skill identifies automation, honors STOP, forbids transcript sharing, and escalates", () => {

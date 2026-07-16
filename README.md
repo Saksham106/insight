@@ -75,9 +75,11 @@ npm run dev
 | WHATSAPP_CLOUD_API_VERSION | No | Pinned Graph API version. |
 | HERMES_FORWARD_URL | For WhatsApp | Existing Hermes Cloud API webhook URL used after Insight policy checks. |
 | HERMES_TOOL_SHARED_SECRET | For WhatsApp | Random HMAC secret shared only by Insight and Hermes. |
+| HERMES_ADMIN_WHATSAPP_E164 | For WhatsApp | Swati's verified WhatsApp number in E.164 format; this is the only scheduling administrator. |
 | WHATSAPP_SENDER_SHARED_SECRET | For WhatsApp | Separate random HMAC secret used only for Insight's private sender dispatch. Never install it on Hermes. |
 | HERMES_IMPORT_SIGNING_SECRET | For WhatsApp | Random server-only secret for short-lived import previews. |
 | WHATSAPP_TEMPLATE_LOCALE | No | Approved template locale, normally `en_US`. |
+| WHATSAPP_TEMPLATE_PERMISSION_REQUEST | For first contact | Approved fixed opt-in/opt-out introduction template name. |
 | WHATSAPP_TEMPLATE_AVAILABILITY_REQUEST | For proactive outreach | Approved Meta template name. |
 | WHATSAPP_TEMPLATE_TIME_PROPOSAL | For proactive outreach | Approved Meta template name. |
 | WHATSAPP_TEMPLATE_CLASS_CONFIRMATION | For proactive outreach | Approved Meta template name. |
@@ -137,9 +139,11 @@ Keep the first rollout approval-first: Hermes may collect availability and propo
 
 1. Apply `supabase/migrations/20260716124117_add_hermes_assistant.sql` and run Supabase security/performance advisors.
 2. Deploy Insight with all server secrets, while leaving Meta's current callback unchanged.
-3. Install `infra/hermes-skills/insight-scheduling` in Hermes and set `INSIGHT_HERMES_TOOL_URL` to the deployed `/api/hermes/tools` endpoint with the same HMAC secret.
-4. Verify the Insight webhook GET challenge, signed tool calls, admin import, approval controls, and a test Meta send.
-5. Change Meta's callback last to `https://<insight-host>/api/whatsapp/webhook` and subscribe to `messages`.
+3. Create the `academy` profile from the current model/WhatsApp configuration with `--no-skills`, copy `infra/hermes-plugins/insight-scheduling` into that profile's `plugins` directory, and enable it with `--no-allow-tool-override`.
+4. Set the Academy profile's WhatsApp toolsets to exactly `insight_scheduling` and `clarify`; disable inherited plugins, memory, terminal, file, code, browser, delegation, session search, and Workspace tools. Copy `infra/hermes-profiles/academy/SOUL.md` to the profile root and `AGENTS.md` to its working directory.
+5. Run `hermes -p academy config check` and `hermes -p academy tools list --summary`. Do not activate the profile unless WhatsApp reports only `insight_scheduling` and `clarify`.
+6. Verify the Insight webhook GET challenge, signed tool calls, admin import, approval controls, and a test Meta send.
+7. Change Meta's callback last to `https://<insight-host>/api/whatsapp/webhook` and subscribe to `messages`.
 
 Useful endpoints are `/api/whatsapp/webhook` (Meta callback), `/api/whatsapp/send` (signed internal sender), `/api/hermes/tools` (signed Hermes actions), and `/admin/hermes` (human operations). Do not call either signed API from a browser or expose its shared secret.
 
