@@ -30,6 +30,13 @@ export interface ImportPreviewTokenPayload {
   expiresAt: number;
 }
 
+export interface ImportSelection {
+  displayName: string;
+  normalizedPhone: string;
+  role: string;
+  profileId?: string | null;
+}
+
 function encode(value: string) {
   return Buffer.from(value, "utf8").toString("base64url");
 }
@@ -61,6 +68,22 @@ export function verifyImportPreview(token: string, secret: string, now = Date.no
   } catch {
     return null;
   }
+}
+
+export function validateImportSelection(rows: ImportPreviewRow[], contacts: ImportSelection[]) {
+  const readyByPhone = new Map(
+    rows
+      .filter((row) => !row.error && row.normalizedPhone)
+      .map((row) => [row.normalizedPhone!, row]),
+  );
+  if (contacts.length === 0 || new Set(contacts.map((contact) => contact.normalizedPhone)).size !== contacts.length) return false;
+
+  return contacts.every((contact) => {
+    const row = readyByPhone.get(contact.normalizedPhone);
+    if (!row || row.displayName !== contact.displayName) return false;
+    if (!contact.profileId) return true;
+    return row.suggestions.some((suggestion) => suggestion.profileId === contact.profileId && suggestion.role === contact.role);
+  });
 }
 
 export function buildImportPreview(input: {

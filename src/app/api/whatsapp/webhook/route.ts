@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } from "@/lib/hermes/webhook";
+import { filterWebhookPayload, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } from "@/lib/hermes/webhook";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(request: Request) {
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   const events = projectWebhookEvents(payload);
   const supabase = createAdminClient();
   const forwardMessageIds: string[] = [];
-  let allMessagesEligible = true;
+  const forwardMetaMessageIds = new Set<string>();
 
   for (const event of events) {
     if (event.kind === "status") {
@@ -60,7 +60,6 @@ export async function POST(request: Request) {
       if (contact) await supabase.from("hermes_audit_events").insert({ actor_type: "system", actor_contact_id: contact.id, event_type: "unknown_contact_received", entity_type: "hermes_contact", entity_id: contact.id });
     }
     if (!contact) {
-      allMessagesEligible = false;
       continue;
     }
 
@@ -85,23 +84,27 @@ export async function POST(request: Request) {
     }, { onConflict: "idempotency_key", ignoreDuplicates: true }).select("id, forwarded_at").maybeSingle();
 
     const message = inserted ?? (await supabase.from("hermes_messages").select("id, forwarded_at").eq("idempotency_key", event.idempotencyKey).maybeSingle()).data;
-    if (eligible && message && !message.forwarded_at) forwardMessageIds.push(message.id);
-    if (!eligible) allMessagesEligible = false;
+    if (eligible && message && !message.forwarded_at) {
+      forwardMessageIds.push(message.id);
+      forwardMetaMessageIds.add(event.metaMessageId);
+    }
   }
 
-  if (forwardMessageIds.length > 0 && allMessagesEligible) {
+  if (forwardMessageIds.length > 0) {
     const forwardUrl = process.env.HERMES_FORWARD_URL;
     const forwardSecret = process.env.HERMES_TOOL_SHARED_SECRET;
     if (!forwardUrl || !forwardSecret || forwardUrl === request.url) return NextResponse.json({ error: "Hermes forwarding is not configured" }, { status: 503 });
-    const internalSignature = createHmac("sha256", forwardSecret).update(raw).digest("hex");
+    const forwardRaw = Buffer.from(JSON.stringify(filterWebhookPayload(payload, forwardMetaMessageIds)));
+    const forwardedMetaSignature = `sha256=${createHmac("sha256", appSecret).update(forwardRaw).digest("hex")}`;
+    const internalSignature = createHmac("sha256", forwardSecret).update(forwardRaw).digest("hex");
     const forwarded = await fetch(forwardUrl, {
       method: "POST",
       headers: {
         "Content-Type": request.headers.get("content-type") ?? "application/json",
-        "X-Hub-Signature-256": metaSignature ?? "",
+        "X-Hub-Signature-256": forwardedMetaSignature,
         "X-Insight-Forward-Signature": `sha256=${internalSignature}`,
       },
-      body: raw,
+      body: forwardRaw,
     });
     if (!forwarded.ok) return NextResponse.json({ error: "Hermes forwarding failed" }, { status: 502 });
     await supabase.from("hermes_messages").update({ forwarded_at: new Date().toISOString() }).in("id", forwardMessageIds);

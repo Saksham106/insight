@@ -21,7 +21,7 @@ export interface HermesAdminContact {
 interface HermesAssistantDashboardProps {
   contacts: HermesAdminContact[];
   cases: Array<{ id: string; title: string; status: string; human_takeover: boolean; updated_at: string }>;
-  approvals: Array<{ id: string; action: string; status: string; requested_at: string; case: unknown }>;
+  approvals: Array<{ id: string; action: string; status: string; requested_at: string; payload: unknown; proposal_version: number; case: unknown }>;
   messages: Array<{ id: string; direction: string; message_kind: string; status: string; occurred_at: string; contact: unknown }>;
   loadError: string | null;
 }
@@ -71,7 +71,7 @@ export function HermesAssistantDashboard({ contacts, cases, approvals, messages,
           <CardContent>
             {attentionContacts.length === 0 && approvals.length === 0 ? <Empty>Nothing needs your attention.</Empty> : (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {approvals.map((approval) => <div key={approval.id} style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }}><p className="text-sm">Approval needed: {approval.action.replaceAll("_", " ")}</p><HermesApprovalActions approvalId={approval.id} /></div>)}
+                {approvals.map((approval) => <div key={approval.id} style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "10px" }}><p className="text-sm font-semibold">Approval needed: {approval.action.replaceAll("_", " ")}</p><pre className="text-sm" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "6px 0" }}>{JSON.stringify(approval.payload, null, 2)}</pre><HermesApprovalActions approvalId={approval.id} /></div>)}
                 {attentionContacts.map((contact) => <p key={contact.id} className="text-sm">Review {contact.display_name}: {contact.role === "unclassified" ? "choose a role" : contact.communication_policy.replaceAll("_", " ")}</p>)}
               </div>
             )}

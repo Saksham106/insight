@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } = require(path.join(__dirname, "webhook.ts"));
+const { filterWebhookPayload, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } = require(path.join(__dirname, "webhook.ts"));
 
 const fixture = {
   object: "whatsapp_business_account",
@@ -41,6 +41,23 @@ test("projects supported message and status events with deterministic keys", () 
 test("ignores malformed and unsupported changes without throwing", () => {
   assert.deepEqual(projectWebhookEvents({ entry: [{ changes: [{ field: "account_update", value: {} }] }] }), []);
   assert.deepEqual(projectWebhookEvents(null), []);
+});
+
+test("builds a Meta-shaped payload containing only explicitly eligible messages", () => {
+  const mixed = structuredClone(fixture);
+  mixed.entry[0].changes[0].value.contacts.push({ wa_id: "84900000000", profile: { name: "Unknown" } });
+  mixed.entry[0].changes[0].value.messages.push({ id: "wamid.blocked", from: "84900000000", timestamp: "1784217601", type: "text", text: { body: "Hello" } });
+  const filtered = filterWebhookPayload(mixed, new Set(["wamid.inbound"]));
+  const value = filtered.entry[0].changes[0].value;
+  assert.deepEqual(value.messages.map((message) => message.id), ["wamid.inbound"]);
+  assert.deepEqual(value.contacts.map((contact) => contact.wa_id), ["84917583553"]);
+  assert.deepEqual(value.statuses, []);
+});
+
+test("drops messages with malformed timestamps instead of assigning 1970", () => {
+  const malformed = structuredClone(fixture);
+  malformed.entry[0].changes[0].value.messages[0].timestamp = "not-a-time";
+  assert.deepEqual(projectWebhookEvents(malformed).filter((event) => event.kind === "message"), []);
 });
 
 test("recognizes explicit WhatsApp opt-out commands without guessing from ordinary text", () => {

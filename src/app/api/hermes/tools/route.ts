@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
-import { canTransitionCase, communicationDecision, projectContact, sanitizeAvailability } from "@/lib/hermes/cases";
+import { communicationDecision, projectContact, sanitizeAvailability } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -105,58 +105,40 @@ export async function POST(request: Request) {
         const caseId = stringValue(payload, "caseId", 80);
         const proposedTimes = sanitizeAvailability(payload.proposedTimes);
         if (proposedTimes.length === 0) return failure("At least one proposed time is required");
-        const { data: existing } = await supabase.from("hermes_scheduling_cases").select("status").eq("id", caseId).maybeSingle();
-        if (!existing) return failure("Case not found", 404);
-        if (existing.status !== "proposing" && !canTransitionCase(existing.status, "proposing")) return failure("Invalid case transition", 409);
-        const { error } = await supabase.from("hermes_scheduling_cases").update({ status: "proposing", proposed_times: proposedTimes }).eq("id", caseId);
-        if (error) throw error;
+        const { data: proposedCase, error } = await supabase.rpc("propose_hermes_times", { p_case_id: caseId, p_proposed_times: proposedTimes });
+        if (error || !proposedCase) throw error ?? new Error("proposal_failed");
         await audit("times_proposed", "scheduling_case", caseId, { count: proposedTimes.length });
-        return NextResponse.json({ status: "proposing", proposedTimes });
+        return NextResponse.json({ status: "proposing", proposedTimes, proposalVersion: proposedCase.proposal_version });
       }
       case "request_approval": {
         const caseId = stringValue(payload, "caseId", 80);
-        const { data: existing } = await supabase.from("hermes_scheduling_cases").select("status").eq("id", caseId).maybeSingle();
-        if (!existing) return failure("Case not found", 404);
-        if (existing.status !== "awaiting_approval" && !canTransitionCase(existing.status, "awaiting_approval")) return failure("Invalid case transition", 409);
         const approvalPayload = objectValue(payload.approvalPayload ?? {});
-        const { data: approval, error } = await supabase.from("hermes_approvals").insert({ case_id: caseId, action: "confirm_class", payload: approvalPayload }).select("id, case_id, action, status, requested_at").single();
+        const { data: approval, error } = await supabase.rpc("request_hermes_approval", { p_case_id: caseId, p_payload: approvalPayload });
         if (error || !approval) throw error ?? new Error("approval_create_failed");
-        await supabase.from("hermes_scheduling_cases").update({ status: "awaiting_approval" }).eq("id", caseId);
         await audit("approval_requested", "scheduling_case", caseId, { approvalId: approval.id });
-        return NextResponse.json({ approval }, { status: 201 });
+        return NextResponse.json({ approval: { id: approval.id, case_id: approval.case_id, action: approval.action, status: approval.status, requested_at: approval.requested_at, payload: approval.payload } }, { status: 201 });
       }
       case "confirm_class": {
         const caseId = stringValue(payload, "caseId", 80);
         const approvalId = stringValue(payload, "approvalId", 80);
         const resolution = objectValue(payload.resolution ?? {});
-        const { data: approval } = await supabase.from("hermes_approvals").select("id, status, action, case_id").eq("id", approvalId).eq("case_id", caseId).maybeSingle();
-        if (!approval || approval.status !== "approved" || approval.action !== "confirm_class") return failure("Approved confirmation required", 409);
-        const { data: existing } = await supabase.from("hermes_scheduling_cases").select("status").eq("id", caseId).maybeSingle();
-        if (!existing || !canTransitionCase(existing.status, "confirmed")) return failure("Invalid case transition", 409);
-        const { error } = await supabase.from("hermes_scheduling_cases").update({ status: "confirmed", resolution }).eq("id", caseId);
-        if (error) throw error;
+        const { data: confirmedCase, error } = await supabase.rpc("confirm_hermes_class", { p_case_id: caseId, p_approval_id: approvalId, p_resolution: resolution });
+        if (error || !confirmedCase) return failure("Approval is stale, consumed, or does not match this exact resolution", 409);
         await audit("class_confirmed", "scheduling_case", caseId, { approvalId });
-        return NextResponse.json({ status: "confirmed", resolution });
+        return NextResponse.json({ status: confirmedCase.status, resolution: confirmedCase.resolution });
       }
       case "send_message": {
         const contactId = stringValue(payload, "contactId", 80);
         const intent = stringValue(payload, "intent", 40) as WhatsAppIntent;
         if (!["availability_request", "time_proposal", "class_confirmation", "reschedule_request", "class_reminder", "human_attention"].includes(intent)) return failure("Invalid intent");
         const idempotencyKey = stringValue(payload, "idempotencyKey", 128);
-        const caseId = typeof payload.caseId === "string" ? payload.caseId : undefined;
-        if (caseId) {
-          const { data: participant } = await supabase.from("hermes_case_participants").select("id").eq("case_id", caseId).eq("contact_id", contactId).maybeSingle();
-          if (!participant) return failure("Contact is not a case participant", 403);
-        }
-        let approved = false;
-        if (typeof payload.approvalId === "string") {
-          const { data: approval } = await supabase.from("hermes_approvals").select("id").eq("id", payload.approvalId).eq("case_id", caseId ?? "").eq("status", "approved").maybeSingle();
-          approved = Boolean(approval);
-        }
-        const senderBody = JSON.stringify({ contactId, caseId, intent, text: typeof payload.text === "string" ? payload.text.slice(0, 2000) : undefined, bodyParameters: Array.isArray(payload.bodyParameters) ? payload.bodyParameters.slice(0, 10).map(String) : undefined, idempotencyKey, approved });
+        const caseId = stringValue(payload, "caseId", 80);
+        const senderSecret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
+        if (!senderSecret) return failure("Sender unavailable", 503);
+        const senderBody = JSON.stringify({ contactId, caseId, intent, text: typeof payload.text === "string" ? payload.text.slice(0, 2000) : undefined, bodyParameters: Array.isArray(payload.bodyParameters) ? payload.bodyParameters.slice(0, 10).map(String) : undefined, idempotencyKey, approvalId: typeof payload.approvalId === "string" ? payload.approvalId : undefined });
         const timestamp = Date.now().toString();
         const senderRequestId = `${auth.requestId}-send`;
-        const response = await fetch(new URL("/api/whatsapp/send", request.url), { method: "POST", headers: { "content-type": "application/json", "x-hermes-timestamp": timestamp, "x-hermes-request-id": senderRequestId, "x-hermes-signature": signServiceRequest(senderBody, timestamp, senderRequestId, secret!) }, body: senderBody });
+        const response = await fetch(new URL("/api/whatsapp/send", request.url), { method: "POST", headers: { "content-type": "application/json", "x-hermes-timestamp": timestamp, "x-hermes-request-id": senderRequestId, "x-hermes-signature": signServiceRequest(senderBody, timestamp, senderRequestId, senderSecret) }, body: senderBody });
         const result = await response.json();
         await audit(response.ok ? "message_requested" : "message_rejected", "contact", contactId, { caseId: caseId ?? null, intent, status: response.status });
         return NextResponse.json(result, { status: response.status });

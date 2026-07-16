@@ -11,14 +11,13 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   if (!body || !["approved", "rejected"].includes(body.decision)) return NextResponse.json({ error: "Decision must be approved or rejected." }, { status: 400 });
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase.from("hermes_approvals").update({
-    status: body.decision,
-    decided_by: profile.id,
-    decided_at: new Date().toISOString(),
-    decision_note: typeof body.note === "string" ? body.note.trim().slice(0, 500) || null : null,
-  }).eq("id", id).eq("status", "pending").select("id, case_id, action, status").maybeSingle();
+  const { data, error } = await supabase.rpc("decide_hermes_approval", {
+    p_approval_id: id,
+    p_decided_by: profile.id,
+    p_decision: body.decision,
+    p_note: typeof body.note === "string" ? body.note : null,
+  });
   if (error) return NextResponse.json({ error: "Could not record the decision." }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Approval is no longer pending." }, { status: 409 });
-  await supabase.from("hermes_audit_events").insert({ actor_type: "admin", actor_profile_id: profile.id, event_type: `approval_${body.decision}`, entity_type: "scheduling_case", entity_id: data.case_id, metadata: { approvalId: data.id, action: data.action } });
-  return NextResponse.json({ approval: data });
+  return NextResponse.json({ approval: { id: data.id, case_id: data.case_id, action: data.action, status: data.status } });
 }

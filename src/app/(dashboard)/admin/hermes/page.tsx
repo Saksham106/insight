@@ -21,7 +21,7 @@ export default async function HermesAdminPage() {
       .limit(20),
     supabase
       .from("hermes_approvals")
-      .select("id, action, status, requested_at, case:case_id(id, title)")
+      .select("id, action, status, requested_at, payload, proposal_version, case:case_id(id, title)")
       .eq("status", "pending")
       .order("requested_at")
       .limit(20),

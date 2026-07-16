@@ -21,7 +21,29 @@ export function isWhatsAppOptOut(body: string | null) {
 
 function timestampToIso(value: unknown) {
   const seconds = Number(value);
-  return Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : new Date(0).toISOString();
+  return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
+}
+
+export function filterWebhookPayload(payload: unknown, allowedMessageIds: Set<string>) {
+  const clone = structuredClone(payload) as { entry?: Array<Record<string, unknown>> };
+  if (!Array.isArray(clone?.entry)) return { object: "whatsapp_business_account", entry: [] };
+  clone.entry = clone.entry.flatMap((entry) => {
+    const changes = Array.isArray(entry.changes) ? entry.changes : [];
+    const filteredChanges = changes.flatMap((unknownChange) => {
+      if (!unknownChange || typeof unknownChange !== "object") return [];
+      const change = unknownChange as Record<string, unknown>;
+      if (!change.value || typeof change.value !== "object") return [];
+      const value = change.value as Record<string, unknown>;
+      const messages = Array.isArray(value.messages)
+        ? value.messages.filter((item) => item && typeof item === "object" && allowedMessageIds.has(String((item as Record<string, unknown>).id ?? "")))
+        : [];
+      if (messages.length === 0) return [];
+      const senders = new Set(messages.map((item) => String((item as Record<string, unknown>).from ?? "")));
+      return [{ ...change, value: { ...value, messages, contacts: Array.isArray(value.contacts) ? value.contacts.filter((item) => item && typeof item === "object" && senders.has(String((item as Record<string, unknown>).wa_id ?? ""))) : [], statuses: [] } }];
+    });
+    return filteredChanges.length > 0 ? [{ ...entry, changes: filteredChanges }] : [];
+  });
+  return clone;
 }
 
 export function projectWebhookEvents(payload: unknown): ProjectedWebhookEvent[] {
@@ -48,13 +70,15 @@ export function projectWebhookEvents(payload: unknown): ProjectedWebhookEvent[] 
         value.messages.forEach((item) => {
           const message = item as { id?: string; from?: string; timestamp?: string; type?: string; text?: { body?: string } };
           if (!message.id || !message.from) return;
+          const occurredAt = timestampToIso(message.timestamp);
+          if (!occurredAt) return;
           events.push({
             kind: "message",
             idempotencyKey: `meta:message:${message.id}`,
             metaMessageId: message.id,
             waId: message.from,
             profileName: names.get(message.from) ?? null,
-            occurredAt: timestampToIso(message.timestamp),
+            occurredAt,
             messageType: message.type ?? "unknown",
             body: message.type === "text" ? message.text?.body ?? null : null,
           });
@@ -64,12 +88,14 @@ export function projectWebhookEvents(payload: unknown): ProjectedWebhookEvent[] 
         value.statuses.forEach((item) => {
           const status = item as { id?: string; recipient_id?: string; timestamp?: string; status?: string; errors?: Array<{ code?: number }> };
           if (!status.id || !status.recipient_id || !status.status) return;
+          const occurredAt = timestampToIso(status.timestamp);
+          if (!occurredAt) return;
           events.push({
             kind: "status",
             idempotencyKey: `meta:status:${status.id}:${status.status}:${status.timestamp ?? "0"}`,
             metaMessageId: status.id,
             waId: status.recipient_id,
-            occurredAt: timestampToIso(status.timestamp),
+            occurredAt,
             status: status.status,
             errorCode: status.errors?.[0]?.code?.toString() ?? null,
           });

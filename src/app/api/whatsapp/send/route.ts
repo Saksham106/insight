@@ -6,15 +6,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
-  const secret = process.env.HERMES_TOOL_SHARED_SECRET;
+  const secret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
   const auth = secret ? verifyServiceRequest(request, rawBody, secret) : null;
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: { contactId?: string; caseId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; idempotencyKey?: string; approved?: boolean };
+  let body: { contactId?: string; caseId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; idempotencyKey?: string; approvalId?: string };
   try { body = JSON.parse(rawBody); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  if (!body.contactId || !body.intent || !body.idempotencyKey) return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  if (!body.contactId || !body.caseId || !body.intent || !body.idempotencyKey) return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
   const supabase = createAdminClient();
+  const { error: replayError } = await supabase.from("hermes_audit_events").insert({ actor_type: "system", event_type: "sender_request", entity_type: "sender", request_id: auth.requestId, metadata: { intent: body.intent } });
+  if (replayError) return NextResponse.json({ error: replayError.code === "23505" ? "Replay rejected" : "Audit unavailable" }, { status: replayError.code === "23505" ? 409 : 503 });
   const { data: prior } = await supabase.from("hermes_messages").select("id, status, meta_message_id, error_code").eq("idempotency_key", body.idempotencyKey).maybeSingle();
   if (prior) return NextResponse.json({ message: prior, duplicate: true });
 
@@ -27,11 +29,26 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (!contact) return NextResponse.json({ error: "Contact unavailable" }, { status: 404 });
 
+  const [{ data: caseRecord }, { data: participant }, { count: recentCount }] = await Promise.all([
+    supabase.from("hermes_scheduling_cases").select("id, human_takeover").eq("id", body.caseId).maybeSingle(),
+    supabase.from("hermes_case_participants").select("id").eq("case_id", body.caseId).eq("contact_id", body.contactId).maybeSingle(),
+    supabase.from("hermes_messages").select("id", { count: "exact", head: true }).eq("direction", "outbound").gte("created_at", new Date(Date.now() - 60_000).toISOString()),
+  ]);
+  if (!caseRecord || !participant) return NextResponse.json({ error: "Contact is not a case participant" }, { status: 403 });
+  if (caseRecord.human_takeover) return NextResponse.json({ error: "Swati has taken over this case" }, { status: 409 });
+  if ((recentCount ?? 0) >= 20) return NextResponse.json({ error: "Sender rate limit reached" }, { status: 429 });
+
+  let approved = false;
+  if (body.approvalId) {
+    const { data: approval } = await supabase.from("hermes_approvals").select("id").eq("id", body.approvalId).eq("case_id", body.caseId).eq("status", "approved").is("consumed_at", null).maybeSingle();
+    approved = Boolean(approval);
+  }
+
   const delivery = selectWhatsAppDelivery({
     communicationPolicy: contact.communication_policy,
     consentStatus: contact.consent_status,
     serviceWindowExpiresAt: contact.service_window_expires_at,
-  }, body.intent, new Date(), templateMapFromEnv(process.env), body.approved === true);
+  }, body.intent, new Date(), templateMapFromEnv(process.env), approved);
   if (delivery.kind === "blocked") return NextResponse.json({ error: delivery.reason }, { status: 409 });
 
   const { data: pending, error: insertError } = await supabase.from("hermes_messages").insert({

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
-import { digestImportRows, verifyImportPreview } from "@/lib/hermes/import";
+import { digestImportRows, validateImportSelection, verifyImportPreview } from "@/lib/hermes/import";
 import type { HermesContactRole } from "@/lib/hermes/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -34,6 +34,9 @@ export async function POST(request: Request) {
   if (contacts.length === 0) return NextResponse.json({ error: "Select at least one valid contact." }, { status: 400 });
   if (contacts.some((contact) => !contact.displayName?.trim() || !/^\+[1-9]\d{7,14}$/.test(contact.normalizedPhone) || !ROLES.has(contact.role) || contact.role === "unclassified")) {
     return NextResponse.json({ error: "Every selected contact needs a valid name, number, and role." }, { status: 400 });
+  }
+  if (!validateImportSelection(previewRows, contacts)) {
+    return NextResponse.json({ error: "The selected contacts do not match the signed preview. Upload the contact file again." }, { status: 400 });
   }
 
   const supabase = createAdminClient();

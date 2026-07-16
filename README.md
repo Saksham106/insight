@@ -75,6 +75,7 @@ npm run dev
 | WHATSAPP_CLOUD_API_VERSION | No | Pinned Graph API version. |
 | HERMES_FORWARD_URL | For WhatsApp | Existing Hermes Cloud API webhook URL used after Insight policy checks. |
 | HERMES_TOOL_SHARED_SECRET | For WhatsApp | Random HMAC secret shared only by Insight and Hermes. |
+| WHATSAPP_SENDER_SHARED_SECRET | For WhatsApp | Separate random HMAC secret used only for Insight's private sender dispatch. Never install it on Hermes. |
 | HERMES_IMPORT_SIGNING_SECRET | For WhatsApp | Random server-only secret for short-lived import previews. |
 | WHATSAPP_TEMPLATE_LOCALE | No | Approved template locale, normally `en_US`. |
 | WHATSAPP_TEMPLATE_AVAILABILITY_REQUEST | For proactive outreach | Approved Meta template name. |

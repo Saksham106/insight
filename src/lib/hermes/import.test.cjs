@@ -17,7 +17,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 };
 
 const { suggestProfileMatches } = require(path.join(__dirname, "matching.ts"));
-const { buildImportPreview, signImportPreview, verifyImportPreview } = require(path.join(__dirname, "import.ts"));
+const { buildImportPreview, signImportPreview, validateImportSelection, verifyImportPreview } = require(path.join(__dirname, "import.ts"));
 
 const profiles = [
   { id: "p1", full_name: "Priya Mehta", role: "teacher", timezone: "Asia/Kolkata" },
@@ -78,6 +78,23 @@ test("signs preview content and rejects expiry or tampering", () => {
   assert.deepEqual(verifyImportPreview(token, "secret", 1_900_000_000_000), payload);
   assert.equal(verifyImportPreview(`${token}x`, "secret", 1_900_000_000_000), null);
   assert.equal(verifyImportPreview(token, "secret", 2_100_000_000_000), null);
+});
+
+test("binds committed contacts to signed preview rows and suggested profile ids", () => {
+  const rows = [{
+    sourceIndex: 0,
+    displayName: "Priya Mehta",
+    rawPhone: "+91 98765 43210",
+    normalizedPhone: "+919876543210",
+    existingContactId: null,
+    suggestions: [{ profileId: "p1", fullName: "Priya Mehta", role: "teacher", timezone: "Asia/Kolkata", confidence: "exact" }],
+    error: null,
+  }];
+
+  assert.equal(validateImportSelection(rows, [{ displayName: "Priya Mehta", normalizedPhone: "+919876543210", role: "teacher", profileId: "p1" }]), true);
+  assert.equal(validateImportSelection(rows, [{ displayName: "Mallory", normalizedPhone: "+919876543210", role: "teacher", profileId: "p1" }]), false);
+  assert.equal(validateImportSelection(rows, [{ displayName: "Priya Mehta", normalizedPhone: "+15551234567", role: "teacher", profileId: null }]), false);
+  assert.equal(validateImportSelection(rows, [{ displayName: "Priya Mehta", normalizedPhone: "+919876543210", role: "teacher", profileId: "p2" }]), false);
 });
 
 test("admin import routes authenticate before privileged database access", () => {
