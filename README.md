@@ -68,6 +68,21 @@ npm run dev
 | ADMIN_EMAIL | Yes | Admin notification recipient. |
 | NEXT_PUBLIC_DEV_BYPASS_AUTH | No | Set to true to bypass auth in dev only. |
 | NEXT_PUBLIC_DEV_BYPASS_ROLE | No | Role to use with auth bypass: admin, teacher, student. |
+| WHATSAPP_CLOUD_ACCESS_TOKEN | For WhatsApp | Permanent Meta system-user token; server-only. |
+| WHATSAPP_CLOUD_PHONE_NUMBER_ID | For WhatsApp | Meta phone-number ID, not the visible phone number. |
+| WHATSAPP_CLOUD_APP_SECRET | For WhatsApp | Meta app secret used to verify raw webhook signatures. |
+| WHATSAPP_CLOUD_VERIFY_TOKEN | For WhatsApp | Random callback verification token shared with Meta. |
+| WHATSAPP_CLOUD_API_VERSION | No | Pinned Graph API version. |
+| HERMES_FORWARD_URL | For WhatsApp | Existing Hermes Cloud API webhook URL used after Insight policy checks. |
+| HERMES_TOOL_SHARED_SECRET | For WhatsApp | Random HMAC secret shared only by Insight and Hermes. |
+| HERMES_IMPORT_SIGNING_SECRET | For WhatsApp | Random server-only secret for short-lived import previews. |
+| WHATSAPP_TEMPLATE_LOCALE | No | Approved template locale, normally `en_US`. |
+| WHATSAPP_TEMPLATE_AVAILABILITY_REQUEST | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_TIME_PROPOSAL | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_CLASS_CONFIRMATION | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_RESCHEDULE_REQUEST | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_CLASS_REMINDER | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_HUMAN_ATTENTION | For proactive outreach | Approved Meta template name. |
 
 Note: Do not commit .env.local. Share secrets out of band.
 
@@ -94,6 +109,42 @@ Admins invite teachers and students (parents) from the /admin page. Invited user
 6. Exchange messages and confirm realtime updates.
 7. Try sending a phone number or email address and confirm it is blocked.
 8. Confirm unrelated teachers/students cannot access each other.
+
+## Hermes WhatsApp Operations
+
+The `/admin/hermes` area is a separate academy contact directory inside the existing Supabase project. It does not create Auth users or modify portal records unless Swati explicitly confirms a suggested exact-name match.
+
+### Import contacts
+
+1. On Swati's iPhone, export only the academy contacts as a `.vcf` file.
+2. Upload it at `/admin/hermes`. The preview retains only names and phone numbers.
+3. Resolve duplicate or invalid numbers. Confirm any portal match explicitly; first-name-only matches are never linked.
+4. Classify unmatched people as teacher, student, parent, employee, or other.
+5. Attest that the selected contacts consented to academy WhatsApp messages, then commit the import.
+
+Imported contacts default to direct communication after that attestation. Use an individual contact's policy to require approval, contact a guardian only, pause messages, or opt out. An inbound `STOP` also opts the contact out immediately.
+
+### Meta templates
+
+Create fixed-purpose Utility templates in WhatsApp Manager for availability requests, proposed times, confirmations, rescheduling, reminders, and human-attention notices. Put only approved template names in the matching environment variables. Do not let Hermes generate template names or categories. A recipient outside their own 24-hour service window can receive only one of these approved templates.
+
+### Approval-first pilot
+
+Keep the first rollout approval-first: Hermes may collect availability and propose times, but it must create a pending approval before class confirmation. Swati approves or rejects it in `/admin/hermes`. Unknown, unclassified, paused, guardian-only, approval-required, and opted-out contacts fail closed. Hermes receives no Supabase service key or Meta access token.
+
+### Deployment and activation
+
+1. Apply `supabase/migrations/20260716124117_add_hermes_assistant.sql` and run Supabase security/performance advisors.
+2. Deploy Insight with all server secrets, while leaving Meta's current callback unchanged.
+3. Install `infra/hermes-skills/insight-scheduling` in Hermes and set `INSIGHT_HERMES_TOOL_URL` to the deployed `/api/hermes/tools` endpoint with the same HMAC secret.
+4. Verify the Insight webhook GET challenge, signed tool calls, admin import, approval controls, and a test Meta send.
+5. Change Meta's callback last to `https://<insight-host>/api/whatsapp/webhook` and subscribe to `messages`.
+
+Useful endpoints are `/api/whatsapp/webhook` (Meta callback), `/api/whatsapp/send` (signed internal sender), `/api/hermes/tools` (signed Hermes actions), and `/admin/hermes` (human operations). Do not call either signed API from a browser or expose its shared secret.
+
+### Rollback
+
+If inbound handling fails, restore Meta's callback to the exact URL stored in `HERMES_FORWARD_URL`; no database rollback is required. Keep the Insight tables for audit and delivery diagnosis. If outbound handling fails, pause affected contacts or remove the approved template environment variables, which makes proactive outreach fail closed. Never delete message or audit rows during incident response.
 
 ## Future Improvements (Not Implemented)
 
