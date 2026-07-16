@@ -74,3 +74,22 @@ test("Hermes scheduling cases record their intake channel and actor kind", () =>
   assert.match(originMigration, /add column if not exists origin_actor_kind text not null default 'admin'/i);
   assert.match(originMigration, /origin_actor_kind in \('admin', 'contact'\)/i);
 });
+
+test("Workspace jobs are server-only, leased transactionally, and service-role controlled", () => {
+  const sql = fs.readFileSync(
+    path.join(migrationsDir, "20260716151000_add_hermes_workspace_jobs.sql"),
+    "utf8",
+  ).toLowerCase();
+  assert.match(sql, /create table if not exists public\.hermes_workspace_jobs/);
+  assert.match(sql, /job_type in \('calendar_freebusy'\)/);
+  assert.match(sql, /status in \('queued', 'leased', 'succeeded', 'retryable_failed', 'permanent_failed', 'cancelled'\)/);
+  assert.match(sql, /idempotency_key text not null unique/);
+  assert.match(sql, /enable row level security/);
+  assert.match(sql, /revoke all on table public\.hermes_workspace_jobs from anon, authenticated/);
+  assert.match(sql, /for update skip locked/);
+  assert.match(sql, /lease_owner = p_worker_id/);
+  assert.match(sql, /revoke execute on function public\.claim_hermes_workspace_jobs/);
+  assert.match(sql, /grant execute on function public\.claim_hermes_workspace_jobs[^;]+to service_role/);
+  assert.match(sql, /grant execute on function public\.complete_hermes_workspace_job[^;]+to service_role/);
+  assert.match(sql, /add column if not exists workspace_state text not null default 'not_required'/);
+});
