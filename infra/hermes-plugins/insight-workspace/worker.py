@@ -67,6 +67,26 @@ def classify_gws_failure(failure):
     return "retryable_failed", "google_api_error"
 
 
+def _run_gws(argv):
+    try:
+        return subprocess.run(
+            argv,
+            shell=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        status, error_code = classify_gws_failure(error)
+        raise WorkspaceWorkerError(status, error_code) from None
+
+
+def _raise_gws_failure(completed):
+    status, error_code = classify_gws_failure(completed)
+    raise WorkspaceWorkerError(status, error_code)
+
+
 def query_freebusy(payload, now=_utc_now):
     windows = payload.get("windows") if isinstance(payload, dict) else None
     if not isinstance(windows, list) or not windows or len(windows) > 50:
@@ -84,21 +104,9 @@ def query_freebusy(payload, now=_utc_now):
         }
     except (KeyError, TypeError, ValueError):
         raise WorkspaceWorkerError("permanent_failed", "invalid_job_payload") from None
-    try:
-        completed = subprocess.run(
-            ["gws", "calendar", "freebusy", "query", "--json", canonical_json(request_body)],
-            shell=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as error:
-        status, error_code = classify_gws_failure(error)
-        raise WorkspaceWorkerError(status, error_code) from None
+    completed = _run_gws(["gws", "calendar", "freebusy", "query", "--json", canonical_json(request_body)])
     if completed.returncode != 0:
-        status, error_code = classify_gws_failure(completed)
-        raise WorkspaceWorkerError(status, error_code)
+        _raise_gws_failure(completed)
     try:
         decoded = json.loads(completed.stdout)
         primary = decoded["calendars"]["primary"]
@@ -117,6 +125,107 @@ def query_freebusy(payload, now=_utc_now):
     except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         raise WorkspaceWorkerError("permanent_failed", "invalid_google_response") from None
     return {"busy": busy, "checkedAt": _iso(now())}
+
+
+def _event_result(decoded):
+    try:
+        event_id = decoded["id"]
+        etag = decoded["etag"]
+        created = _iso(decoded["created"])
+        if not isinstance(event_id, str) or not event_id or not isinstance(etag, str) or not etag:
+            raise ValueError("invalid_event")
+    except (KeyError, TypeError, ValueError):
+        raise WorkspaceWorkerError("permanent_failed", "invalid_google_event") from None
+    return {"eventId": event_id, "etag": etag, "createdAt": created}
+
+
+def _recover_existing_event(case_id, payload):
+    params = canonical_json({"calendarId": "primary", "eventId": payload["eventId"]})
+    completed = _run_gws(["gws", "calendar", "events", "get", "--params", params])
+    if completed.returncode != 0:
+        if _error_http_status(completed) == 404:
+            return None
+        _raise_gws_failure(completed)
+    try:
+        decoded = json.loads(completed.stdout)
+        private = decoded["extendedProperties"]["private"]
+        if (
+            decoded["id"] != payload["eventId"]
+            or _iso(decoded["start"]["dateTime"]) != _iso(payload["start"])
+            or _iso(decoded["end"]["dateTime"]) != _iso(payload["end"])
+            or private.get("insightCaseId") != case_id
+            or private.get("insightProposalVersion") != str(payload["proposalVersion"])
+        ):
+            raise ValueError("event_mismatch")
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise WorkspaceWorkerError("permanent_failed", "calendar_event_mismatch") from None
+    return _event_result(decoded)
+
+
+def _has_overlap(start, end, busy):
+    start_value = datetime.fromisoformat(_iso(start).replace("Z", "+00:00"))
+    end_value = datetime.fromisoformat(_iso(end).replace("Z", "+00:00"))
+    return any(
+        datetime.fromisoformat(_iso(item["start"]).replace("Z", "+00:00")) < end_value
+        and datetime.fromisoformat(_iso(item["end"]).replace("Z", "+00:00")) > start_value
+        for item in busy
+    )
+
+
+def create_calendar_event(case_id, payload):
+    try:
+        event_id = payload["eventId"]
+        start = _iso(payload["start"])
+        end = _iso(payload["end"])
+        timezone_name = payload["timezone"]
+        summary = payload["summary"]
+        proposal_version = payload["proposalVersion"]
+        if (
+            not isinstance(case_id, str) or not case_id or len(case_id) > 80
+            or not isinstance(event_id, str) or not event_id
+            or not isinstance(timezone_name, str) or not timezone_name
+            or not isinstance(summary, str) or not summary or len(summary) > 240
+            or not isinstance(proposal_version, int) or proposal_version < 1
+            or end <= start
+        ):
+            raise ValueError("invalid_event_payload")
+    except (KeyError, TypeError, ValueError):
+        raise WorkspaceWorkerError("permanent_failed", "invalid_job_payload") from None
+
+    recovered = _recover_existing_event(case_id, payload)
+    if recovered:
+        return recovered
+
+    availability = query_freebusy({"windows": [{"start": start, "end": end}], "timezone": timezone_name})
+    if _has_overlap(start, end, availability["busy"]):
+        raise WorkspaceWorkerError("permanent_failed", "calendar_conflict")
+
+    event = {
+        "id": event_id,
+        "summary": summary,
+        "start": {"dateTime": start, "timeZone": timezone_name},
+        "end": {"dateTime": end, "timeZone": timezone_name},
+        "visibility": "private",
+        "transparency": "opaque",
+        "extendedProperties": {"private": {
+            "insightCaseId": case_id,
+            "insightProposalVersion": str(proposal_version),
+        }},
+    }
+    params = canonical_json({"calendarId": "primary", "sendUpdates": "none"})
+    completed = _run_gws([
+        "gws", "calendar", "events", "insert", "--params", params, "--json", canonical_json(event),
+    ])
+    if completed.returncode != 0:
+        _raise_gws_failure(completed)
+    try:
+        decoded = json.loads(completed.stdout)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise WorkspaceWorkerError("retryable_failed", "invalid_google_response") from None
+    result = _event_result(decoded)
+    if result["eventId"] != event_id:
+        raise WorkspaceWorkerError("permanent_failed", "calendar_event_mismatch")
+    return result
 
 
 def workspace_request(message):
@@ -154,13 +263,17 @@ def run_once(worker_id=None):
     summary = {"claimed": len(claimed), "succeeded": 0, "failed": 0}
     for job in claimed:
         try:
-            if job.get("jobType") != "calendar_freebusy":
+            job_type = job.get("jobType")
+            if job_type == "calendar_freebusy":
+                result = query_freebusy(job.get("payload"))
+            elif job_type == "calendar_create_event":
+                result = create_calendar_event(job.get("caseId"), job.get("payload"))
+            else:
                 raise WorkspaceWorkerError("permanent_failed", "unsupported_job_type")
-            result = query_freebusy(job.get("payload"))
-            completion = {"workerId": worker_id, "jobId": job["id"], "status": "succeeded", "result": result}
+            completion = {"workerId": worker_id, "jobId": job["id"], "jobType": job_type, "status": "succeeded", "result": result}
             summary["succeeded"] += 1
         except WorkspaceWorkerError as error:
-            completion = {"workerId": worker_id, "jobId": job.get("id", "invalid"), "status": error.status, "errorCode": error.error_code}
+            completion = {"workerId": worker_id, "jobId": job.get("id", "invalid"), "jobType": job.get("jobType", "invalid"), "status": error.status, "errorCode": error.error_code}
             summary["failed"] += 1
         workspace_request({"action": "complete", "payload": completion})
     return summary

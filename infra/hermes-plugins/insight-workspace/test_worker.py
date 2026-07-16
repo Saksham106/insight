@@ -28,6 +28,14 @@ class WorkerTests(unittest.TestCase):
             ],
             "timezone": "Asia/Ho_Chi_Minh",
         }
+        self.event_payload = {
+            "start": "2026-07-20T09:00:00.000Z",
+            "end": "2026-07-20T10:00:00.000Z",
+            "timezone": "Asia/Ho_Chi_Minh",
+            "summary": "Insight class with Asha",
+            "eventId": "insight0abc123",
+            "proposalVersion": 2,
+        }
 
     def test_freebusy_uses_exact_safe_gws_argv_and_minimizes_output(self):
         response = {
@@ -81,7 +89,75 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(request.call_args_list[0].args[0], {"action": "claim", "payload": {"workerId": "worker_123", "limit": 5}})
         completion = request.call_args_list[1].args[0]
         self.assertEqual(completion["payload"]["status"], "succeeded")
+        self.assertEqual(completion["payload"]["jobType"], "calendar_freebusy")
         self.assertEqual(result, {"claimed": 1, "succeeded": 1, "failed": 0})
+
+    def test_event_insert_uses_exact_private_primary_calendar_shape(self):
+        missing = subprocess.CompletedProcess([], 1, stdout='{"error":{"code":404}}', stderr="private")
+        free = subprocess.CompletedProcess([], 0, stdout=json.dumps({"calendars": {"primary": {"busy": [], "errors": []}}}), stderr="")
+        inserted = subprocess.CompletedProcess([], 0, stdout=json.dumps({
+            "id": "insight0abc123", "etag": '"etag-1"', "created": "2026-07-16T12:00:00Z",
+            "summary": "private response", "attendees": [{"email": "drop@example.com"}],
+        }), stderr="")
+        with patch.object(self.worker.subprocess, "run", side_effect=[missing, free, inserted]) as run:
+            result = self.worker.create_calendar_event("case-opaque-1", self.event_payload)
+
+        get_params = self.worker.canonical_json({"calendarId": "primary", "eventId": "insight0abc123"})
+        self.assertEqual(run.call_args_list[0].args[0], ["gws", "calendar", "events", "get", "--params", get_params])
+        insert_params = self.worker.canonical_json({"calendarId": "primary", "sendUpdates": "none"})
+        insert_argv = run.call_args_list[2].args[0]
+        self.assertEqual(insert_argv[:6], ["gws", "calendar", "events", "insert", "--params", insert_params])
+        self.assertEqual(insert_argv[6], "--json")
+        body = json.loads(insert_argv[7])
+        self.assertEqual(body, {
+            "id": "insight0abc123",
+            "summary": "Insight class with Asha",
+            "start": {"dateTime": "2026-07-20T09:00:00.000Z", "timeZone": "Asia/Ho_Chi_Minh"},
+            "end": {"dateTime": "2026-07-20T10:00:00.000Z", "timeZone": "Asia/Ho_Chi_Minh"},
+            "visibility": "private",
+            "transparency": "opaque",
+            "extendedProperties": {"private": {"insightCaseId": "case-opaque-1", "insightProposalVersion": "2"}},
+        })
+        self.assertNotIn("attendees", body)
+        self.assertEqual(result, {"eventId": "insight0abc123", "etag": '"etag-1"', "createdAt": "2026-07-16T12:00:00.000Z"})
+
+    def test_existing_matching_event_is_recovered_without_conflict_check_or_insert(self):
+        existing = subprocess.CompletedProcess([], 0, stdout=json.dumps({
+            "id": "insight0abc123", "etag": '"etag-1"', "created": "2026-07-16T12:00:00Z",
+            "start": {"dateTime": self.event_payload["start"]}, "end": {"dateTime": self.event_payload["end"]},
+            "extendedProperties": {"private": {"insightCaseId": "case-opaque-1", "insightProposalVersion": "2"}},
+        }), stderr="")
+        with patch.object(self.worker.subprocess, "run", return_value=existing) as run:
+            result = self.worker.create_calendar_event("case-opaque-1", self.event_payload)
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(result["eventId"], "insight0abc123")
+
+    def test_final_conflict_check_prevents_event_insert(self):
+        missing = subprocess.CompletedProcess([], 1, stdout='{"error":{"code":404}}', stderr="")
+        busy = subprocess.CompletedProcess([], 0, stdout=json.dumps({"calendars": {"primary": {"busy": [{"start": "2026-07-20T09:30:00Z", "end": "2026-07-20T09:45:00Z"}], "errors": []}}}), stderr="")
+        with patch.object(self.worker.subprocess, "run", side_effect=[missing, busy]) as run:
+            with self.assertRaises(self.worker.WorkspaceWorkerError) as raised:
+                self.worker.create_calendar_event("case-opaque-1", self.event_payload)
+        self.assertEqual((raised.exception.status, raised.exception.error_code), ("permanent_failed", "calendar_conflict"))
+        self.assertEqual(run.call_count, 2)
+
+    def test_uncertain_insert_is_retryable_and_next_attempt_recovers_same_id(self):
+        missing = subprocess.CompletedProcess([], 1, stdout='{"error":{"code":404}}', stderr="")
+        free = subprocess.CompletedProcess([], 0, stdout=json.dumps({"calendars": {"primary": {"busy": [], "errors": []}}}), stderr="")
+        with patch.object(self.worker.subprocess, "run", side_effect=[missing, free, subprocess.TimeoutExpired(["gws"], 30)]):
+            with self.assertRaises(self.worker.WorkspaceWorkerError) as raised:
+                self.worker.create_calendar_event("case-opaque-1", self.event_payload)
+        self.assertEqual((raised.exception.status, raised.exception.error_code), ("retryable_failed", "gws_timeout"))
+
+        existing = subprocess.CompletedProcess([], 0, stdout=json.dumps({
+            "id": "insight0abc123", "etag": '"etag-1"', "created": "2026-07-16T12:00:00Z",
+            "start": {"dateTime": self.event_payload["start"]}, "end": {"dateTime": self.event_payload["end"]},
+            "extendedProperties": {"private": {"insightCaseId": "case-opaque-1", "insightProposalVersion": "2"}},
+        }), stderr="")
+        with patch.object(self.worker.subprocess, "run", return_value=existing) as run:
+            result = self.worker.create_calendar_event("case-opaque-1", self.event_payload)
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(result["eventId"], self.event_payload["eventId"])
 
     def test_http_requests_are_signed_and_errors_never_expose_response_bodies(self):
         response = Mock()
