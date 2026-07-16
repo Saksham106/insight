@@ -1,0 +1,7 @@
+name: insight-workspace
+version: "1.0.0"
+description: Default-profile-only deterministic Google Workspace job worker.
+requires_env:
+  - INSIGHT_HERMES_WORKSPACE_URL
+  - HERMES_WORKSPACE_WORKER_SECRET
+  - HERMES_WORKSPACE_WORKER_ID

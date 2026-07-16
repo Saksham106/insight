@@ -25,6 +25,10 @@ test("worker request parser has exact bounded claim schema", () => {
   assert.throws(() => parseWorkerRequest({ action: "claim", payload: { workerId: "worker_123", limit: 11 } }), /invalid_claim_limit/);
   assert.throws(() => parseWorkerRequest({ action: "claim", payload: { workerId: "worker_123", extra: true } }), /unexpected_field/);
   assert.throws(() => parseWorkerRequest({ action: "claim", payload: { workerId: "worker_123" }, extra: true }), /unexpected_field/);
+  assert.deepEqual(parseWorkerRequest({ action: "status", payload: { workerId: "worker_123" } }), {
+    action: "status", payload: { workerId: "worker_123" },
+  });
+  assert.throws(() => parseWorkerRequest({ action: "status", payload: { workerId: "worker_123", payload: true } }), /unexpected_field/);
 });
 
 test("completion requires minimized success result or redacted failure code", () => {
@@ -69,5 +73,7 @@ test("worker route is separately signed, replay protected, feature gated, and RP
   assert.match(source, /request_id/);
   assert.match(source, /claim_hermes_workspace_jobs/);
   assert.match(source, /complete_hermes_workspace_job/);
+  assert.match(source, /status: data\.status/);
+  assert.match(source, /oldestQueuedAt/);
   assert.doesNotMatch(source, /select\(["']\*["']\)/);
 });

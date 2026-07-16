@@ -5,6 +5,7 @@ type JsonObject = Record<string, unknown>;
 
 export type WorkerRequest =
   | { action: "claim"; payload: { workerId: string; limit: number } }
+  | { action: "status"; payload: { workerId: string } }
   | { action: "complete"; payload: { workerId: string; jobId: string; status: "succeeded"; result: FreeBusyResult } }
   | { action: "complete"; payload: { workerId: string; jobId: string; status: "retryable_failed" | "permanent_failed"; errorCode: string } };
 
@@ -47,6 +48,10 @@ export function parseWorkerRequest(input: unknown): WorkerRequest {
     const limit = payload.limit === undefined ? 5 : payload.limit;
     if (!Number.isInteger(limit) || Number(limit) < 1 || Number(limit) > 10) throw new Error("invalid_claim_limit");
     return { action: "claim", payload: { workerId: workerIdValue(payload.workerId), limit: Number(limit) } };
+  }
+  if (value.action === "status") {
+    exactFields(payload, ["workerId"]);
+    return { action: "status", payload: { workerId: workerIdValue(payload.workerId) } };
   }
   if (value.action === "complete") {
     const status = payload.status;

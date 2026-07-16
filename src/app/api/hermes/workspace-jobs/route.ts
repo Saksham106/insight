@@ -45,6 +45,25 @@ export async function POST(request: Request) {
     }
   }
 
+  if (parsed.action === "status") {
+    const statuses = ["queued", "leased", "retryable_failed"] as const;
+    const counts = await Promise.all(statuses.map(async (status) => {
+      const { count, error } = await supabase.from("hermes_workspace_jobs").select("id", { count: "exact", head: true }).eq("status", status);
+      if (error) throw error;
+      return [status, count ?? 0] as const;
+    })).catch(() => null);
+    if (!counts) return failure("Workspace queue unavailable", 503);
+    const { data: oldest, error } = await supabase
+      .from("hermes_workspace_jobs")
+      .select("created_at")
+      .in("status", ["queued", "retryable_failed"])
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) return failure("Workspace queue unavailable", 503);
+    return NextResponse.json({ queue: { counts: Object.fromEntries(counts), oldestQueuedAt: oldest?.created_at ?? null } });
+  }
+
   const result = parsed.payload.status === "succeeded" ? parsed.payload.result : null;
   const errorCode = parsed.payload.status === "succeeded" ? null : parsed.payload.errorCode;
   const { data, error } = await supabase.rpc("complete_hermes_workspace_job", {
@@ -55,5 +74,5 @@ export async function POST(request: Request) {
     p_error_code: errorCode,
   });
   if (error || !data) return failure("Workspace job completion rejected", 409);
-  return NextResponse.json({ job: { id: parsed.payload.jobId, status: parsed.payload.status } });
+  return NextResponse.json({ job: { id: parsed.payload.jobId, status: data.status } });
 }

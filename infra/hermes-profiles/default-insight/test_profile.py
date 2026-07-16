@@ -31,6 +31,24 @@ class DefaultInsightProfileTests(unittest.TestCase):
         self.assertIn("non-imessage", source)
         self.assertIn("origin_platform=imessage", source)
 
+    def test_docs_keep_calendar_worker_paused_and_default_profile_only(self):
+        source = (PROFILE_DIR / "README.md").read_text().lower()
+        for required in (
+            "insight-workspace run-once",
+            "insight-workspace status",
+            "hermes_workspace_jobs_enabled=false",
+            "hmac",
+            "no-agent",
+            "primary",
+            "busy intervals",
+            "paused",
+            "lease",
+            "rollback",
+        ):
+            self.assertIn(required, source)
+        self.assertIn("academy profile", source)
+        self.assertIn("does not", source)
+
 
 if __name__ == "__main__":
     unittest.main()

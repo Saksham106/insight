@@ -99,17 +99,25 @@ begin
   end if;
 
   update public.hermes_workspace_jobs
-  set status = p_status,
+  set status = case
+        when p_status = 'retryable_failed' and attempt_count >= max_attempts then 'permanent_failed'
+        else p_status
+      end,
       result = case when p_status = 'succeeded' then p_result else null end,
       error_code = case when p_status = 'succeeded' then null else left(coalesce(p_error_code, 'workspace_error'), 100) end,
       available_at = case
-        when p_status = 'retryable_failed'
+        when p_status = 'retryable_failed' and attempt_count < max_attempts
           then now() + make_interval(secs => least(300, (power(2, attempt_count)::integer * 5)))
         else available_at
       end,
       lease_owner = null,
       lease_expires_at = null,
-      completed_at = case when p_status in ('succeeded', 'permanent_failed') then now() else null end,
+      completed_at = case
+        when p_status in ('succeeded', 'permanent_failed')
+          or (p_status = 'retryable_failed' and attempt_count >= max_attempts)
+          then now()
+        else null
+      end,
       updated_at = now()
   where id = p_job_id
     and status = 'leased'
@@ -121,7 +129,7 @@ begin
   end if;
 
   update public.hermes_scheduling_cases
-  set workspace_state = case when p_status = 'succeeded' then 'ready' else 'failed' end,
+  set workspace_state = case when v_job.status = 'succeeded' then 'ready' else 'failed' end,
       updated_at = now()
   where id = v_job.case_id;
 
