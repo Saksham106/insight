@@ -4,9 +4,10 @@ import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
 import { academyInformation, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
+import { parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } from "@/lib/hermes/workspace-jobs";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"] as const;
+const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job"] as const;
 type Action = (typeof ACTIONS)[number];
 type ToolMode = "whatsapp" | "imessage_admin";
 type JsonObject = Record<string, unknown>;
@@ -207,6 +208,66 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         if (error || !confirmedCase) return failure("Approval is stale, consumed, or does not match this exact resolution", 409);
         await audit("class_confirmed", "scheduling_case", caseId, { approvalId });
         return NextResponse.json({ status: confirmedCase.status, resolution: confirmedCase.resolution });
+      }
+      case "request_swati_freebusy": {
+        if (process.env.HERMES_WORKSPACE_JOBS_ENABLED !== "true") return failure("Workspace jobs are unavailable", 503);
+        const caseId = stringValue(payload, "caseId", 80);
+        const freeBusyPayload = parseFreeBusyPayload({ windows: payload.windows, timezone: payload.timezone });
+        const { data: caseRecord, error: caseError } = await supabase
+          .from("hermes_scheduling_cases")
+          .select("id, status")
+          .eq("id", caseId)
+          .maybeSingle();
+        if (caseError) throw caseError;
+        if (!caseRecord) return failure("Case not found", 404);
+        if (["confirmed", "cancelled"].includes(caseRecord.status)) return failure("Case is unavailable", 409);
+        const idempotencyKey = workspaceJobIdempotencyKey(caseId, freeBusyPayload);
+        const payloadDigest = idempotencyKey.slice("freebusy:".length);
+        let { data: job, error: jobError } = await supabase
+          .from("hermes_workspace_jobs")
+          .insert({ case_id: caseId, job_type: "calendar_freebusy", payload: freeBusyPayload, payload_digest: payloadDigest, idempotency_key: idempotencyKey })
+          .select("id, status")
+          .single();
+        if (jobError?.code === "23505") {
+          const existing = await supabase
+            .from("hermes_workspace_jobs")
+            .select("id, status")
+            .eq("idempotency_key", idempotencyKey)
+            .maybeSingle();
+          job = existing.data;
+          jobError = existing.error;
+        }
+        if (jobError || !job) throw jobError ?? new Error("workspace_job_create_failed");
+        const { error: stateError } = await supabase
+          .from("hermes_scheduling_cases")
+          .update({ workspace_state: job.status === "succeeded" ? "ready" : "pending" })
+          .eq("id", caseId);
+        if (stateError) throw stateError;
+        await audit("workspace_job_requested", "scheduling_case", caseId, { jobId: job.id, jobType: "calendar_freebusy" });
+        return NextResponse.json({ job: { id: job.id, status: job.status } }, { status: 202 });
+      }
+      case "get_workspace_job": {
+        if (process.env.HERMES_WORKSPACE_JOBS_ENABLED !== "true") return failure("Workspace jobs are unavailable", 503);
+        const jobId = stringValue(payload, "jobId", 80);
+        const { data: job, error } = await supabase
+          .from("hermes_workspace_jobs")
+          .select("id, case_id, job_type, status, result, error_code, created_at, updated_at")
+          .eq("id", jobId)
+          .maybeSingle();
+        if (error) throw error;
+        if (!job) return failure("Workspace job not found", 404);
+        return NextResponse.json({
+          job: {
+            id: job.id,
+            caseId: job.case_id,
+            jobType: job.job_type,
+            status: job.status,
+            result: job.result ? parseFreeBusyResult(job.result) : null,
+            errorCode: job.error_code,
+            createdAt: job.created_at,
+            updatedAt: job.updated_at,
+          },
+        });
       }
       case "send_message": {
         const contactId = stringValue(payload, "contactId", 80);

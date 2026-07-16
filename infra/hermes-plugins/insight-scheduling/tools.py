@@ -24,6 +24,8 @@ ACTIONS = (
     "confirm_class",
     "send_message",
     "escalate_to_swati",
+    "request_swati_freebusy",
+    "get_workspace_job",
 )
 
 

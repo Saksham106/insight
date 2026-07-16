@@ -56,6 +56,10 @@ class PluginTests(unittest.TestCase):
             "userId": "photon:swati:verified",
         })
 
+    def test_exposes_typed_freebusy_actions(self):
+        self.assertIn("request_swati_freebusy", self.tools.ACTIONS)
+        self.assertIn("get_workspace_job", self.tools.ACTIONS)
+
     def test_request_uses_admin_url_secret_and_session_actor(self):
         with patch.dict(os.environ, {
             "INSIGHT_HERMES_ADMIN_TOOL_URL": "https://myinsightacademy.com/api/hermes/admin-tools",

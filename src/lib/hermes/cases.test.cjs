@@ -99,6 +99,9 @@ test("gives Swati broad scheduling scope and contacts only self or case-member s
   assert.equal(toolActorScope("get_case", "contact"), "case_member");
   assert.equal(toolActorScope("request_reschedule", "contact"), "case_member");
   assert.equal(toolActorScope("send_message", "contact"), "denied");
+  assert.equal(toolActorScope("request_swati_freebusy", "admin"), "admin");
+  assert.equal(toolActorScope("request_swati_freebusy", "contact"), "denied");
+  assert.equal(toolActorScope("get_workspace_job", "contact"), "denied");
   assert.equal(toolActorScope("search_contacts", "unknown"), "denied");
   assert.equal(toolActorScope("get_academy_info", "contact"), "self");
 });
@@ -134,6 +137,21 @@ test("iMessage admin route is separately signed and disabled by default", () => 
   assert.match(route, /HERMES_IMESSAGE_INTAKE_ENABLED/);
   assert.match(route, /parseIMessageAdminActor/);
   assert.match(env, /HERMES_IMESSAGE_INTAKE_ENABLED=false/);
+});
+
+test("tool route exposes admin-only minimized Calendar freebusy jobs", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  assert.match(route, /request_swati_freebusy/);
+  assert.match(route, /get_workspace_job/);
+  assert.match(route, /parseFreeBusyPayload/);
+  assert.match(route, /parseFreeBusyResult/);
+  assert.match(route, /workspaceJobIdempotencyKey/);
+  assert.match(route, /HERMES_WORKSPACE_JOBS_ENABLED/);
+  assert.match(route, /id, case_id, job_type, status, result, error_code, created_at, updated_at/);
+  assert.doesNotMatch(route, /get_workspace_job[\s\S]{0,1600}select\("\*"\)/);
+  assert.match(env, /HERMES_WORKSPACE_JOBS_ENABLED=false/);
+  assert.match(env, /HERMES_WORKSPACE_WORKER_SECRET=/);
 });
 
 test("Hermes skill identifies automation, honors STOP, forbids transcript sharing, and escalates", () => {
