@@ -154,6 +154,18 @@ test("tool route exposes admin-only minimized Calendar freebusy jobs", () => {
   assert.match(env, /HERMES_WORKSPACE_WORKER_SECRET=/);
 });
 
+test("tool route records explicit tutor ownership and fail-closed Calendar writes", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  assert.match(route, /tutorKind/);
+  assert.match(route, /\["swati", "academy_tutor"\]/);
+  assert.match(route, /tutor_kind/);
+  assert.match(route, /HERMES_CALENDAR_WRITES_ENABLED/);
+  assert.match(route, /p_calendar_writes_enabled/);
+  assert.match(route, /calendar_create_event/);
+  assert.match(env, /HERMES_CALENDAR_WRITES_ENABLED=false/);
+});
+
 test("Hermes skill identifies automation, honors STOP, forbids transcript sharing, and escalates", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "infra/hermes-skills/insight-scheduling/SKILL.md"), "utf8");
   assert.match(source, /automated assistant/i);

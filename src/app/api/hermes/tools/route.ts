@@ -118,6 +118,8 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
       }
       case "create_case": {
         const title = stringValue(payload, "title");
+        const tutorKind = typeof payload.tutorKind === "string" ? payload.tutorKind : "academy_tutor";
+        if (!["swati", "academy_tutor"].includes(tutorKind)) return failure("Invalid tutor kind");
         const requestedByContactId = typeof payload.requestedByContactId === "string" ? payload.requestedByContactId : null;
         if (!Array.isArray(payload.participants) || payload.participants.length < 1 || payload.participants.length > 10) return failure("Invalid participants");
         const normalized = payload.participants.map((entry) => {
@@ -139,7 +141,8 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
           timezone: typeof payload.timezone === "string" ? payload.timezone.slice(0, 100) : null,
           origin_platform: mode === "imessage_admin" ? "imessage" : "whatsapp_cloud",
           origin_actor_kind: actorKind,
-        }).select("id, title, status, timezone, created_at").single();
+          tutor_kind: tutorKind,
+        }).select("id, title, status, timezone, tutor_kind, created_at").single();
         if (error || !created) throw error ?? new Error("case_create_failed");
         const { error: participantError } = await supabase.from("hermes_case_participants").insert(normalized.map((item) => ({ case_id: created.id, contact_id: item.contactId, participant_role: item.participantRole })));
         if (participantError) { await supabase.from("hermes_scheduling_cases").delete().eq("id", created.id); throw participantError; }
@@ -149,7 +152,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
       case "get_case": {
         const caseId = stringValue(payload, "caseId", 80);
         if (!(await requireCaseMembership(caseId))) return rejectRequest("Contact is not a case participant", 403, "case_membership_denied");
-        const { data: caseRecord, error } = await supabase.from("hermes_scheduling_cases").select("id, title, status, timezone, proposed_times, resolution, human_takeover, created_at, updated_at").eq("id", caseId).maybeSingle();
+        const { data: caseRecord, error } = await supabase.from("hermes_scheduling_cases").select("id, title, status, timezone, tutor_kind, workspace_state, proposed_times, resolution, human_takeover, created_at, updated_at").eq("id", caseId).maybeSingle();
         if (error) throw error;
         if (!caseRecord) return failure("Case not found", 404);
         const { data: participants, error: participantsError } = await supabase.from("hermes_case_participants").select("contact_id, participant_role, availability, response_status, contact:hermes_contacts(id, display_name, role, timezone, communication_policy, consent_status, is_active)").eq("case_id", caseId);
@@ -204,10 +207,29 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const caseId = stringValue(payload, "caseId", 80);
         const approvalId = stringValue(payload, "approvalId", 80);
         const resolution = objectValue(payload.resolution ?? {});
-        const { data: confirmedCase, error } = await supabase.rpc("confirm_hermes_class", { p_case_id: caseId, p_approval_id: approvalId, p_resolution: resolution });
+        const { data: confirmedCase, error } = await supabase.rpc("confirm_hermes_class", {
+          p_case_id: caseId,
+          p_approval_id: approvalId,
+          p_resolution: resolution,
+          p_calendar_writes_enabled: process.env.HERMES_CALENDAR_WRITES_ENABLED === "true",
+        });
+        if (error?.message?.includes("calendar_writes_disabled")) return failure("Calendar writes are unavailable", 503);
         if (error || !confirmedCase) return failure("Approval is stale, consumed, or does not match this exact resolution", 409);
         await audit("class_confirmed", "scheduling_case", caseId, { approvalId });
-        return NextResponse.json({ status: confirmedCase.status, resolution: confirmedCase.resolution });
+        let calendarJob = null;
+        if (confirmedCase.tutor_kind === "swati") {
+          const { data: job, error: jobError } = await supabase
+            .from("hermes_workspace_jobs")
+            .select("id, status")
+            .eq("case_id", caseId)
+            .eq("job_type", "calendar_create_event")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (jobError || !job) throw jobError ?? new Error("calendar_job_missing");
+          calendarJob = job;
+        }
+        return NextResponse.json({ status: confirmedCase.status, resolution: confirmedCase.resolution, calendarJob });
       }
       case "request_swati_freebusy": {
         if (process.env.HERMES_WORKSPACE_JOBS_ENABLED !== "true") return failure("Workspace jobs are unavailable", 503);
