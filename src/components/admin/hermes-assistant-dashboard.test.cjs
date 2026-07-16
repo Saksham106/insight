@@ -8,14 +8,17 @@ function read(relative) {
   return fs.readFileSync(path.join(process.cwd(), relative), "utf8");
 }
 
-test("admin overview links to the Hermes Assistant", () => {
+test("admin overview links to Kitty without exposing the internal Hermes name", () => {
   const source = read("src/components/admin/admin-dashboard.tsx");
   assert.match(source, /href: "\/admin\/hermes"/);
-  assert.match(source, /title: "Hermes Assistant"/);
+  assert.match(source, /title: "Kitty"/);
+  assert.doesNotMatch(source, /title: "Hermes Assistant"/);
 });
 
-test("Hermes admin page exposes the four minimal operating sections", () => {
+test("Kitty admin page exposes the four minimal operating sections", () => {
   const source = read("src/components/admin/hermes-assistant-dashboard.tsx");
+  assert.match(source, /> Kitty/);
+  assert.doesNotMatch(source, /> Hermes Assistant/);
   for (const label of ["Contacts", "Needs attention", "Active scheduling", "Recent activity"]) {
     assert.ok(source.includes(label), `missing ${label}`);
   }

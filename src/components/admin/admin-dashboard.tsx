@@ -79,7 +79,7 @@ const overviewLinks = [
   {
     href: "/admin/hermes",
     icon: Bot,
-    title: "Hermes Assistant",
+    title: "Kitty",
     description: "Import WhatsApp contacts and review assistant activity.",
   },
 ];
