@@ -69,6 +69,7 @@ export async function POST(request: Request) {
   const { data, error } = await supabase.rpc("complete_hermes_workspace_job", {
     p_job_id: parsed.payload.jobId,
     p_worker_id: parsed.payload.workerId,
+    p_job_type: parsed.payload.jobType,
     p_status: parsed.payload.status,
     p_result: result,
     p_error_code: errorCode,

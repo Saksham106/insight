@@ -1,21 +1,28 @@
-import { parseFreeBusyPayload, parseFreeBusyResult } from "./workspace-jobs";
-import type { FreeBusyPayload, FreeBusyResult } from "./workspace-jobs";
+import { parseCalendarEventPayload, parseCalendarEventResult, parseFreeBusyPayload, parseFreeBusyResult } from "./workspace-jobs";
+import type { CalendarEventPayload, CalendarEventResult, FreeBusyPayload, FreeBusyResult } from "./workspace-jobs";
 
 type JsonObject = Record<string, unknown>;
 
 export type WorkerRequest =
   | { action: "claim"; payload: { workerId: string; limit: number } }
   | { action: "status"; payload: { workerId: string } }
-  | { action: "complete"; payload: { workerId: string; jobId: string; status: "succeeded"; result: FreeBusyResult } }
-  | { action: "complete"; payload: { workerId: string; jobId: string; status: "retryable_failed" | "permanent_failed"; errorCode: string } };
+  | { action: "complete"; payload: { workerId: string; jobId: string; jobType: WorkspaceJobType; status: "succeeded"; result: FreeBusyResult | CalendarEventResult } }
+  | { action: "complete"; payload: { workerId: string; jobId: string; jobType: WorkspaceJobType; status: "retryable_failed" | "permanent_failed"; errorCode: string } };
+
+export type WorkspaceJobType = "calendar_freebusy" | "calendar_create_event";
 
 export interface ClaimedWorkspaceJob {
   id: string;
   caseId: string;
-  jobType: "calendar_freebusy";
-  payload: FreeBusyPayload;
+  jobType: WorkspaceJobType;
+  payload: FreeBusyPayload | CalendarEventPayload;
   attemptCount: number;
   leaseExpiresAt: string;
+}
+
+function jobTypeValue(input: unknown): WorkspaceJobType {
+  if (input !== "calendar_freebusy" && input !== "calendar_create_event") throw new Error("invalid_job_type");
+  return input;
 }
 
 function objectValue(input: unknown, error = "invalid_worker_request"): JsonObject {
@@ -55,21 +62,24 @@ export function parseWorkerRequest(input: unknown): WorkerRequest {
   }
   if (value.action === "complete") {
     const status = payload.status;
+    const jobType = jobTypeValue(payload.jobType);
     if (status === "succeeded") {
-      exactFields(payload, ["workerId", "jobId", "status", "result"]);
+      exactFields(payload, ["workerId", "jobId", "jobType", "status", "result"]);
       return { action: "complete", payload: {
         workerId: workerIdValue(payload.workerId),
         jobId: jobIdValue(payload.jobId),
+        jobType,
         status,
-        result: parseFreeBusyResult(payload.result),
+        result: jobType === "calendar_freebusy" ? parseFreeBusyResult(payload.result) : parseCalendarEventResult(payload.result),
       } };
     }
     if (status === "retryable_failed" || status === "permanent_failed") {
-      exactFields(payload, ["workerId", "jobId", "status", "errorCode"]);
+      exactFields(payload, ["workerId", "jobId", "jobType", "status", "errorCode"]);
       if (typeof payload.errorCode !== "string" || !/^[a-z0-9_:-]{1,100}$/.test(payload.errorCode)) throw new Error("invalid_error_code");
       return { action: "complete", payload: {
         workerId: workerIdValue(payload.workerId),
         jobId: jobIdValue(payload.jobId),
+        jobType,
         status,
         errorCode: payload.errorCode,
       } };
@@ -81,7 +91,7 @@ export function parseWorkerRequest(input: unknown): WorkerRequest {
 
 export function projectClaimedJob(input: unknown): ClaimedWorkspaceJob {
   const value = objectValue(input, "invalid_claimed_job");
-  if (value.job_type !== "calendar_freebusy") throw new Error("invalid_claimed_job_type");
+  const jobType = jobTypeValue(value.job_type);
   if (typeof value.case_id !== "string" || !value.case_id || value.case_id.length > 80) throw new Error("invalid_claimed_case");
   if (!Number.isInteger(value.attempt_count) || Number(value.attempt_count) < 1 || Number(value.attempt_count) > 10) throw new Error("invalid_claimed_attempt");
   const leaseExpiresAt = typeof value.lease_expires_at === "string" ? new Date(value.lease_expires_at) : new Date(Number.NaN);
@@ -89,8 +99,8 @@ export function projectClaimedJob(input: unknown): ClaimedWorkspaceJob {
   return {
     id: jobIdValue(value.id),
     caseId: value.case_id,
-    jobType: value.job_type,
-    payload: parseFreeBusyPayload(value.payload),
+    jobType,
+    payload: jobType === "calendar_freebusy" ? parseFreeBusyPayload(value.payload) : parseCalendarEventPayload(value.payload),
     attemptCount: Number(value.attempt_count),
     leaseExpiresAt: leaseExpiresAt.toISOString(),
   };

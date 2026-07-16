@@ -4,7 +4,7 @@ import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
 import { academyInformation, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
-import { parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } from "@/lib/hermes/workspace-jobs";
+import { parseCalendarEventResult, parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } from "@/lib/hermes/workspace-jobs";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job"] as const;
@@ -284,7 +284,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
             caseId: job.case_id,
             jobType: job.job_type,
             status: job.status,
-            result: job.result ? parseFreeBusyResult(job.result) : null,
+            result: job.result ? (job.job_type === "calendar_create_event" ? parseCalendarEventResult(job.result) : parseFreeBusyResult(job.result)) : null,
             errorCode: job.error_code,
             createdAt: job.created_at,
             updatedAt: job.updated_at,

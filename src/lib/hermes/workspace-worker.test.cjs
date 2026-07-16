@@ -35,19 +35,34 @@ test("completion requires minimized success result or redacted failure code", ()
   const { parseWorkerRequest } = require(workerPath);
   const jobId = "16fd2706-8baf-433b-82eb-8c7fada847da";
   assert.deepEqual(parseWorkerRequest({ action: "complete", payload: {
-    workerId: "worker_123", jobId, status: "succeeded",
+    workerId: "worker_123", jobId, jobType: "calendar_freebusy", status: "succeeded",
     result: { busy: [{ start: "2026-07-20T09:00:00Z", end: "2026-07-20T10:00:00Z", title: "drop" }], checkedAt: "2026-07-16T12:00:00Z", raw: "drop" },
   } }), { action: "complete", payload: {
-    workerId: "worker_123", jobId, status: "succeeded",
+    workerId: "worker_123", jobId, jobType: "calendar_freebusy", status: "succeeded",
     result: { busy: [{ start: "2026-07-20T09:00:00.000Z", end: "2026-07-20T10:00:00.000Z" }], checkedAt: "2026-07-16T12:00:00.000Z" },
   } });
-  assert.throws(() => parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, status: "succeeded" } }), /invalid_freebusy_result/);
-  assert.deepEqual(parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, status: "retryable_failed", errorCode: "google_429" } }), {
-    action: "complete", payload: { workerId: "worker_123", jobId, status: "retryable_failed", errorCode: "google_429" },
+  assert.throws(() => parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, jobType: "calendar_freebusy", status: "succeeded" } }), /invalid_freebusy_result/);
+  assert.deepEqual(parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, jobType: "calendar_freebusy", status: "retryable_failed", errorCode: "google_429" } }), {
+    action: "complete", payload: { workerId: "worker_123", jobId, jobType: "calendar_freebusy", status: "retryable_failed", errorCode: "google_429" },
   });
-  assert.throws(() => parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, status: "cancelled", errorCode: "bad" } }), /invalid_completion_status/);
-  assert.throws(() => parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, status: "permanent_failed", errorCode: "raw error with spaces" } }), /invalid_error_code/);
-  assert.throws(() => parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, status: "permanent_failed", errorCode: "safe", result: {} } }), /unexpected_field/);
+  assert.throws(() => parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, jobType: "calendar_freebusy", status: "cancelled", errorCode: "bad" } }), /invalid_completion_status/);
+  assert.throws(() => parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, jobType: "calendar_freebusy", status: "permanent_failed", errorCode: "raw error with spaces" } }), /invalid_error_code/);
+  assert.throws(() => parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, jobType: "calendar_freebusy", status: "permanent_failed", errorCode: "safe", result: {} } }), /unexpected_field/);
+  assert.deepEqual(parseWorkerRequest({ action: "complete", payload: { workerId: "worker_123", jobId, jobType: "calendar_create_event", status: "succeeded", result: { eventId: "insight0abc123", etag: '"abc"', createdAt: "2026-07-16T12:00:00Z", raw: "drop" } } }).payload.result, {
+    eventId: "insight0abc123", etag: '"abc"', createdAt: "2026-07-16T12:00:00.000Z",
+  });
+});
+
+test("claimed Calendar event jobs use their exact minimized schema", () => {
+  const { projectClaimedJob } = require(workerPath);
+  const projected = projectClaimedJob({
+    id: "16fd2706-8baf-433b-82eb-8c7fada847da", case_id: "case-1", job_type: "calendar_create_event",
+    payload: { start: "2026-07-20T09:00:00Z", end: "2026-07-20T10:00:00Z", timezone: "UTC", summary: "Class", eventId: "insight0abc123", proposalVersion: 1, attendees: ["drop"] },
+    attempt_count: 1, lease_expires_at: "2026-07-16T12:05:00Z",
+  });
+  assert.equal(projected.jobType, "calendar_create_event");
+  assert.equal(projected.payload.eventId, "insight0abc123");
+  assert.equal(JSON.stringify(projected).includes("attendees"), false);
 });
 
 test("claimed jobs are revalidated and projected without database-only fields", () => {
@@ -73,6 +88,7 @@ test("worker route is separately signed, replay protected, feature gated, and RP
   assert.match(source, /request_id/);
   assert.match(source, /claim_hermes_workspace_jobs/);
   assert.match(source, /complete_hermes_workspace_job/);
+  assert.match(source, /p_job_type/);
   assert.match(source, /status: data\.status/);
   assert.match(source, /oldestQueuedAt/);
   assert.doesNotMatch(source, /select\(["']\*["']\)/);
