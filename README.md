@@ -143,7 +143,7 @@ Keep profile memories isolated. In particular, do not set `memory.mnemosyne.prof
 
 ### Deployment and activation
 
-1. Apply `supabase/migrations/20260716124117_add_hermes_assistant.sql` and run Supabase security/performance advisors.
+1. Apply `supabase/migrations/20260716131103_add_hermes_assistant.sql` and run Supabase security/performance advisors.
 2. Deploy Insight with all server secrets, while leaving Meta's current callback unchanged.
 3. Create the `academy` profile from the current model/WhatsApp configuration, copy `infra/hermes-plugins/insight-scheduling` into that profile's `plugins` directory, and enable it with `--no-allow-tool-override`.
 4. Configure `platform_toolsets.whatsapp_cloud` for the business-facing profile. Disable terminal, code execution, image generation, computer control, delegation, and TTS. Retain the pilot-useful web/browser, file, vision, skills, todo, memory, session-search, clarification, cron, and `insight_scheduling` toolsets. Copy `infra/hermes-profiles/academy/SOUL.md` to the profile root and `AGENTS.md` to its working directory.
