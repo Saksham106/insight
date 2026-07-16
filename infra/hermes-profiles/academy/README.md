@@ -4,9 +4,18 @@ Create the profile from the current Hermes configuration, then restrict the What
 
 ```yaml
 platform_toolsets:
-  whatsapp:
+  whatsapp_cloud:
+    - web
+    - browser
+    - file
+    - vision
+    - skills
+    - todo
+    - memory
+    - session_search
     - insight_scheduling
     - clarify
+    - cronjob
 
 plugins:
   enabled:
@@ -37,7 +46,7 @@ gateway:
       user_allowed_commands: []
 ```
 
-The onboarding setting disables Hermes's generic first-contact request to build a personal user profile. The memory setting independently prevents `USER.md` profile loading for external contacts. The display overrides keep customer-facing Cloud API chats limited to Kitty's final answer rather than internal progress or busy-state commentary. The WhatsApp Cloud command policy makes Swati the only slash-command administrator; ordinary contacts can still chat normally and use the Academy capabilities through natural language.
+The onboarding setting disables Hermes's generic first-contact request to build a personal user profile. The memory setting independently prevents `USER.md` profile loading for external contacts. It does not disable the general memory tool retained for the pilot. Keep `memory.mnemosyne.profile_isolation` enabled so Academy conversations cannot share Swati's private-profile memory. The display overrides keep customer-facing Cloud API chats limited to Kitty's final answer rather than internal progress or busy-state commentary. The WhatsApp Cloud command policy makes Swati the only slash-command administrator; ordinary contacts can still chat normally and use the Academy capabilities through natural language.
 
 Copy `hooks/academy-help` to the profile's `hooks/academy-help` directory. This supported Hermes gateway hook replaces `/help` and `/whoami` output for non-admin WhatsApp contacts with the small Academy help message while leaving Swati's operator help intact.
 
@@ -53,6 +62,6 @@ This setting removes Hermes's duplicate phone allowlist; it does not make the Ac
 
 Keep the previous `WHATSAPP_CLOUD_ALLOWED_USERS` value as rollback data. If Meta's callback is ever restored directly to Hermes, set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=false` before or at the same time so the explicit Hermes allowlist becomes authoritative again.
 
-Do not enable terminal, file, code execution, browser, delegation, cross-session search, general memory, or unrestricted Google Workspace tools for this profile.
+Do not enable terminal, code execution, image generation, computer control, delegation, TTS, or unrestricted Google Workspace credentials for this profile. The pilot intentionally retains web/browser, file, vision, skills, todo, memory, session search, clarification, and cron capabilities; revisit that broader set only after observing real usage.
 
 The deployed Hermes revision must provide `gateway.session_context` backed by Python `ContextVar`, and its WhatsApp Cloud adapter must set equal DM `chat_id` and `user_id` values while rejecting group-shaped payloads. Fail the deployment if that integration probe or `hermes -p academy config check` fails.

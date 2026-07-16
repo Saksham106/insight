@@ -135,14 +135,20 @@ Create fixed-purpose Utility templates in WhatsApp Manager for availability requ
 
 Keep the first rollout approval-first: Hermes may collect availability and propose times, but it must create a pending approval before class confirmation. Swati approves or rejects it in `/admin/hermes`. Unknown, unclassified, paused, guardian-only, approval-required, and opted-out contacts fail closed. Hermes receives no Supabase service key or Meta access token.
 
+### Swati's two Hermes channels
+
+Swati's default Photon/iMessage profile remains her private personal assistant and keeps its Google Workspace access. The `academy` WhatsApp Cloud profile is the business-facing assistant for imported teachers, students, parents, and employees. For the initial pilot, Swati should start Academy scheduling work by messaging Kitty on WhatsApp; iMessage instructions do not yet create an Insight scheduling case automatically.
+
+Keep profile memories isolated. In particular, do not set `memory.mnemosyne.profile_isolation` to `false`: an external Academy conversation must not read, influence, or retrieve Swati's private-profile memory. Cross-channel coordination belongs in the guarded `hermes_*` scheduling tables and narrow Insight tool API, not in shared conversational memory.
+
 ### Deployment and activation
 
 1. Apply `supabase/migrations/20260716124117_add_hermes_assistant.sql` and run Supabase security/performance advisors.
 2. Deploy Insight with all server secrets, while leaving Meta's current callback unchanged.
-3. Create the `academy` profile from the current model/WhatsApp configuration with `--no-skills`, copy `infra/hermes-plugins/insight-scheduling` into that profile's `plugins` directory, and enable it with `--no-allow-tool-override`.
-4. Set the Academy profile's WhatsApp toolsets to exactly `insight_scheduling` and `clarify`; disable inherited plugins, memory, terminal, file, code, browser, delegation, session search, and Workspace tools. Copy `infra/hermes-profiles/academy/SOUL.md` to the profile root and `AGENTS.md` to its working directory.
+3. Create the `academy` profile from the current model/WhatsApp configuration, copy `infra/hermes-plugins/insight-scheduling` into that profile's `plugins` directory, and enable it with `--no-allow-tool-override`.
+4. Configure `platform_toolsets.whatsapp_cloud` for the business-facing profile. Disable terminal, code execution, image generation, computer control, delegation, and TTS. Retain the pilot-useful web/browser, file, vision, skills, todo, memory, session-search, clarification, cron, and `insight_scheduling` toolsets. Copy `infra/hermes-profiles/academy/SOUL.md` to the profile root and `AGENTS.md` to its working directory.
 5. Keep Meta's callback on Insight and set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=true` only in the Academy profile. Insight verifies Meta signatures and filters contacts before re-signing eligible payloads for Hermes. Keep the old explicit allowlist value for rollback.
-6. Run `hermes -p academy config check` and `hermes -p academy tools list --summary`. Do not activate the profile unless WhatsApp reports only `insight_scheduling` and `clarify`.
+6. Run `hermes -p academy config check` and `hermes -p academy tools list --platform whatsapp_cloud`. Confirm that the six disallowed toolsets are disabled and `insight_scheduling` is enabled before activating the profile.
 7. Verify the Insight webhook GET challenge, signed tool calls, admin import, approval controls, and a test Meta send.
 8. Change Meta's callback last to `https://<insight-host>/api/whatsapp/webhook` and subscribe to `messages`.
 
@@ -157,5 +163,7 @@ If inbound handling fails, first set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=false` on t
 - Admin conversation search and filters
 - File attachments and lesson materials
 - Scheduled session reminders
+- Default-profile/iMessage intake into the shared Insight scheduling queue
+- WhatsApp approval notifications and approve/reject replies for Swati
 - Parent-only and student-only sub-roles
 - Audit log for admin actions
