@@ -123,6 +123,19 @@ test("tool route requires signed replay-protected requests and audits actions", 
   assert.match(source, /HERMES_ADMIN_WHATSAPP_E164/);
 });
 
+test("iMessage admin route is separately signed and disabled by default", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  const adminRoute = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/admin-tools/route.ts"), "utf8");
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  assert.match(adminRoute, /handleHermesToolPost/);
+  assert.match(adminRoute, /"imessage_admin"/);
+  assert.match(route, /HERMES_ADMIN_TOOL_SHARED_SECRET/);
+  assert.match(route, /HERMES_ADMIN_IMESSAGE_ID_SHA256/);
+  assert.match(route, /HERMES_IMESSAGE_INTAKE_ENABLED/);
+  assert.match(route, /parseIMessageAdminActor/);
+  assert.match(env, /HERMES_IMESSAGE_INTAKE_ENABLED=false/);
+});
+
 test("Hermes skill identifies automation, honors STOP, forbids transcript sharing, and escalates", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "infra/hermes-skills/insight-scheduling/SKILL.md"), "utf8");
   assert.match(source, /automated assistant/i);

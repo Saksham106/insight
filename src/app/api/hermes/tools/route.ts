@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
-import { academyInformation, communicationDecision, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
+import { academyInformation, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"] as const;
 type Action = (typeof ACTIONS)[number];
+type ToolMode = "whatsapp" | "imessage_admin";
 type JsonObject = Record<string, unknown>;
 const CONTACT_FIELDS = "id, display_name, role, timezone, communication_policy, consent_status, is_active";
 
@@ -22,9 +23,14 @@ function stringValue(payload: JsonObject, key: string, max = 240) {
   return value.trim();
 }
 
-export async function POST(request: Request) {
+export async function handleHermesToolPost(request: Request, mode: ToolMode) {
+  if (mode === "imessage_admin" && process.env.HERMES_IMESSAGE_INTAKE_ENABLED !== "true") {
+    return failure("Not found", 404);
+  }
   const rawBody = await request.text();
-  const secret = process.env.HERMES_TOOL_SHARED_SECRET;
+  const secret = mode === "imessage_admin"
+    ? process.env.HERMES_ADMIN_TOOL_SHARED_SECRET
+    : process.env.HERMES_TOOL_SHARED_SECRET;
   const auth = secret ? verifyServiceRequest(request, rawBody, secret) : null;
   if (!auth) return failure("Unauthorized", 401);
 
@@ -47,13 +53,32 @@ export async function POST(request: Request) {
   let payload: JsonObject;
   try { payload = objectValue(parsed.payload ?? {}); } catch { return rejectRequest("Invalid payload", 400, "invalid_payload"); }
 
-  const actor = parseWhatsAppToolActor(parsed.actor);
-  if (!actor) {
-    return rejectRequest("A direct WhatsApp session is required", 403, "invalid_session");
+  const imessageActor = mode === "imessage_admin"
+    ? parseIMessageAdminActor(parsed.actor, process.env.HERMES_ADMIN_IMESSAGE_ID_SHA256)
+    : null;
+  const whatsappActor = mode === "whatsapp" ? parseWhatsAppToolActor(parsed.actor) : null;
+  if (!imessageActor && !whatsappActor) {
+    return rejectRequest("A verified direct messaging session is required", 403, "invalid_session");
   }
   const adminE164 = process.env.HERMES_ADMIN_WHATSAPP_E164;
-  const { data: actorContact } = actor.e164 === adminE164 ? { data: null } : await supabase.from("hermes_contacts").select(CONTACT_FIELDS).eq("whatsapp_e164", actor.e164).eq("is_active", true).is("deleted_at", null).maybeSingle();
-  const actorKind = actor.e164 === adminE164 ? "admin" : actorContact && communicationDecision({ consentStatus: actorContact.consent_status, communicationPolicy: actorContact.communication_policy, isActive: actorContact.is_active }).allowed ? "contact" : "unknown";
+  const { data: actorContact } = imessageActor || whatsappActor?.e164 === adminE164
+    ? { data: null }
+    : await supabase
+        .from("hermes_contacts")
+        .select(CONTACT_FIELDS)
+        .eq("whatsapp_e164", whatsappActor!.e164)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .maybeSingle();
+  const actorKind = imessageActor || whatsappActor?.e164 === adminE164
+    ? "admin"
+    : actorContact && communicationDecision({
+        consentStatus: actorContact.consent_status,
+        communicationPolicy: actorContact.communication_policy,
+        isActive: actorContact.is_active,
+      }).allowed
+      ? "contact"
+      : "unknown";
   const actorScope = toolActorScope(action, actorKind);
   const actorType = actorKind === "admin" ? "admin" : actorKind === "contact" ? "contact" : "hermes";
   const authorizationRecorded = await finalizeRequest({ actor_type: actorType, actor_contact_id: actorContact?.id ?? null, event_type: actorScope === "denied" ? "tool_rejected" : "tool_request", metadata: { action, actorKind, authorization: actorScope === "denied" ? "denied" : "allowed" } });
@@ -107,7 +132,13 @@ export async function POST(request: Request) {
         if ((contacts ?? []).length !== normalized.length) return failure("Participant unavailable", 409);
         const blocked = (contacts ?? []).find((contact) => !communicationDecision({ consentStatus: contact.consent_status, communicationPolicy: contact.communication_policy, isActive: contact.is_active }).allowed);
         if (blocked) return failure("Participant communication is restricted", 409);
-        const { data: created, error } = await supabase.from("hermes_scheduling_cases").insert({ title, requested_by_contact_id: requestedByContactId, timezone: typeof payload.timezone === "string" ? payload.timezone.slice(0, 100) : null }).select("id, title, status, timezone, created_at").single();
+        const { data: created, error } = await supabase.from("hermes_scheduling_cases").insert({
+          title,
+          requested_by_contact_id: requestedByContactId,
+          timezone: typeof payload.timezone === "string" ? payload.timezone.slice(0, 100) : null,
+          origin_platform: mode === "imessage_admin" ? "imessage" : "whatsapp_cloud",
+          origin_actor_kind: actorKind,
+        }).select("id, title, status, timezone, created_at").single();
         if (error || !created) throw error ?? new Error("case_create_failed");
         const { error: participantError } = await supabase.from("hermes_case_participants").insert(normalized.map((item) => ({ case_id: created.id, contact_id: item.contactId, participant_role: item.participantRole })));
         if (participantError) { await supabase.from("hermes_scheduling_cases").delete().eq("id", created.id); throw participantError; }
@@ -210,4 +241,8 @@ export async function POST(request: Request) {
     const invalid = error instanceof Error && error.message.startsWith("invalid_");
     return failure(invalid ? error.message : "Action failed", invalid ? 400 : 500);
   }
+}
+
+export async function POST(request: Request) {
+  return handleHermesToolPost(request, "whatsapp");
 }
