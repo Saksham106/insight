@@ -38,6 +38,7 @@ create index if not exists hermes_workspace_jobs_case
 
 alter table public.hermes_workspace_jobs enable row level security;
 revoke all on table public.hermes_workspace_jobs from anon, authenticated;
+grant all on table public.hermes_workspace_jobs to service_role;
 
 create or replace function public.claim_hermes_workspace_jobs(p_worker_id text, p_limit integer default 5)
 returns setof public.hermes_workspace_jobs

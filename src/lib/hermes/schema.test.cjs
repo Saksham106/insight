@@ -86,6 +86,7 @@ test("Workspace jobs are server-only, leased transactionally, and service-role c
   assert.match(sql, /idempotency_key text not null unique/);
   assert.match(sql, /enable row level security/);
   assert.match(sql, /revoke all on table public\.hermes_workspace_jobs from anon, authenticated/);
+  assert.match(sql, /grant all on table public\.hermes_workspace_jobs to service_role/);
   assert.match(sql, /for update skip locked/);
   assert.match(sql, /lease_owner = p_worker_id/);
   assert.match(sql, /p_status = 'retryable_failed' and attempt_count >= max_attempts/);
