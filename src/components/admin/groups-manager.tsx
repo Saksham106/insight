@@ -129,6 +129,13 @@ export function GroupsManager() {
           group={managing}
           contacts={contacts}
           onClose={() => setManaging(null)}
+          onArchived={(id) => {
+            // Optimistically drop the card so archiving feels instant, then
+            // reconcile with the server.
+            setGroups((prev) => prev.filter((g) => g.id !== id));
+            setManaging(null);
+            void load();
+          }}
           onChanged={async () => {
             setManaging(null);
             await load();
@@ -218,12 +225,14 @@ function ManageGroupModal({
   contacts,
   onClose,
   onChanged,
+  onArchived,
   onOpenChat,
 }: {
   group: ConversationSummary;
   contacts: ChattableContact[];
   onClose: () => void;
   onChanged: () => void | Promise<void>;
+  onArchived: (id: string) => void;
   onOpenChat: (id: string) => void;
 }) {
   const [name, setName] = useState(group.title);
@@ -270,7 +279,7 @@ function ManageGroupModal({
       setError(data.error ?? "Could not archive the group.");
       return;
     }
-    await onChanged();
+    onArchived(group.id);
   };
 
   if (confirmArchive) {
