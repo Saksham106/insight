@@ -4,9 +4,11 @@ import { Bot, CalendarDays, Link2, UserPlus } from "lucide-react";
 import { AdminSessionsSection } from "@/components/admin/admin-sessions-section";
 import { AdminStats } from "@/components/admin/admin-stats";
 import { GroupsManager } from "@/components/admin/groups-manager";
+import { Suspense } from "react";
+
 import { ComposeEmailButton } from "@/components/admin/compose-email-button";
 import { InviteUserForm } from "@/components/admin/invite-user-form";
-import { ChatsPanel } from "@/components/chat/chats-panel";
+import { AdminChatsViewer } from "@/components/admin/admin-chats-viewer";
 import { ParentsTable } from "@/components/admin/parents-table";
 import { StudentsTable } from "@/components/admin/students-table";
 import { TeachersTable } from "@/components/admin/teachers-table";
@@ -52,7 +54,7 @@ const viewCopy: Record<AdminDashboardView, { title: string; description: string 
   },
   chats: {
     title: "Chats",
-    description: "Message anyone at the academy, or start a group chat.",
+    description: "Read any conversation across the academy.",
   },
 };
 
@@ -205,7 +207,11 @@ export function AdminDashboard({
 
       {view === "sessions" && <AdminSessionsSection sessions={sessions} assignments={assignments} />}
 
-      {view === "chats" && currentUserId && <ChatsPanel currentUserId={currentUserId} />}
+      {view === "chats" && currentUserId && (
+        <Suspense fallback={<p className="text-sm text-muted">Loading chats…</p>}>
+          <AdminChatsViewer currentUserId={currentUserId} />
+        </Suspense>
+      )}
     </div>
   );
 }
