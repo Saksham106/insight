@@ -113,7 +113,7 @@ export default function PrivacyPage() {
       </section>
 
       <section id="whatsapp-ai">
-        <h2>3. WhatsApp and Hermes AI processing</h2>
+        <h2>3. WhatsApp and Kitty AI processing</h2>
         <p>
           We use the WhatsApp Business Cloud API to communicate with students,
           parents, tutors, and prospective users. When you message our business
@@ -123,9 +123,9 @@ export default function PrivacyPage() {
           metadata, and relevant conversation history.
         </p>
         <p>
-          A hosted assistant called <strong>Hermes</strong>, controlled by Swati
+          A hosted assistant called <strong>Kitty</strong>, controlled by Swati
           Goel for MyInsightAcademy, may process this content to understand a
-          request and prepare or provide a response. Depending on how Hermes is
+          request and prepare or provide a response. Depending on how Kitty is
           configured at the time, content may be sent to third-party AI model and
           infrastructure providers. Verified examples include OpenAI, which
           provides GPT models, and Anthropic, which provides Claude models. The
@@ -258,8 +258,8 @@ export default function PrivacyPage() {
           <li><strong>Vercel</strong> — website hosting and request delivery.</li>
           <li><strong>Resend</strong> — transactional, reminder, invitation, support, and administrative email.</li>
           <li><strong>Meta / WhatsApp</strong> — WhatsApp Business Cloud API and WhatsApp message delivery.</li>
-          <li><strong>OpenAI</strong> — a possible AI model provider for Hermes.</li>
-          <li><strong>Anthropic</strong> — a possible AI model provider for Hermes.</li>
+          <li><strong>OpenAI</strong> — a possible AI model provider for Kitty.</li>
+          <li><strong>Anthropic</strong> — a possible AI model provider for Kitty.</li>
         </ul>
         <p>
           These providers may use their own subprocessors. Their roles and terms
