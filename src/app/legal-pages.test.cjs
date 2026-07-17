@@ -15,7 +15,7 @@ test("privacy route includes metadata and required disclosures", () => {
   for (const phrase of [
     "July 16, 2026",
     "WhatsApp",
-    "Hermes",
+    "Kitty",
     "OpenAI",
     "Anthropic",
     "Supabase",
@@ -26,6 +26,7 @@ test("privacy route includes metadata and required disclosures", () => {
   ]) {
     assert.ok(src.includes(phrase), `privacy page missing ${phrase}`);
   }
+  assert.doesNotMatch(src, /Hermes/);
 });
 
 test("terms route includes metadata and required provisions", () => {
@@ -48,6 +49,8 @@ test("terms route includes metadata and required provisions", () => {
       `terms page missing ${phrase}`,
     );
   }
+  assert.match(src, /Kitty/);
+  assert.doesNotMatch(src, /Hermes/);
 });
 
 test("public footer links to both legal routes", () => {

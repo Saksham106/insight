@@ -60,6 +60,39 @@ WHATSAPP_CLOUD_ALLOW_ALL_USERS=true
 
 This setting removes Hermes's duplicate phone allowlist; it does not make the Academy publicly conversational. The Meta callback must remain the signed Insight webhook. Insight verifies Meta's signature and forwards only an imported, active, consent-attested, classified contact with `communication_policy=direct`. Unknown, unclassified, paused, guardian-only, approval-required, and opted-out contacts are recorded safely and are not forwarded to Kitty. Insight re-signs the filtered payload with the Meta app secret before sending it to the Academy Cloud adapter.
 
+## Swati approval notifications
+
+Insight can notify Swati on WhatsApp when Kitty creates a pending class proposal. This is an Insight webhook and database capability, not an Academy-profile credential: the Academy profile never receives the Meta token, approval codes, Google authorization, or database service key. `/admin/hermes` remains the authoritative fallback while this feature is disabled or if delivery fails.
+
+Keep the server switch off until the Meta template and staging probes pass:
+
+```dotenv
+HERMES_WHATSAPP_APPROVALS_ENABLED=false
+HERMES_ADMIN_WHATSAPP_E164=<Swati's verified E.164 number>
+WHATSAPP_TEMPLATE_ADMIN_APPROVAL=<approved Utility template name>
+WHATSAPP_TEMPLATE_LOCALE=en_US
+```
+
+Create and obtain Meta approval for one fixed Utility template. Its body has four parameters—class start, class end, timezone, and reference code—and no participant names, phone numbers, free-form notes, or Calendar details. Use two quick-reply buttons in this order: `Approve` and `Reject`. Insight supplies the code-bound payloads `approval:approve:<CODE>` and `approval:reject:<CODE>`; do not put a fixed code into the template. Meta template creation and approval happen outside this repository.
+
+Swati can use either quick reply or send exactly `APPROVE <CODE>` or `REJECT <CODE>`. Generic replies such as “yes”, “ok”, or emoji are not decisions. Insight accepts a decision only when the feature is enabled, the sender exactly matches `HERMES_ADMIN_WHATSAPP_E164`, the six-character code is pending and unexpired, and that approval has not already been consumed. A recognized admin command is handled before contact forwarding and is never sent to Kitty as conversation text. Codes expire after 48 hours and expose no case data by themselves.
+
+Before production activation, test all of these in staging:
+
+1. Request a synthetic approval and confirm the approved Utility template reaches only Swati's verified number.
+2. Approve with each quick reply and with `APPROVE <CODE>`; reject a separate proposal with `REJECT <CODE>`.
+3. Send the same command from the wrong number and confirm it cannot decide the approval.
+4. Try an expired code, a replayed Meta message, a reused code, and a generic “yes”; each must fail without changing the approval.
+5. Race a WhatsApp reply against a decision in `/admin/hermes`; exactly one path may consume the pending approval.
+6. Force template delivery failure and confirm the proposal remains pending and usable in `/admin/hermes`.
+7. Confirm audit records contain the channel and outcome but not message text, the approval code, or participant details.
+
+Enable `HERMES_WHATSAPP_APPROVALS_ENABLED=true` only after those probes pass. The current release does not send automatic class reminders.
+
+### Approval notification rollback
+
+Set `HERMES_WHATSAPP_APPROVALS_ENABLED=false` first. Pending proposals remain available in `/admin/hermes`; do not delete approval bindings or audit rows. Removing `WHATSAPP_TEMPLATE_ADMIN_APPROVAL` also makes new notifications fail closed, but the feature flag is the primary kill switch. Disabling this path does not change contact intake, Academy messaging, the default-profile Calendar worker, or existing Calendar events.
+
 Keep the previous `WHATSAPP_CLOUD_ALLOWED_USERS` value as rollback data. If Meta's callback is ever restored directly to Hermes, set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=false` before or at the same time so the explicit Hermes allowlist becomes authoritative again.
 
 Do not enable terminal, code execution, image generation, computer control, delegation, TTS, or unrestricted Google Workspace credentials for this profile. The pilot intentionally retains web/browser, file, vision, skills, todo, memory, session search, clarification, and cron capabilities; revisit that broader set only after observing real usage.

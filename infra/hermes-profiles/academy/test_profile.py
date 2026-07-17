@@ -36,6 +36,19 @@ class AcademyProfileTests(unittest.TestCase):
         self.assertIn("imported, active, consent-attested, classified", readme)
         self.assertIn("communication_policy=direct", readme)
 
+    def test_whatsapp_approval_activation_is_fail_closed_and_reversible(self):
+        readme = (PROFILE_DIR / "README.md").read_text()
+        self.assertIn("HERMES_WHATSAPP_APPROVALS_ENABLED=false", readme)
+        self.assertIn("WHATSAPP_TEMPLATE_ADMIN_APPROVAL", readme)
+        self.assertIn("APPROVE <CODE>", readme)
+        self.assertIn("REJECT <CODE>", readme)
+        self.assertIn("approved Utility template", readme)
+        self.assertIn("wrong number", readme)
+        self.assertIn("expired", readme)
+        self.assertIn("replayed", readme)
+        self.assertIn("/admin/hermes", readme)
+        self.assertIn("rollback", readme)
+
     def test_academy_help_hook_is_registered_for_help_and_whoami(self):
         hook_dir = PROFILE_DIR / "hooks" / "academy-help"
         manifest = (hook_dir / "HOOK.yaml").read_text()

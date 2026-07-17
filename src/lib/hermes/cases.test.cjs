@@ -11,7 +11,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { academyInformation, canTransitionCase, communicationDecision, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } = require(path.join(__dirname, "cases.ts"));
+const { academyInformation, canTransitionCase, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } = require(path.join(__dirname, "cases.ts"));
 const { signServiceRequest, verifyServiceRequest } = require(path.join(__dirname, "auth.ts"));
 
 test("tool authentication rejects invalid and expired signatures", () => {
@@ -60,6 +60,23 @@ test("derives the actor only from a direct WhatsApp Cloud session", () => {
   assert.equal(parseWhatsAppToolActor({ platform: "whatsapp_cloud", chatId: "+84 hello" }), null);
 });
 
+test("derives the iMessage administrator only from a verified direct session", () => {
+  const crypto = require("node:crypto");
+  const stableId = "photon:swati:verified";
+  const digest = crypto.createHash("sha256").update(stableId).digest("hex");
+  assert.deepEqual(
+    parseIMessageAdminActor(
+      { platform: "imessage", chatId: stableId, userId: stableId },
+      digest,
+    ),
+    { stableId },
+  );
+  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: stableId, userId: "other" }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "whatsapp_cloud", chatId: stableId, userId: stableId }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: stableId, userId: stableId }, "0".repeat(64)), null);
+  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: "", userId: "" }, digest), null);
+});
+
 test("case contacts receive only their own participant record", () => {
   const participants = [
     { contact_id: "student-1", participant_role: "student", availability: [{ start: "2026-07-20T09:00:00Z", end: "2026-07-20T10:00:00Z" }], response_status: "responded", contact: { id: "student-1", display_name: "Asha", role: "student", timezone: "Asia/Ho_Chi_Minh", communication_policy: "direct", consent_status: "attested" } },
@@ -82,6 +99,9 @@ test("gives Swati broad scheduling scope and contacts only self or case-member s
   assert.equal(toolActorScope("get_case", "contact"), "case_member");
   assert.equal(toolActorScope("request_reschedule", "contact"), "case_member");
   assert.equal(toolActorScope("send_message", "contact"), "denied");
+  assert.equal(toolActorScope("request_swati_freebusy", "admin"), "admin");
+  assert.equal(toolActorScope("request_swati_freebusy", "contact"), "denied");
+  assert.equal(toolActorScope("get_workspace_job", "contact"), "denied");
   assert.equal(toolActorScope("search_contacts", "unknown"), "denied");
   assert.equal(toolActorScope("get_academy_info", "contact"), "self");
 });
@@ -104,6 +124,62 @@ test("tool route requires signed replay-protected requests and audits actions", 
   for (const action of ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"]) assert.match(source, new RegExp(action));
   assert.match(source, /parseWhatsAppToolActor/);
   assert.match(source, /HERMES_ADMIN_WHATSAPP_E164/);
+});
+
+test("iMessage admin route is separately signed and disabled by default", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  const adminRoute = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/admin-tools/route.ts"), "utf8");
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  assert.match(adminRoute, /handleHermesToolPost/);
+  assert.match(adminRoute, /"imessage_admin"/);
+  assert.match(route, /HERMES_ADMIN_TOOL_SHARED_SECRET/);
+  assert.match(route, /HERMES_ADMIN_IMESSAGE_ID_SHA256/);
+  assert.match(route, /HERMES_IMESSAGE_INTAKE_ENABLED/);
+  assert.match(route, /parseIMessageAdminActor/);
+  assert.match(env, /HERMES_IMESSAGE_INTAKE_ENABLED=false/);
+});
+
+test("tool route exposes admin-only minimized Calendar freebusy jobs", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  assert.match(route, /request_swati_freebusy/);
+  assert.match(route, /get_workspace_job/);
+  assert.match(route, /parseFreeBusyPayload/);
+  assert.match(route, /parseFreeBusyResult/);
+  assert.match(route, /workspaceJobIdempotencyKey/);
+  assert.match(route, /HERMES_WORKSPACE_JOBS_ENABLED/);
+  assert.match(route, /id, case_id, job_type, status, result, error_code, created_at, updated_at/);
+  assert.doesNotMatch(route, /get_workspace_job[\s\S]{0,1600}select\("\*"\)/);
+  assert.match(env, /HERMES_WORKSPACE_JOBS_ENABLED=false/);
+  assert.match(env, /HERMES_WORKSPACE_WORKER_SECRET=/);
+});
+
+test("tool route records explicit tutor ownership and fail-closed Calendar writes", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  assert.match(route, /tutorKind/);
+  assert.match(route, /\["swati", "academy_tutor"\]/);
+  assert.match(route, /tutor_kind/);
+  assert.match(route, /HERMES_CALENDAR_WRITES_ENABLED/);
+  assert.match(route, /p_calendar_writes_enabled/);
+  assert.match(route, /calendar_create_event/);
+  assert.match(env, /HERMES_CALENDAR_WRITES_ENABLED=false/);
+  assert.match(route, /intent === "class_confirmation"/);
+  assert.match(route, /workspace_state/);
+});
+
+test("approval requests optionally notify only Swati with a server-bound WhatsApp code", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  assert.match(route, /HERMES_WHATSAPP_APPROVALS_ENABLED/);
+  assert.match(route, /HERMES_ADMIN_WHATSAPP_E164/);
+  assert.match(route, /WHATSAPP_TEMPLATE_ADMIN_APPROVAL/);
+  assert.match(route, /hermes_whatsapp_approval_bindings/);
+  assert.match(route, /buildApprovalTemplateMessage/);
+  assert.match(route, /notification_status/);
+  assert.match(route, /notification_message_id/);
+  assert.match(env, /HERMES_WHATSAPP_APPROVALS_ENABLED=false/);
+  assert.match(env, /WHATSAPP_TEMPLATE_ADMIN_APPROVAL=/);
 });
 
 test("Hermes skill identifies automation, honors STOP, forbids transcript sharing, and escalates", () => {

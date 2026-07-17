@@ -212,7 +212,7 @@ export default function TermsPage() {
       </section>
 
       <section id="whatsapp-ai">
-        <h2>7. WhatsApp messaging and the Hermes AI assistant</h2>
+        <h2>7. WhatsApp messaging and the Kitty AI assistant</h2>
         <h3>WhatsApp consent</h3>
         <p>
           By starting a WhatsApp conversation with us or providing a phone number
@@ -225,10 +225,10 @@ export default function TermsPage() {
         </p>
         <h3>AI disclosure and prohibited reliance</h3>
         <p>
-          Our WhatsApp workflow may use a hosted assistant called Hermes,
+          Our WhatsApp workflow may use a hosted assistant called Kitty,
           controlled by Swati Goel, to process text, voice notes, images,
           documents, phone numbers, message metadata, and conversation context.
-          Hermes may use changing third-party models, including GPT models from
+          Kitty may use changing third-party models, including GPT models from
           OpenAI and Claude models from Anthropic, to generate responses.
         </p>
         <p>

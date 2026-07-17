@@ -1,4 +1,4 @@
-"""Session-bound MyInsightAcademy scheduling tool."""
+"""Session-bound MyInsightAcademy administrator tool for Swati's iMessage profile."""
 
 import hashlib
 import hmac
@@ -16,9 +16,7 @@ ACTIONS = (
     "get_contact",
     "create_case",
     "get_case",
-    "list_my_cases",
     "record_availability",
-    "request_reschedule",
     "propose_times",
     "request_approval",
     "confirm_class",
@@ -42,13 +40,17 @@ def _session_actor():
 def call_insight(action, payload):
     if action not in ACTIONS:
         return json.dumps({"error": "Unsupported scheduling action"})
-    url = os.environ.get("INSIGHT_HERMES_TOOL_URL", "")
-    secret = os.environ.get("HERMES_TOOL_SHARED_SECRET", "")
     actor = _session_actor()
+    if (
+        actor["platform"] != "imessage"
+        or not actor["chatId"]
+        or actor["userId"] != actor["chatId"]
+    ):
+        return json.dumps({"error": "This admin tool requires Swati's direct iMessage conversation"})
+    url = os.environ.get("INSIGHT_HERMES_ADMIN_TOOL_URL", "")
+    secret = os.environ.get("HERMES_ADMIN_TOOL_SHARED_SECRET", "")
     if not url or not secret:
         return json.dumps({"error": "Scheduling service is not configured"})
-    if actor["platform"] != "whatsapp_cloud" or not actor["chatId"]:
-        return json.dumps({"error": "This scheduling tool requires a direct WhatsApp conversation"})
 
     body = json.dumps({"actor": actor, "action": action, "payload": payload or {}}, separators=(",", ":"))
     timestamp = str(int(time.time() * 1000))
@@ -78,6 +80,6 @@ def call_insight(action, payload):
         return json.dumps({"error": "Scheduling service is temporarily unavailable"})
 
 
-def handle_insight_scheduling(params, **kwargs):
+def handle_insight_admin(params, **kwargs):
     del kwargs
     return call_insight(params.get("action", ""), params.get("payload", {}))

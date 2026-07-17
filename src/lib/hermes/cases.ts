@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 export type HermesCaseStatus = "draft" | "collecting_availability" | "proposing" | "awaiting_approval" | "confirmed" | "cancelled" | "needs_attention";
 
 const TRANSITIONS: Record<HermesCaseStatus, readonly HermesCaseStatus[]> = {
@@ -22,6 +24,23 @@ export function parseWhatsAppToolActor(input: unknown): { e164: string } | null 
   const userId = typeof actor.userId === "string" ? actor.userId : "";
   if (!/^[1-9]\d{7,14}$/.test(chatId) || userId !== chatId) return null;
   return { e164: `+${chatId}` };
+}
+
+export function parseIMessageAdminActor(
+  input: unknown,
+  expectedDigest: string | undefined,
+): { stableId: string } | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  if (!expectedDigest || !/^[a-f0-9]{64}$/i.test(expectedDigest)) return null;
+  const actor = input as Record<string, unknown>;
+  if (actor.platform !== "imessage") return null;
+  const chatId = typeof actor.chatId === "string" ? actor.chatId : "";
+  const userId = typeof actor.userId === "string" ? actor.userId : "";
+  if (!chatId || chatId.length > 256 || userId !== chatId) return null;
+  const actual = Buffer.from(createHash("sha256").update(chatId).digest("hex"), "hex");
+  const expected = Buffer.from(expectedDigest, "hex");
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
+  return { stableId: chatId };
 }
 
 export type HermesToolActorKind = "admin" | "contact" | "unknown";

@@ -30,12 +30,18 @@ export async function POST(request: Request) {
   if (!contact) return NextResponse.json({ error: "Contact unavailable" }, { status: 404 });
 
   const [{ data: caseRecord }, { data: participant }, { count: recentCount }] = await Promise.all([
-    supabase.from("hermes_scheduling_cases").select("id, human_takeover").eq("id", body.caseId).maybeSingle(),
+    supabase.from("hermes_scheduling_cases").select("id, status, tutor_kind, workspace_state, human_takeover").eq("id", body.caseId).maybeSingle(),
     supabase.from("hermes_case_participants").select("id").eq("case_id", body.caseId).eq("contact_id", body.contactId).maybeSingle(),
     supabase.from("hermes_messages").select("id", { count: "exact", head: true }).eq("direction", "outbound").gte("created_at", new Date(Date.now() - 60_000).toISOString()),
   ]);
   if (!caseRecord || !participant) return NextResponse.json({ error: "Contact is not a case participant" }, { status: 403 });
   if (caseRecord.human_takeover) return NextResponse.json({ error: "Swati has taken over this case" }, { status: 409 });
+  if (body.intent === "class_confirmation" && caseRecord.status !== "confirmed") {
+    return NextResponse.json({ error: "Class is not confirmed" }, { status: 409 });
+  }
+  if (body.intent === "class_confirmation" && caseRecord.tutor_kind === "swati" && caseRecord.workspace_state !== "ready") {
+    return NextResponse.json({ error: "Swati's Calendar event is not ready" }, { status: 409 });
+  }
   if ((recentCount ?? 0) >= 20) return NextResponse.json({ error: "Sender rate limit reached" }, { status: 429 });
 
   let approved = false;

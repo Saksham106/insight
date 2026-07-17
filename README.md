@@ -76,6 +76,7 @@ npm run dev
 | HERMES_FORWARD_URL | For WhatsApp | Existing Hermes Cloud API webhook URL used after Insight policy checks. |
 | HERMES_TOOL_SHARED_SECRET | For WhatsApp | Random HMAC secret shared only by Insight and Hermes. |
 | HERMES_ADMIN_WHATSAPP_E164 | For WhatsApp | Swati's verified WhatsApp number in E.164 format; this is the only scheduling administrator. |
+| HERMES_WHATSAPP_APPROVALS_ENABLED | No | Feature flag for code-bound WhatsApp approval notifications and replies. Keep `false` until staging verification. |
 | WHATSAPP_SENDER_SHARED_SECRET | For WhatsApp | Separate random HMAC secret used only for Insight's private sender dispatch. Never install it on Hermes. |
 | HERMES_IMPORT_SIGNING_SECRET | For WhatsApp | Random server-only secret for short-lived import previews. |
 | WHATSAPP_TEMPLATE_LOCALE | No | Approved template locale, normally `en_US`. |
@@ -85,6 +86,7 @@ npm run dev
 | WHATSAPP_TEMPLATE_CLASS_CONFIRMATION | For proactive outreach | Approved Meta template name. |
 | WHATSAPP_TEMPLATE_RESCHEDULE_REQUEST | For proactive outreach | Approved Meta template name. |
 | WHATSAPP_TEMPLATE_CLASS_REMINDER | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_ADMIN_APPROVAL | For optional admin approvals | Approved fixed Utility template name for Swati's code-bound approve/reject prompt. |
 | WHATSAPP_TEMPLATE_HUMAN_ATTENTION | For proactive outreach | Approved Meta template name. |
 
 Note: Do not commit .env.local. Share secrets out of band.
@@ -133,11 +135,13 @@ Create fixed-purpose Utility templates in WhatsApp Manager for availability requ
 
 ### Approval-first pilot
 
-Keep the first rollout approval-first: Hermes may collect availability and propose times, but it must create a pending approval before class confirmation. Swati approves or rejects it in `/admin/hermes`. Unknown, unclassified, paused, guardian-only, approval-required, and opted-out contacts fail closed. Hermes receives no Supabase service key or Meta access token.
+Keep the first rollout approval-first: Kitty may collect availability and propose times, but it must create a pending approval before class confirmation. `/admin/hermes` is always available for Swati to approve or reject. A disabled-by-default WhatsApp path can also send Swati a fixed Utility template and accept a code-bound quick reply or exact `APPROVE <CODE>` / `REJECT <CODE>` response. Follow `infra/hermes-profiles/academy/README.md` and do not enable `HERMES_WHATSAPP_APPROVALS_ENABLED` until its staging probes pass. Unknown, unclassified, paused, guardian-only, approval-required, and opted-out contacts fail closed. The Academy agent receives no Supabase service key, Meta access token, or Google credential.
 
 ### Swati's two Hermes channels
 
-Swati's default Photon/iMessage profile remains her private personal assistant and keeps its Google Workspace access. The `academy` WhatsApp Cloud profile is the business-facing assistant for imported teachers, students, parents, and employees. For the initial pilot, Swati should start Academy scheduling work by messaging Kitty on WhatsApp; iMessage instructions do not yet create an Insight scheduling case automatically.
+Swati's default Photon/iMessage profile remains her private personal assistant and keeps its Google Workspace access. The `academy` WhatsApp Cloud profile is the business-facing assistant for imported teachers, students, parents, and employees. Shared iMessage intake is implemented behind a disabled feature flag, so either channel can eventually create the same Insight scheduling case without sharing profile memory or credentials.
+
+The default profile also contains a deterministic, no-agent Workspace worker for Swati-taught classes. Insight queues typed free/busy and private event-create jobs; the default profile uses its existing Google authorization and returns only narrow results. The Academy profile never receives Google credentials or raw Calendar data. All intake, Calendar, and WhatsApp-approval flags remain disabled until the corresponding staging probes in `infra/hermes-profiles/default-insight/README.md` and `infra/hermes-profiles/academy/README.md` pass.
 
 Keep profile memories isolated. In particular, do not set `memory.mnemosyne.profile_isolation` to `false`: an external Academy conversation must not read, influence, or retrieve Swati's private-profile memory. Cross-channel coordination belongs in the guarded `hermes_*` scheduling tables and narrow Insight tool API, not in shared conversational memory.
 
@@ -163,7 +167,6 @@ If inbound handling fails, first set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=false` on t
 - Admin conversation search and filters
 - File attachments and lesson materials
 - Scheduled session reminders
-- Default-profile/iMessage intake into the shared Insight scheduling queue
-- WhatsApp approval notifications and approve/reject replies for Swati
+- Production activation of the feature-flagged iMessage intake, Calendar bridge, and WhatsApp approvals after their staging probes
 - Parent-only and student-only sub-roles
 - Audit log for admin actions

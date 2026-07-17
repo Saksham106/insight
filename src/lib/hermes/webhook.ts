@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export type ProjectedWebhookEvent =
-  | { kind: "message"; idempotencyKey: string; metaMessageId: string; waId: string; profileName: string | null; occurredAt: string; messageType: string; body: string | null }
+  | { kind: "message"; idempotencyKey: string; metaMessageId: string; waId: string; profileName: string | null; occurredAt: string; messageType: string; body: string | null; interactiveId?: string }
   | { kind: "status"; idempotencyKey: string; metaMessageId: string; waId: string; occurredAt: string; status: string; errorCode: string | null };
 
 export function verifyMetaSignature(rawBody: Buffer, header: string | null, appSecret: string) {
@@ -80,10 +80,30 @@ export function projectWebhookEvents(payload: unknown): ProjectedWebhookEvent[] 
       }
       if (Array.isArray(value.messages)) {
         value.messages.forEach((item) => {
-          const message = item as { id?: string; from?: string; timestamp?: string; type?: string; text?: { body?: string } };
+          const message = item as {
+            id?: string;
+            from?: string;
+            timestamp?: string;
+            type?: string;
+            text?: { body?: string };
+            interactive?: { type?: string; button_reply?: { id?: string; title?: string } };
+            button?: { payload?: string; text?: string };
+          };
           if (!message.id || !message.from) return;
           const occurredAt = timestampToIso(message.timestamp);
           if (!occurredAt) return;
+          const interactiveId = message.type === "interactive" && message.interactive?.type === "button_reply"
+            ? message.interactive.button_reply?.id
+            : message.type === "button"
+              ? message.button?.payload
+              : undefined;
+          const body = message.type === "text"
+            ? message.text?.body ?? null
+            : message.type === "interactive" && message.interactive?.type === "button_reply"
+              ? message.interactive.button_reply?.title ?? null
+              : message.type === "button"
+                ? message.button?.text ?? null
+                : null;
           events.push({
             kind: "message",
             idempotencyKey: `meta:message:${message.id}`,
@@ -92,7 +112,8 @@ export function projectWebhookEvents(payload: unknown): ProjectedWebhookEvent[] 
             profileName: names.get(message.from) ?? null,
             occurredAt,
             messageType: message.type ?? "unknown",
-            body: message.type === "text" ? message.text?.body ?? null : null,
+            body,
+            ...(typeof interactiveId === "string" && interactiveId.length <= 256 ? { interactiveId } : {}),
           });
         });
       }

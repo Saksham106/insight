@@ -39,7 +39,7 @@ export function HermesAssistantDashboard({ contacts, cases, approvals, messages,
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <header>
         <h1 className="text-2xl font-semibold text-navy" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <Bot size={24} /> Hermes Assistant
+          <Bot size={24} /> Kitty
         </h1>
         <p className="text-sm text-muted" style={{ marginTop: "4px" }}>
           Import academy contacts and review only the work that needs you.

@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { filterWebhookPayload, isInboundContactEligible, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } from "@/lib/hermes/webhook";
+import { parseApprovalReply } from "@/lib/hermes/whatsapp-approvals";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(request: Request) {
@@ -39,6 +40,39 @@ export async function POST(request: Request) {
     }
 
     const e164 = `+${event.waId.replace(/\D/g, "")}`;
+    const approvalReply = process.env.HERMES_WHATSAPP_APPROVALS_ENABLED === "true"
+      && e164 === process.env.HERMES_ADMIN_WHATSAPP_E164
+      ? parseApprovalReply({ body: event.body, interactiveId: event.interactiveId })
+      : null;
+    if (approvalReply) {
+      const requestId = `whatsapp-approval:${event.metaMessageId}`;
+      const { error: replayError } = await supabase.from("hermes_audit_events").insert({
+        actor_type: "admin",
+        event_type: "approval_reply_received",
+        entity_type: "approval_command",
+        request_id: requestId,
+        metadata: { channel: "whatsapp", decision: approvalReply.decision },
+      });
+      if (!replayError) {
+        const { data: approval, error: decisionError } = await supabase.rpc("decide_hermes_approval_by_whatsapp", {
+          p_code: approvalReply.code,
+          p_decision: approvalReply.decision,
+          p_message_id: event.metaMessageId,
+        });
+        await supabase.from("hermes_audit_events").update({
+          event_type: approval && !decisionError ? "approval_reply_accepted" : "approval_reply_rejected",
+          entity_type: approval && !decisionError ? "scheduling_case" : "approval_command",
+          entity_id: approval && !decisionError ? approval.case_id : null,
+          metadata: {
+            channel: "whatsapp",
+            decision: approvalReply.decision,
+            outcome: approval && !decisionError ? "accepted" : "stale_or_invalid",
+          },
+        }).eq("request_id", requestId);
+      }
+      continue;
+    }
+
     let { data: contact } = await supabase
       .from("hermes_contacts")
       .select("id, role, communication_policy, consent_status, is_active")
