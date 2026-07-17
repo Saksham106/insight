@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ChatMember, ChattableContact, ConversationSummary } from "@/lib/chat-types";
+import { derivePairs, type MemberRole } from "@/lib/chat/group-derive";
 
 interface Profile {
   id: string;
@@ -12,21 +13,30 @@ function otherMembersTitle(members: ChatMember[], selfId: string): string {
   return others.map((m) => m.full_name).join(", ");
 }
 
-// All conversations the user is a member of, newest activity first, with the
-// full member roster and last message for list rendering.
-export async function getConversationsForUser(userId: string): Promise<ConversationSummary[]> {
-  const admin = createAdminClient();
+function allMembersTitle(members: ChatMember[]): string {
+  if (members.length === 0) return "Group";
+  return members.map((m) => m.full_name).join(", ");
+}
 
-  const { data: myMemberships } = await admin
-    .from("conversation_participants")
-    .select("conversation_id")
-    .eq("user_id", userId);
+type AdminClient = ReturnType<typeof createAdminClient>;
 
-  const ids = (myMemberships ?? []).map((r) => r.conversation_id as string);
+// Hydrate a set of conversation ids into list-ready summaries: member roster,
+// last message, resolved display title, sorted by newest activity. When
+// viewerId is provided titles are resolved relative to that viewer ("You" is
+// hidden); when null (admin viewing everyone) the full roster is used.
+async function hydrateSummaries(
+  admin: AdminClient,
+  ids: string[],
+  viewerId: string | null,
+): Promise<ConversationSummary[]> {
   if (ids.length === 0) return [];
 
   const [{ data: convos }, { data: parts }, { data: msgs }] = await Promise.all([
-    admin.from("conversations").select("id, is_group, title, created_at, updated_at").in("id", ids),
+    admin
+      .from("conversations")
+      .select("id, is_group, title, created_at, updated_at")
+      .in("id", ids)
+      .is("archived_at", null),
     admin.from("conversation_participants").select("conversation_id, user_id").in("conversation_id", ids),
     admin
       .from("messages")
@@ -35,12 +45,10 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
       .order("created_at", { ascending: false }),
   ]);
 
-  // Resolve member profiles in one query.
   const memberIds = [...new Set((parts ?? []).map((p) => p.user_id as string))];
-  const { data: profiles } = await admin
-    .from("profiles")
-    .select("id, full_name, role")
-    .in("id", memberIds);
+  const { data: profiles } = memberIds.length
+    ? await admin.from("profiles").select("id, full_name, role").in("id", memberIds)
+    : { data: [] as ChatMember[] };
   const profileById = new Map((profiles ?? []).map((p) => [p.id as string, p as ChatMember]));
 
   const membersByConvo = new Map<string, ChatMember[]>();
@@ -53,7 +61,6 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
     membersByConvo.set(cid, list);
   }
 
-  // First (newest) message seen per conversation.
   const lastByConvo = new Map<string, ConversationSummary["lastMessage"]>();
   for (const m of msgs ?? []) {
     const cid = m.conversation_id as string;
@@ -69,9 +76,13 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
   const summaries: ConversationSummary[] = (convos ?? []).map((c) => {
     const members = membersByConvo.get(c.id as string) ?? [];
     const isGroup = Boolean(c.is_group);
-    const title = isGroup
-      ? (c.title as string | null)?.trim() || otherMembersTitle(members, userId) || "Group"
-      : otherMembersTitle(members, userId);
+    const groupName = (c.title as string | null)?.trim();
+    const title =
+      viewerId === null
+        ? groupName || allMembersTitle(members)
+        : isGroup
+          ? groupName || otherMembersTitle(members, viewerId) || "Group"
+          : otherMembersTitle(members, viewerId);
     const lastMessage = lastByConvo.get(c.id as string) ?? null;
     return {
       id: c.id as string,
@@ -79,12 +90,46 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
       title,
       members,
       lastMessage,
-      updatedAt: (lastMessage?.createdAt ?? (c.updated_at as string) ?? (c.created_at as string)),
+      updatedAt: lastMessage?.createdAt ?? (c.updated_at as string) ?? (c.created_at as string),
     };
   });
 
   summaries.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   return summaries;
+}
+
+// All conversations the user is a member of, newest activity first, with the
+// full member roster and last message for list rendering.
+export async function getConversationsForUser(userId: string): Promise<ConversationSummary[]> {
+  const admin = createAdminClient();
+
+  const { data: myMemberships } = await admin
+    .from("conversation_participants")
+    .select("conversation_id")
+    .eq("user_id", userId);
+
+  const ids = (myMemberships ?? []).map((r) => r.conversation_id as string);
+  return hydrateSummaries(admin, ids, userId);
+}
+
+// Admin-only: every group (regardless of admin membership), for the Groups page.
+export async function getAllGroupsForAdmin(): Promise<ConversationSummary[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("conversations")
+    .select("id")
+    .eq("is_group", true)
+    .is("archived_at", null);
+  const ids = (data ?? []).map((r) => r.id as string);
+  return hydrateSummaries(admin, ids, null);
+}
+
+// Admin-only: every conversation (groups + DMs) for the read-only Chats viewer.
+export async function getAllConversationsForAdmin(): Promise<ConversationSummary[]> {
+  const admin = createAdminClient();
+  const { data } = await admin.from("conversations").select("id").is("archived_at", null);
+  const ids = (data ?? []).map((r) => r.id as string);
+  return hydrateSummaries(admin, ids, null);
 }
 
 // The set of user ids a person is allowed to include in a conversation. Everyone
@@ -235,4 +280,124 @@ async function findExistingDirectConversation(a: string, b: string): Promise<str
     if (count === 2) return c.id as string;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Admin group management. A group is the admin-facing unit; teaching
+// relationships (teacher_student_assignments) are DERIVED from membership so the
+// booking/availability engine keeps working. The admin is the group's creator
+// but is NOT added as a participant (they are not in the chat).
+// ---------------------------------------------------------------------------
+
+
+async function memberRoles(admin: AdminClient, memberIds: string[]): Promise<MemberRole[]> {
+  if (memberIds.length === 0) return [];
+  const { data } = await admin.from("profiles").select("id, role").in("id", memberIds);
+  return (data ?? []).map((p) => ({ id: p.id as string, role: p.role as string }));
+}
+
+// Ensure an active teacher_student_assignments row exists for each pair. Existing
+// active rows are left alone; inactive rows are reactivated; missing rows created.
+async function ensureAssignments(admin: AdminClient, members: MemberRole[]): Promise<void> {
+  const pairs = derivePairs(members);
+  for (const { teacherId, studentId } of pairs) {
+    const { data: existing } = await admin
+      .from("teacher_student_assignments")
+      .select("id, is_active")
+      .eq("teacher_id", teacherId)
+      .eq("student_id", studentId)
+      .maybeSingle();
+
+    if (!existing) {
+      await admin.from("teacher_student_assignments").insert({ teacher_id: teacherId, student_id: studentId });
+    } else if (!existing.is_active) {
+      await admin.from("teacher_student_assignments").update({ is_active: true }).eq("id", existing.id);
+    }
+  }
+}
+
+export async function createAdminGroup(params: {
+  creatorId: string;
+  memberIds: string[];
+  title: string | null;
+}): Promise<{ conversationId: string } | { error: string }> {
+  const admin = createAdminClient();
+  const uniqueMembers = [...new Set(params.memberIds)].filter((id) => id !== params.creatorId);
+  if (uniqueMembers.length < 1) return { error: "Add at least one person to the group." };
+
+  const cleanTitle = params.title?.trim() ? params.title.trim().slice(0, 80) : null;
+
+  const { data: convo, error: convoError } = await admin
+    .from("conversations")
+    .insert({ is_group: true, title: cleanTitle, created_by: params.creatorId })
+    .select("id")
+    .single();
+  if (convoError || !convo) return { error: convoError?.message ?? "Could not create group." };
+
+  const rows = uniqueMembers.map((user_id) => ({ conversation_id: convo.id as string, user_id }));
+  const { error: partError } = await admin.from("conversation_participants").insert(rows);
+  if (partError) {
+    await admin.from("conversations").delete().eq("id", convo.id);
+    return { error: partError.message };
+  }
+
+  await ensureAssignments(admin, await memberRoles(admin, uniqueMembers));
+  return { conversationId: convo.id as string };
+}
+
+export async function renameGroup(id: string, title: string | null): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const cleanTitle = title?.trim() ? title.trim().slice(0, 80) : null;
+  const { error } = await admin.from("conversations").update({ title: cleanTitle }).eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
+export async function archiveGroup(id: string): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("conversations")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
+// Replace a group's participants with the given set. Added teacher x student
+// pairs get derived assignment rows; removals leave assignments intact (a past
+// pairing may still own sessions/history).
+export async function updateGroupMembers(
+  id: string,
+  memberIds: string[],
+): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const target = [...new Set(memberIds)];
+  if (target.length < 1) return { error: "A group needs at least one person." };
+
+  const { data: current } = await admin
+    .from("conversation_participants")
+    .select("user_id")
+    .eq("conversation_id", id);
+  const currentIds = new Set((current ?? []).map((r) => r.user_id as string));
+  const targetSet = new Set(target);
+
+  const toAdd = target.filter((uid) => !currentIds.has(uid));
+  const toRemove = [...currentIds].filter((uid) => !targetSet.has(uid));
+
+  if (toAdd.length) {
+    const { error } = await admin
+      .from("conversation_participants")
+      .insert(toAdd.map((user_id) => ({ conversation_id: id, user_id })));
+    if (error) return { error: error.message };
+  }
+  if (toRemove.length) {
+    const { error } = await admin
+      .from("conversation_participants")
+      .delete()
+      .eq("conversation_id", id)
+      .in("user_id", toRemove);
+    if (error) return { error: error.message };
+  }
+
+  // Re-derive assignments across the full new roster.
+  await ensureAssignments(admin, await memberRoles(admin, target));
+  return {};
 }
