@@ -59,14 +59,24 @@ export async function POST(request: Request) {
           p_decision: approvalReply.decision,
           p_message_id: event.metaMessageId,
         });
+        let settlementFinalizationError = null;
+        if (approval && !decisionError && approvalReply.decision === "approved" && approval.settlement_cycle_id) {
+          if (process.env.HERMES_SETTLEMENTS_ENABLED !== "true") {
+            settlementFinalizationError = { message: "settlements_disabled" };
+          } else if (!approval.consumed_at) {
+            const finalized = await supabase.rpc("finalize_academy_settlement", { p_approval_id: approval.id });
+            settlementFinalizationError = finalized.error;
+          }
+        }
+        const accepted = Boolean(approval && !decisionError && !settlementFinalizationError);
         await supabase.from("hermes_audit_events").update({
-          event_type: approval && !decisionError ? "approval_reply_accepted" : "approval_reply_rejected",
-          entity_type: approval && !decisionError ? "scheduling_case" : "approval_command",
-          entity_id: approval && !decisionError ? approval.case_id : null,
+          event_type: settlementFinalizationError ? "settlement_finalization_failed" : accepted ? "approval_reply_accepted" : "approval_reply_rejected",
+          entity_type: approval?.settlement_cycle_id ? "settlement_cycle" : approval ? "scheduling_case" : "approval_command",
+          entity_id: approval ? (approval.settlement_cycle_id ?? approval.case_id) : null,
           metadata: {
             channel: "whatsapp",
             decision: approvalReply.decision,
-            outcome: approval && !decisionError ? "accepted" : "stale_or_invalid",
+            outcome: settlementFinalizationError ? "settlement_finalization_failed" : accepted ? "accepted" : "stale_or_invalid",
           },
         }).eq("request_id", requestId);
       }

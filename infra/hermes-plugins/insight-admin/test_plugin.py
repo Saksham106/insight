@@ -35,9 +35,9 @@ class PluginTests(unittest.TestCase):
         self.tools = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.tools)
         self.session_values = {
-            "HERMES_SESSION_PLATFORM": "imessage",
-            "HERMES_SESSION_CHAT_ID": "photon:swati:verified",
-            "HERMES_SESSION_USER_ID": "photon:swati:verified",
+            "HERMES_SESSION_PLATFORM": "photon",
+            "HERMES_SESSION_CHAT_ID": "any;-;+84917583553",
+            "HERMES_SESSION_USER_ID": "+84917583553",
         }
         session = types.ModuleType("gateway.session_context")
         session.get_session_env = lambda name, default="": self.session_values.get(name, default)
@@ -51,14 +51,22 @@ class PluginTests(unittest.TestCase):
 
     def test_actor_comes_from_direct_imessage_session(self):
         self.assertEqual(self.tools._session_actor(), {
-            "platform": "imessage",
-            "chatId": "photon:swati:verified",
-            "userId": "photon:swati:verified",
+            "platform": "photon",
+            "chatId": "any;-;+84917583553",
+            "userId": "+84917583553",
         })
 
     def test_exposes_typed_freebusy_actions(self):
         self.assertIn("request_swati_freebusy", self.tools.ACTIONS)
         self.assertIn("get_workspace_job", self.tools.ACTIONS)
+
+    def test_exposes_admin_settlement_and_exact_approval_actions(self):
+        for action in (
+            "start_settlement_cycle", "get_settlement_cycle", "set_family_charges",
+            "request_settlement_approval", "decide_approval", "record_family_payment",
+            "record_tutor_payout", "close_settlement_cycle",
+        ):
+            self.assertIn(action, self.tools.ACTIONS)
 
     def test_request_uses_admin_url_secret_and_session_actor(self):
         with patch.dict(os.environ, {
@@ -72,21 +80,26 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(request.full_url, "https://myinsightacademy.com/api/hermes/admin-tools")
         body = request.data.decode()
         decoded = json.loads(body)
-        self.assertEqual(decoded["actor"]["platform"], "imessage")
-        self.assertEqual(decoded["actor"]["chatId"], "photon:swati:verified")
+        self.assertEqual(decoded["actor"]["platform"], "photon")
+        self.assertEqual(decoded["actor"]["chatId"], "any;-;+84917583553")
         self.assertEqual(decoded["payload"], {"actor": {"platform": "telegram"}})
         signed = f'{request.headers["X-hermes-timestamp"]}.{request.headers["X-hermes-request-id"]}.{body}'
         expected = hmac.new(b"admin-secret", signed.encode(), hashlib.sha256).hexdigest()
         self.assertEqual(request.headers["X-hermes-signature"], expected)
 
-    def test_rejects_non_imessage_and_non_direct_sessions(self):
+    def test_rejects_non_photon_and_non_direct_sessions(self):
         self.session_values["HERMES_SESSION_PLATFORM"] = "whatsapp_cloud"
         self.assertEqual(
             json.loads(self.tools.call_insight("search_contacts", {"query": "Asha"})),
             {"error": "This admin tool requires Swati's direct iMessage conversation"},
         )
-        self.session_values["HERMES_SESSION_PLATFORM"] = "imessage"
-        self.session_values["HERMES_SESSION_USER_ID"] = "different"
+        self.session_values["HERMES_SESSION_PLATFORM"] = "photon"
+        self.session_values["HERMES_SESSION_CHAT_ID"] = "any;-;+84900000000"
+        self.assertEqual(
+            json.loads(self.tools.call_insight("search_contacts", {"query": "Asha"})),
+            {"error": "This admin tool requires Swati's direct iMessage conversation"},
+        )
+        self.session_values["HERMES_SESSION_CHAT_ID"] = "chat123;+;+84917583553"
         self.assertEqual(
             json.loads(self.tools.call_insight("search_contacts", {"query": "Asha"})),
             {"error": "This admin tool requires Swati's direct iMessage conversation"},

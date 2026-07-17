@@ -77,6 +77,7 @@ npm run dev
 | HERMES_TOOL_SHARED_SECRET | For WhatsApp | Random HMAC secret shared only by Insight and Hermes. |
 | HERMES_ADMIN_WHATSAPP_E164 | For WhatsApp | Swati's verified WhatsApp number in E.164 format; this is the only scheduling administrator. |
 | HERMES_WHATSAPP_APPROVALS_ENABLED | No | Feature flag for code-bound WhatsApp approval notifications and replies. Keep `false` until staging verification. |
+| HERMES_SETTLEMENTS_ENABLED | No | Independent feature flag for monthly tutor-report, invoice, and payout bookkeeping. Keep `false` until staging verification. |
 | WHATSAPP_SENDER_SHARED_SECRET | For WhatsApp | Separate random HMAC secret used only for Insight's private sender dispatch. Never install it on Hermes. |
 | HERMES_IMPORT_SIGNING_SECRET | For WhatsApp | Random server-only secret for short-lived import previews. |
 | WHATSAPP_TEMPLATE_LOCALE | No | Approved template locale, normally `en_US`. |
@@ -87,6 +88,11 @@ npm run dev
 | WHATSAPP_TEMPLATE_RESCHEDULE_REQUEST | For proactive outreach | Approved Meta template name. |
 | WHATSAPP_TEMPLATE_CLASS_REMINDER | For proactive outreach | Approved Meta template name. |
 | WHATSAPP_TEMPLATE_ADMIN_APPROVAL | For optional admin approvals | Approved fixed Utility template name for Swati's code-bound approve/reject prompt. |
+| WHATSAPP_TEMPLATE_SETTLEMENT_APPROVAL | For optional settlement approvals | Approved fixed Utility template for aggregate monthly totals and code-bound approve/reject buttons. |
+| WHATSAPP_TEMPLATE_TUTOR_REPORT_REQUEST | For monthly bookkeeping | Approved fixed request for a tutor's monthly report. |
+| WHATSAPP_TEMPLATE_FAMILY_INVOICE | For monthly bookkeeping | Approved fixed family invoice template. |
+| WHATSAPP_TEMPLATE_PAYMENT_REMINDER | For monthly bookkeeping | Approved fixed family payment reminder. |
+| WHATSAPP_TEMPLATE_PAYMENT_RECEIVED | For monthly bookkeeping | Approved fixed payment-received acknowledgement. |
 | WHATSAPP_TEMPLATE_HUMAN_ATTENTION | For proactive outreach | Approved Meta template name. |
 
 Note: Do not commit .env.local. Share secrets out of band.
@@ -143,6 +149,10 @@ Swati's default Photon/iMessage profile remains her private personal assistant a
 
 The default profile also contains a deterministic, no-agent Workspace worker for Swati-taught classes. Insight queues typed free/busy and private event-create jobs; the default profile uses its existing Google authorization and returns only narrow results. The Academy profile never receives Google credentials or raw Calendar data. All intake, Calendar, and WhatsApp-approval flags remain disabled until the corresponding staging probes in `infra/hermes-profiles/default-insight/README.md` and `infra/hermes-profiles/academy/README.md` pass.
 
+For monthly bookkeeping, tutor reports—not Calendar or existing portal data—are the financial source of truth. Kitty can collect a tutor's report, let Swati enter family charges, request one aggregate approval, send approved-purpose invoice messages, and record payments and payouts. Approval by Swati's code-bound WhatsApp reply, verified iMessage, or the Kitty dashboard decides the same pending record. These actions track status only; no bank transfer or automatic money movement is implemented.
+
+A Google Calendar event does not by itself trigger participant outreach. Swati must create or coordinate a class through Kitty, and any reminder remains a separate, policy-checked outbound action.
+
 Keep profile memories isolated. In particular, do not set `memory.mnemosyne.profile_isolation` to `false`: an external Academy conversation must not read, influence, or retrieve Swati's private-profile memory. Cross-channel coordination belongs in the guarded `hermes_*` scheduling tables and narrow Insight tool API, not in shared conversational memory.
 
 ### Deployment and activation
@@ -167,6 +177,6 @@ If inbound handling fails, first set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=false` on t
 - Admin conversation search and filters
 - File attachments and lesson materials
 - Scheduled session reminders
-- Production activation of the feature-flagged iMessage intake, Calendar bridge, and WhatsApp approvals after their staging probes
+- Production activation of the feature-flagged iMessage intake, Calendar bridge, WhatsApp approvals, and monthly settlements after their staging probes
 - Parent-only and student-only sub-roles
 - Audit log for admin actions

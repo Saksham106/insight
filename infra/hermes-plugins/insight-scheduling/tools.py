@@ -26,6 +26,7 @@ ACTIONS = (
     "escalate_to_swati",
     "request_swati_freebusy",
     "get_workspace_job",
+    "submit_tutor_report",
 )
 
 

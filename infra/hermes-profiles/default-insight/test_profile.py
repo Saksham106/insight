@@ -63,6 +63,13 @@ class DefaultInsightProfileTests(unittest.TestCase):
         ):
             self.assertIn(required, source)
 
+    def test_docs_distinguish_calendar_storage_from_automated_outreach(self):
+        source = (PROFILE_DIR / "README.md").read_text().lower()
+        self.assertIn("does not automatically", source)
+        self.assertIn("whatsapp reminder", source)
+        self.assertIn("separate approved workflow", source)
+        self.assertIn("tutor report", source)
+
 
 if __name__ == "__main__":
     unittest.main()

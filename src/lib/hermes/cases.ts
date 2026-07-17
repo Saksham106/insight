@@ -33,18 +33,17 @@ export function parseIMessageAdminActor(
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   if (!expectedDigest || !/^[a-f0-9]{64}$/i.test(expectedDigest)) return null;
   const actor = input as Record<string, unknown>;
-  if (actor.platform !== "imessage") return null;
   const chatId = typeof actor.chatId === "string" ? actor.chatId : "";
   const userId = typeof actor.userId === "string" ? actor.userId : "";
-  if (!chatId || chatId.length > 256 || userId !== chatId) return null;
-  const actual = Buffer.from(createHash("sha256").update(chatId).digest("hex"), "hex");
+  if (actor.platform !== "photon" || !/^\+[1-9]\d{7,14}$/.test(userId) || chatId !== `any;-;${userId}`) return null;
+  const actual = Buffer.from(createHash("sha256").update(userId).digest("hex"), "hex");
   const expected = Buffer.from(expectedDigest, "hex");
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
-  return { stableId: chatId };
+  return { stableId: userId };
 }
 
 export type HermesToolActorKind = "admin" | "contact" | "unknown";
-export type HermesToolActorScope = "admin" | "self" | "case_member" | "self_case_member" | "denied";
+export type HermesToolActorScope = "admin" | "self" | "case_member" | "self_case_member" | "self_financial" | "denied";
 
 export function toolActorScope(action: string, actorKind: HermesToolActorKind): HermesToolActorScope {
   if (actorKind === "admin") return "admin";
@@ -52,6 +51,7 @@ export function toolActorScope(action: string, actorKind: HermesToolActorKind): 
   if (action === "get_academy_info" || action === "get_contact" || action === "list_my_cases") return "self";
   if (action === "get_case" || action === "request_reschedule" || action === "escalate_to_swati") return "case_member";
   if (action === "record_availability") return "self_case_member";
+  if (action === "submit_tutor_report") return "self_financial";
   return "denied";
 }
 

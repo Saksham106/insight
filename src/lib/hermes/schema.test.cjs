@@ -14,6 +14,12 @@ function readHermesMigration() {
   return fs.readFileSync(path.join(migrationsDir, file), "utf8").toLowerCase();
 }
 
+function readMigration(suffix) {
+  const file = fs.readdirSync(migrationsDir).find((name) => name.endsWith(suffix));
+  assert.ok(file, `${suffix} migration should exist`);
+  return fs.readFileSync(path.join(migrationsDir, file), "utf8").toLowerCase();
+}
+
 test("Hermes migration creates the complete assistant data model", () => {
   const sql = readHermesMigration();
   for (const table of [
@@ -151,4 +157,75 @@ test("WhatsApp approval codes are server-only, expiring, and atomically consume 
   assert.match(sql, /v_approval\.status <> 'pending'/);
   assert.match(sql, /consumed_at = now\(\)/);
   assert.match(sql, /grant execute on function public\.decide_hermes_approval_by_whatsapp/);
+});
+
+test("Academy settlements are immutable, admin-scoped, and use tutor reports as their only evidence", () => {
+  const sql = readMigration("_add_academy_settlements.sql");
+  for (const table of [
+    "academy_settlement_cycles",
+    "academy_tutor_reports",
+    "academy_tutor_report_lines",
+    "academy_family_invoices",
+    "academy_tutor_payouts",
+  ]) {
+    assert.match(sql, new RegExp(`create table public\\.${table}`));
+    assert.match(sql, new RegExp(`alter table public\\.${table} enable row level security`));
+    assert.match(sql, new RegExp(`revoke all on table public\\.${table} from anon`));
+    assert.match(sql, new RegExp(`grant all on table public\\.${table} to service_role`));
+  }
+  assert.match(sql, /period_start = date_trunc\('month', period_start\)::date/);
+  assert.match(sql, /currency ~ '\^\[a-z\]\{3\}\$'/);
+  assert.match(sql, /claimed_payout_minor >= 0/);
+  assert.match(sql, /family_charge_minor is null or family_charge_minor >= 0/);
+  assert.match(sql, /total_minor >= 0/);
+  assert.match(sql, /source_channel in \('whatsapp', 'imessage_admin', 'admin'\)/);
+  assert.match(sql, /create unique index academy_tutor_reports_one_active/);
+  for (const index of [
+    "academy_tutor_reports_tutor_idx",
+    "academy_tutor_reports_supersedes_idx",
+    "academy_report_lines_student_idx",
+    "academy_report_lines_billed_idx",
+    "academy_family_invoices_approval_idx",
+    "academy_family_invoices_billed_idx",
+    "academy_family_invoices_student_idx",
+    "academy_tutor_payouts_approval_idx",
+    "academy_tutor_payouts_tutor_idx",
+  ]) assert.match(sql, new RegExp(`create index ${index}`));
+  assert.doesNotMatch(sql, /\bfrom public\.sessions\b/);
+  assert.doesNotMatch(sql, /calendar/);
+  assert.match(sql, /alter table public\.hermes_messages[\s\S]+add column settlement_cycle_id uuid references public\.academy_settlement_cycles/);
+  assert.match(sql, /alter table public\.hermes_messages[\s\S]+add column family_invoice_id uuid references public\.academy_family_invoices/);
+});
+
+test("settlement approvals bind exactly one subject and decide atomically across channels", () => {
+  const sql = readMigration("_add_academy_settlements.sql");
+  assert.match(sql, /alter column case_id drop not null/);
+  assert.match(sql, /add column settlement_cycle_id uuid references public\.academy_settlement_cycles/);
+  assert.match(sql, /num_nonnulls\(case_id, settlement_cycle_id\) = 1/);
+  assert.match(sql, /add column decision_channel text/);
+  assert.match(sql, /decision_channel in \('whatsapp', 'imessage', 'dashboard'\)/);
+  for (const fn of [
+    "submit_academy_tutor_report",
+    "set_academy_family_charges",
+    "request_academy_settlement_approval",
+    "decide_hermes_approval_by_channel",
+    "finalize_academy_settlement",
+    "record_academy_family_payment",
+    "record_academy_tutor_payout",
+  ]) {
+    assert.match(sql, new RegExp(`create (?:or replace )?function public\\.${fn}`));
+    assert.match(sql, new RegExp(`revoke execute on function public\\.${fn}`));
+    assert.match(sql, new RegExp(`grant execute on function public\\.${fn}[^;]+to service_role`));
+  }
+  assert.match(sql, /for update/);
+  assert.match(sql, /v_binding\.expires_at <= now\(\)/);
+  assert.match(sql, /v_approval\.payload_digest/);
+  assert.match(sql, /v_approval\.proposal_version <> v_cycle\.version/);
+  assert.match(sql, /status not in \('ready', 'superseded'\)[\s\S]+settlement_reports_incomplete/);
+  assert.match(sql, /v_approval\.consumed_at is not null/);
+  assert.match(sql, /p_decision = 'rejected'[\s\S]+status = 'ready_for_approval'/);
+  assert.match(sql, /v_approval\.consumed_at is not null[\s\S]+return v_cycle/);
+  assert.match(sql, /insert into public\.academy_family_invoices/);
+  assert.match(sql, /insert into public\.academy_tutor_payouts/);
+  assert.match(sql, /status = 'eligible'/);
 });

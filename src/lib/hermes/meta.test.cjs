@@ -52,6 +52,20 @@ test("maps the fixed permission request template from the environment", () => {
   });
 });
 
+test("maps every settlement template and fails closed without one", () => {
+  const mapped = templateMapFromEnv({
+    WHATSAPP_TEMPLATE_TUTOR_REPORT_REQUEST: "academy_tutor_report",
+    WHATSAPP_TEMPLATE_FAMILY_INVOICE: "academy_invoice_ready",
+    WHATSAPP_TEMPLATE_PAYMENT_REMINDER: "academy_payment_reminder",
+    WHATSAPP_TEMPLATE_PAYMENT_RECEIVED: "academy_payment_received",
+  });
+  assert.equal(mapped.tutor_report_request.name, "academy_tutor_report");
+  assert.equal(mapped.family_invoice.name, "academy_invoice_ready");
+  assert.equal(mapped.payment_reminder.name, "academy_payment_reminder");
+  assert.equal(mapped.payment_received.name, "academy_payment_received");
+  assert.deepEqual(selectWhatsAppDelivery(contact({ serviceWindowExpiresAt: null }), "family_invoice", new Date(), {}), { kind: "blocked", reason: "template_unavailable" });
+});
+
 test("builds fixed text and template Graph payloads", () => {
   assert.deepEqual(buildGraphMessageRequest({ to: "+84 917 583 553", delivery: { kind: "free_form" }, body: "Hello" }), {
     messaging_product: "whatsapp", recipient_type: "individual", to: "84917583553", type: "text", text: { preview_url: false, body: "Hello" },
@@ -76,4 +90,13 @@ test("sender route is internal-authenticated and idempotent", () => {
   assert.match(source, /tutor_kind/);
   assert.match(source, /workspace_state/);
   assert.match(source, /class_confirmation/);
+  for (const intent of ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"]) assert.match(source, new RegExp(intent));
+  assert.match(source, /academy_family_invoices/);
+  assert.match(source, /billed_contact_id/);
+  assert.match(source, /academy_settlement_cycles/);
+  assert.match(source, /family_invoice_id/);
+  assert.match(source, /settlement_cycle_id/);
+  assert.match(source, /buildSettlementMessageContent/);
+  assert.match(source, /body\.text = financialContent\.body/);
+  assert.match(source, /body\.bodyParameters = financialContent\.bodyParameters/);
 });

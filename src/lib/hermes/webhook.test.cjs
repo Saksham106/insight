@@ -109,3 +109,11 @@ test("webhook route handles verification, raw signatures, idempotency, and forwa
   assert.match(source, /decide_hermes_approval_by_whatsapp/);
   assert.match(source, /whatsapp-approval:/);
 });
+
+test("WhatsApp settlement approval finalizes exact snapshots before reporting success", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"), "utf8");
+  assert.match(source, /settlement_cycle_id/);
+  assert.match(source, /finalize_academy_settlement/);
+  assert.match(source, /settlement_finalization_failed/);
+  assert.match(source, /entity_type: approval\?\.settlement_cycle_id \? "settlement_cycle" : approval \? "scheduling_case" : "approval_command"/);
+});

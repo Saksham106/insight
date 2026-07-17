@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { verifyServiceRequest } from "@/lib/hermes/auth";
 import { buildGraphMessageRequest, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, type WhatsAppIntent } from "@/lib/hermes/meta";
+import { buildSettlementMessageContent } from "@/lib/hermes/settlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
@@ -10,9 +11,9 @@ export async function POST(request: Request) {
   const auth = secret ? verifyServiceRequest(request, rawBody, secret) : null;
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: { contactId?: string; caseId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; idempotencyKey?: string; approvalId?: string };
+  let body: { contactId?: string; caseId?: string; settlementCycleId?: string; familyInvoiceId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; idempotencyKey?: string; approvalId?: string };
   try { body = JSON.parse(rawBody); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  if (!body.contactId || !body.caseId || !body.intent || !body.idempotencyKey) return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  if (!body.contactId || !body.intent || !body.idempotencyKey) return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
   const supabase = createAdminClient();
   const { error: replayError } = await supabase.from("hermes_audit_events").insert({ actor_type: "system", event_type: "sender_request", entity_type: "sender", request_id: auth.requestId, metadata: { intent: body.intent } });
@@ -20,32 +21,56 @@ export async function POST(request: Request) {
   const { data: prior } = await supabase.from("hermes_messages").select("id, status, meta_message_id, error_code").eq("idempotency_key", body.idempotencyKey).maybeSingle();
   if (prior) return NextResponse.json({ message: prior, duplicate: true });
 
-  const { data: contact } = await supabase
-    .from("hermes_contacts")
-    .select("id, whatsapp_e164, communication_policy, consent_status, service_window_expires_at")
-    .eq("id", body.contactId)
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (!contact) return NextResponse.json({ error: "Contact unavailable" }, { status: 404 });
-
-  const [{ data: caseRecord }, { data: participant }, { count: recentCount }] = await Promise.all([
-    supabase.from("hermes_scheduling_cases").select("id, status, tutor_kind, workspace_state, human_takeover").eq("id", body.caseId).maybeSingle(),
-    supabase.from("hermes_case_participants").select("id").eq("case_id", body.caseId).eq("contact_id", body.contactId).maybeSingle(),
+  const [{ data: contact }, { count: recentCount }] = await Promise.all([
+    supabase.from("hermes_contacts")
+      .select("id, role, whatsapp_e164, communication_policy, consent_status, service_window_expires_at")
+      .eq("id", body.contactId).eq("is_active", true).is("deleted_at", null).maybeSingle(),
     supabase.from("hermes_messages").select("id", { count: "exact", head: true }).eq("direction", "outbound").gte("created_at", new Date(Date.now() - 60_000).toISOString()),
   ]);
-  if (!caseRecord || !participant) return NextResponse.json({ error: "Contact is not a case participant" }, { status: 403 });
-  if (caseRecord.human_takeover) return NextResponse.json({ error: "Swati has taken over this case" }, { status: 409 });
-  if (body.intent === "class_confirmation" && caseRecord.status !== "confirmed") {
-    return NextResponse.json({ error: "Class is not confirmed" }, { status: 409 });
+  if (!contact) return NextResponse.json({ error: "Contact unavailable" }, { status: 404 });
+
+  const financialIntents: WhatsAppIntent[] = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"];
+  const isFinancial = financialIntents.includes(body.intent);
+  let approved = false;
+  let financialContent: { body: string; bodyParameters: string[] } | null = null;
+  if (isFinancial) {
+    if (process.env.HERMES_SETTLEMENTS_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (body.intent === "tutor_report_request") {
+      if (!body.settlementCycleId || body.familyInvoiceId || contact.role !== "teacher") return NextResponse.json({ error: "Tutor report request requires one tutor and settlement cycle" }, { status: 403 });
+      const { data: cycle } = await supabase.from("academy_settlement_cycles").select("id, status, period_start, currency").eq("id", body.settlementCycleId).maybeSingle();
+      if (!cycle || !["collecting", "needs_attention", "ready_for_approval"].includes(cycle.status)) return NextResponse.json({ error: "Settlement cycle is unavailable" }, { status: 409 });
+      financialContent = buildSettlementMessageContent({ intent: body.intent, periodStart: cycle.period_start, currency: cycle.currency });
+    } else {
+      if (!body.familyInvoiceId || body.caseId || body.settlementCycleId) return NextResponse.json({ error: "Financial message requires one family invoice" }, { status: 400 });
+      const { data: invoice } = await supabase.from("academy_family_invoices")
+        .select("id, settlement_cycle_id, billed_contact_id, status, approval_id, total_minor, currency, item_snapshot")
+        .eq("id", body.familyInvoiceId).maybeSingle();
+      if (!invoice || invoice.billed_contact_id !== body.contactId) return NextResponse.json({ error: "Contact is not the billed recipient" }, { status: 403 });
+      if (body.intent === "payment_received" ? invoice.status !== "paid" : !["approved", "sent"].includes(invoice.status)) return NextResponse.json({ error: "Family invoice is not in the required state" }, { status: 409 });
+      body.settlementCycleId = invoice.settlement_cycle_id;
+      const { data: cycle } = await supabase.from("academy_settlement_cycles").select("period_start").eq("id", invoice.settlement_cycle_id).maybeSingle();
+      if (!cycle) return NextResponse.json({ error: "Settlement cycle is unavailable" }, { status: 409 });
+      financialContent = buildSettlementMessageContent({ intent: body.intent as "family_invoice" | "payment_reminder" | "payment_received", periodStart: cycle.period_start, currency: invoice.currency, totalMinor: invoice.total_minor, itemSnapshot: invoice.item_snapshot });
+      approved = true;
+    }
+  } else {
+    if (!body.caseId || body.settlementCycleId || body.familyInvoiceId) return NextResponse.json({ error: "Scheduling message requires one case" }, { status: 400 });
+    const [{ data: caseRecord }, { data: participant }] = await Promise.all([
+      supabase.from("hermes_scheduling_cases").select("id, status, tutor_kind, workspace_state, human_takeover").eq("id", body.caseId).maybeSingle(),
+      supabase.from("hermes_case_participants").select("id").eq("case_id", body.caseId).eq("contact_id", body.contactId).maybeSingle(),
+    ]);
+    if (!caseRecord || !participant) return NextResponse.json({ error: "Contact is not a case participant" }, { status: 403 });
+    if (caseRecord.human_takeover) return NextResponse.json({ error: "Swati has taken over this case" }, { status: 409 });
+    if (body.intent === "class_confirmation" && caseRecord.status !== "confirmed") return NextResponse.json({ error: "Class is not confirmed" }, { status: 409 });
+    if (body.intent === "class_confirmation" && caseRecord.tutor_kind === "swati" && caseRecord.workspace_state !== "ready") return NextResponse.json({ error: "Swati's Calendar event is not ready" }, { status: 409 });
   }
-  if (body.intent === "class_confirmation" && caseRecord.tutor_kind === "swati" && caseRecord.workspace_state !== "ready") {
-    return NextResponse.json({ error: "Swati's Calendar event is not ready" }, { status: 409 });
+  if (financialContent) {
+    body.text = financialContent.body;
+    body.bodyParameters = financialContent.bodyParameters;
   }
   if ((recentCount ?? 0) >= 20) return NextResponse.json({ error: "Sender rate limit reached" }, { status: 429 });
 
-  let approved = false;
-  if (body.approvalId) {
+  if (body.approvalId && body.caseId) {
     const { data: approval } = await supabase.from("hermes_approvals").select("id").eq("id", body.approvalId).eq("case_id", body.caseId).eq("status", "approved").is("consumed_at", null).maybeSingle();
     approved = Boolean(approval);
   }
@@ -60,6 +85,8 @@ export async function POST(request: Request) {
   const { data: pending, error: insertError } = await supabase.from("hermes_messages").insert({
     contact_id: contact.id,
     case_id: body.caseId ?? null,
+    settlement_cycle_id: body.settlementCycleId ?? null,
+    family_invoice_id: body.familyInvoiceId ?? null,
     direction: "outbound",
     message_kind: delivery.kind === "template" ? "template" : "text",
     intent: body.intent,
@@ -91,5 +118,8 @@ export async function POST(request: Request) {
 
   const metaMessageId = result?.messages?.[0]?.id ?? null;
   const { data: sent } = await supabase.from("hermes_messages").update({ status: "accepted", meta_message_id: metaMessageId }).eq("id", pending.id).select("id, status, meta_message_id").single();
+  if (body.intent === "family_invoice" && body.familyInvoiceId) {
+    await supabase.from("academy_family_invoices").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", body.familyInvoiceId).eq("status", "approved");
+  }
   return NextResponse.json({ message: sent });
 }

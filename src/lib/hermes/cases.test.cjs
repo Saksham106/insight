@@ -62,19 +62,20 @@ test("derives the actor only from a direct WhatsApp Cloud session", () => {
 
 test("derives the iMessage administrator only from a verified direct session", () => {
   const crypto = require("node:crypto");
-  const stableId = "photon:swati:verified";
+  const stableId = "+84917583553";
   const digest = crypto.createHash("sha256").update(stableId).digest("hex");
   assert.deepEqual(
     parseIMessageAdminActor(
-      { platform: "imessage", chatId: stableId, userId: stableId },
+      { platform: "photon", chatId: `any;-;${stableId}`, userId: stableId },
       digest,
     ),
     { stableId },
   );
-  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: stableId, userId: "other" }, digest), null);
-  assert.equal(parseIMessageAdminActor({ platform: "whatsapp_cloud", chatId: stableId, userId: stableId }, digest), null);
-  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: stableId, userId: stableId }, "0".repeat(64)), null);
-  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: "", userId: "" }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: `any;-;${stableId}`, userId: stableId }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: "any;-;+84900000000", userId: stableId }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: `chat123;+;${stableId}`, userId: stableId }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: "any;-;not-a-phone", userId: "not-a-phone" }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: `any;-;${stableId}`, userId: stableId }, "0".repeat(64)), null);
 });
 
 test("case contacts receive only their own participant record", () => {
@@ -104,6 +105,11 @@ test("gives Swati broad scheduling scope and contacts only self or case-member s
   assert.equal(toolActorScope("get_workspace_job", "contact"), "denied");
   assert.equal(toolActorScope("search_contacts", "unknown"), "denied");
   assert.equal(toolActorScope("get_academy_info", "contact"), "self");
+  assert.equal(toolActorScope("submit_tutor_report", "contact"), "self_financial");
+  for (const action of ["start_settlement_cycle", "get_settlement_cycle", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"]) {
+    assert.equal(toolActorScope(action, "admin"), "admin");
+    assert.equal(toolActorScope(action, "contact"), "denied");
+  }
 });
 
 test("Academy information is a small verified public knowledge surface", () => {
@@ -180,6 +186,22 @@ test("approval requests optionally notify only Swati with a server-bound WhatsAp
   assert.match(route, /notification_message_id/);
   assert.match(env, /HERMES_WHATSAPP_APPROVALS_ENABLED=false/);
   assert.match(env, /WHATSAPP_TEMPLATE_ADMIN_APPROVAL=/);
+});
+
+test("settlement tools are structured, independently gated, and never use session or Calendar evidence", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  for (const action of ["start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"]) {
+    assert.match(route, new RegExp(action));
+  }
+  assert.match(route, /HERMES_SETTLEMENTS_ENABLED/);
+  assert.match(route, /sanitizeTutorReport/);
+  assert.match(route, /sanitizeFamilyCharges/);
+  assert.match(route, /actorContact\.role !== "teacher"/);
+  assert.match(route, /decide_hermes_approval_by_channel/);
+  assert.match(route, /p_channel: "imessage"/);
+  assert.doesNotMatch(route, /submit_tutor_report[\s\S]{0,3000}\.from\("sessions"\)/);
+  assert.match(env, /HERMES_SETTLEMENTS_ENABLED=false/);
 });
 
 test("Hermes skill identifies automation, honors STOP, forbids transcript sharing, and escalates", () => {
