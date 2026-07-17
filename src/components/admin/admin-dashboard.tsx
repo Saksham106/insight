@@ -3,8 +3,7 @@ import { Bot, CalendarDays, Link2, UserPlus } from "lucide-react";
 
 import { AdminSessionsSection } from "@/components/admin/admin-sessions-section";
 import { AdminStats } from "@/components/admin/admin-stats";
-import { AssignStudentForm } from "@/components/admin/assign-student-form";
-import { AssignmentsTable } from "@/components/admin/assignments-table";
+import { GroupsManager } from "@/components/admin/groups-manager";
 import { ComposeEmailButton } from "@/components/admin/compose-email-button";
 import { InviteUserForm } from "@/components/admin/invite-user-form";
 import { ChatsPanel } from "@/components/chat/chats-panel";
@@ -44,8 +43,8 @@ const viewCopy: Record<AdminDashboardView, { title: string; description: string 
     description: "Invite teachers and students, and manage access.",
   },
   assignments: {
-    title: "Assignments",
-    description: "Create and manage teacher-student pairings.",
+    title: "Groups",
+    description: "Create group chats for teachers, students, and parents.",
   },
   sessions: {
     title: "Sessions",
@@ -67,8 +66,8 @@ const overviewLinks = [
   {
     href: "/admin/assignments",
     icon: Link2,
-    title: "Assignments",
-    description: "Pair teachers with students and manage assignment status.",
+    title: "Groups",
+    description: "Create group chats for teachers, students, and parents.",
   },
   {
     href: "/admin/sessions",
@@ -202,16 +201,7 @@ export function AdminDashboard({
         </>
       )}
 
-      {view === "assignments" && (
-        <>
-          <AssignStudentForm teachers={teachers} students={students} allLabels={labels} />
-
-          <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <h2 className="text-lg font-semibold text-navy">Assignments</h2>
-            <AssignmentsTable assignments={assignments} />
-          </section>
-        </>
-      )}
+      {view === "assignments" && <GroupsManager />}
 
       {view === "sessions" && <AdminSessionsSection sessions={sessions} assignments={assignments} />}
 
