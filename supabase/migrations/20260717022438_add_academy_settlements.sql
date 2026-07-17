@@ -478,6 +478,11 @@ begin
     set status = p_decision, decided_by = case when p_channel = 'dashboard' then p_decided_by else null end,
         decided_at = now(), decision_note = null, updated_at = now()
     where id = v_approval.id returning * into v_approval;
+  if v_subject_type = 'settlement_cycle' and p_decision = 'rejected' then
+    update public.academy_settlement_cycles
+      set status = 'ready_for_approval', updated_at = now()
+      where id = v_subject_id;
+  end if;
   if v_binding.id is not null then
     update public.hermes_whatsapp_approval_bindings
       set decision = p_decision, decision_message_id = p_external_id,
@@ -521,10 +526,14 @@ declare
 begin
   select * into v_approval from public.hermes_approvals where id = p_approval_id for update;
   if not found or v_approval.action <> 'approve_monthly_settlement'
-    or v_approval.status <> 'approved' or v_approval.consumed_at is not null
+    or v_approval.status <> 'approved'
   then raise exception 'approved_settlement_required'; end if;
   select * into v_cycle from public.academy_settlement_cycles
     where id = v_approval.settlement_cycle_id for update;
+  if v_approval.consumed_at is not null then
+    if found and v_cycle.status in ('collecting_payments', 'closed') then return v_cycle; end if;
+    raise exception 'settlement_finalization_inconsistent';
+  end if;
   if not found or v_cycle.status <> 'awaiting_approval'
     or v_approval.proposal_version <> v_cycle.version
     or v_approval.payload_digest <> encode(digest(convert_to(v_approval.payload::text, 'UTF8'), 'sha256'), 'hex')

@@ -211,6 +211,8 @@ test("settlement approvals bind exactly one subject and decide atomically across
   assert.match(sql, /v_approval\.payload_digest/);
   assert.match(sql, /v_approval\.proposal_version <> v_cycle\.version/);
   assert.match(sql, /v_approval\.consumed_at is not null/);
+  assert.match(sql, /p_decision = 'rejected'[\s\S]+status = 'ready_for_approval'/);
+  assert.match(sql, /v_approval\.consumed_at is not null[\s\S]+return v_cycle/);
   assert.match(sql, /insert into public\.academy_family_invoices/);
   assert.match(sql, /insert into public\.academy_tutor_payouts/);
   assert.match(sql, /status = 'eligible'/);

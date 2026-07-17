@@ -1,4 +1,4 @@
-import { AlertCircle, Bot, Clock3, MessageSquareText, Users } from "lucide-react";
+import { AlertCircle, Banknote, Bot, Clock3, MessageSquareText, Users } from "lucide-react";
 
 import { HermesContactImport } from "@/components/admin/hermes-contact-import";
 import { HermesApprovalActions } from "@/components/admin/hermes-approval-actions";
@@ -21,8 +21,18 @@ export interface HermesAdminContact {
 interface HermesAssistantDashboardProps {
   contacts: HermesAdminContact[];
   cases: Array<{ id: string; title: string; status: string; human_takeover: boolean; updated_at: string }>;
-  approvals: Array<{ id: string; action: string; status: string; requested_at: string; payload: unknown; proposal_version: number; case: unknown }>;
+  approvals: Array<{ id: string; action: string; status: string; requested_at: string; payload: unknown; proposal_version: number; case: unknown; settlement: unknown }>;
   messages: Array<{ id: string; direction: string; message_kind: string; status: string; occurred_at: string; contact: unknown }>;
+  settlements: Array<{
+    id: string;
+    period_start: string;
+    currency: string;
+    status: string;
+    updated_at: string;
+    tutor_reports: Array<{ status: string }>;
+    family_invoices: Array<{ status: string }>;
+    tutor_payouts: Array<{ status: string }>;
+  }>;
   loadError: string | null;
 }
 
@@ -30,7 +40,7 @@ function Empty({ children }: { children: string }) {
   return <p className="text-sm text-muted">{children}</p>;
 }
 
-export function HermesAssistantDashboard({ contacts, cases, approvals, messages, loadError }: HermesAssistantDashboardProps) {
+export function HermesAssistantDashboard({ contacts, cases, approvals, messages, settlements, loadError }: HermesAssistantDashboardProps) {
   const attentionContacts = contacts.filter((contact) =>
     contact.role === "unclassified" || contact.profile_link_status === "suggested" || contact.communication_policy !== "direct",
   );
@@ -81,6 +91,19 @@ export function HermesAssistantDashboard({ contacts, cases, approvals, messages,
         <Card>
           <CardHeader><CardTitle style={{ display: "flex", gap: "8px", alignItems: "center" }}><Clock3 size={18} /> Active scheduling</CardTitle><CardDescription>Who is waiting on whom</CardDescription></CardHeader>
           <CardContent>{cases.length === 0 ? <Empty>No active scheduling cases.</Empty> : cases.map((item) => <div key={item.id} style={{ marginBottom: "10px" }}><p className="text-sm font-semibold">{item.title}</p><p className="text-sm text-muted">{item.status.replaceAll("_", " ")}{item.human_takeover ? " · Swati takeover" : ""}</p></div>)}</CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle style={{ display: "flex", gap: "8px", alignItems: "center" }}><Banknote size={18} /> Monthly settlements</CardTitle><CardDescription>Tutor-reported work and payment tracking</CardDescription></CardHeader>
+          <CardContent>{settlements.length === 0 ? <Empty>No monthly settlement cycles yet.</Empty> : settlements.map((cycle) => {
+            const readyReports = cycle.tutor_reports.filter((item) => ["ready", "approved"].includes(item.status)).length;
+            const paidInvoices = cycle.family_invoices.filter((item) => item.status === "paid").length;
+            const paidPayouts = cycle.tutor_payouts.filter((item) => item.status === "paid").length;
+            return <div key={cycle.id} style={{ marginBottom: "12px", borderBottom: "1px solid var(--color-border)", paddingBottom: "10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center" }}><p className="text-sm font-semibold">{new Date(`${cycle.period_start}T00:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p><Badge>{cycle.status.replaceAll("_", " ")}</Badge></div>
+              <p className="text-sm text-muted">Tutor reports {readyReports}/{cycle.tutor_reports.length} · Family invoices {paidInvoices}/{cycle.family_invoices.length} paid · Tutor payouts {paidPayouts}/{cycle.tutor_payouts.length} paid</p>
+            </div>;
+          })}</CardContent>
         </Card>
 
         <Card>
