@@ -132,3 +132,22 @@ test("exact approval confirmation atomically enqueues only Swati Calendar writes
   assert.match(sql, /on conflict \(idempotency_key\) do nothing/);
   assert.match(sql, /grant execute on function public\.confirm_hermes_class\(uuid, uuid, jsonb, boolean\) to service_role/);
 });
+
+test("WhatsApp approval codes are server-only, expiring, and atomically consume pending approvals", () => {
+  const sql = fs.readFileSync(
+    path.join(migrationsDir, "20260716153000_add_whatsapp_approval_replies.sql"),
+    "utf8",
+  ).toLowerCase();
+  assert.match(sql, /create table public\.hermes_whatsapp_approval_bindings/);
+  assert.match(sql, /approval_id uuid not null unique/);
+  assert.match(sql, /code text not null unique/);
+  assert.match(sql, /expires_at timestamptz not null/);
+  assert.match(sql, /decision_message_id text unique/);
+  assert.match(sql, /enable row level security/);
+  assert.match(sql, /revoke all on table public\.hermes_whatsapp_approval_bindings from anon, authenticated/);
+  assert.match(sql, /for update/);
+  assert.match(sql, /v_binding\.expires_at <= now\(\)/);
+  assert.match(sql, /v_approval\.status <> 'pending'/);
+  assert.match(sql, /consumed_at = now\(\)/);
+  assert.match(sql, /grant execute on function public\.decide_hermes_approval_by_whatsapp/);
+});
