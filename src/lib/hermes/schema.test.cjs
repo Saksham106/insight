@@ -229,3 +229,14 @@ test("settlement approvals bind exactly one subject and decide atomically across
   assert.match(sql, /insert into public\.academy_tutor_payouts/);
   assert.match(sql, /status = 'eligible'/);
 });
+
+test("security-definer approval functions can resolve the Supabase crypto extension", () => {
+  const sql = readMigration("_qualify_hermes_digest.sql").replace(/\s+/g, " ");
+  for (const signature of [
+    "request_hermes_approval(uuid, jsonb)",
+    "confirm_hermes_class(uuid, uuid, jsonb, boolean)",
+    "request_academy_settlement_approval(uuid)",
+    "decide_hermes_approval_by_channel(uuid, text, uuid, text, text, text)",
+    "finalize_academy_settlement(uuid)",
+  ]) assert.ok(sql.includes(`alter function public.${signature} set search_path = public, extensions, pg_temp`));
+});
