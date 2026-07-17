@@ -62,19 +62,20 @@ test("derives the actor only from a direct WhatsApp Cloud session", () => {
 
 test("derives the iMessage administrator only from a verified direct session", () => {
   const crypto = require("node:crypto");
-  const stableId = "photon:swati:verified";
+  const stableId = "+84917583553";
   const digest = crypto.createHash("sha256").update(stableId).digest("hex");
   assert.deepEqual(
     parseIMessageAdminActor(
-      { platform: "imessage", chatId: stableId, userId: stableId },
+      { platform: "photon", chatId: `any;-;${stableId}`, userId: stableId },
       digest,
     ),
     { stableId },
   );
-  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: stableId, userId: "other" }, digest), null);
-  assert.equal(parseIMessageAdminActor({ platform: "whatsapp_cloud", chatId: stableId, userId: stableId }, digest), null);
-  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: stableId, userId: stableId }, "0".repeat(64)), null);
-  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: "", userId: "" }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "imessage", chatId: `any;-;${stableId}`, userId: stableId }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: "any;-;+84900000000", userId: stableId }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: `chat123;+;${stableId}`, userId: stableId }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: "any;-;not-a-phone", userId: "not-a-phone" }, digest), null);
+  assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: `any;-;${stableId}`, userId: stableId }, "0".repeat(64)), null);
 });
 
 test("case contacts receive only their own participant record", () => {

@@ -16,11 +16,11 @@ Do not copy `HERMES_ADMIN_TOOL_SHARED_SECRET`, the `insight-admin` plugin, or th
 
 1. Apply `20260716150000_add_hermes_case_origin.sql` and deploy the application while `HERMES_IMESSAGE_INTAKE_ENABLED=false`.
 2. Copy `infra/hermes-plugins/insight-admin` only into the default profile's plugins directory and enable only its `insight_admin` toolset for the iMessage platform.
-3. In staging, send one direct iMessage from Swati and inspect only the Hermes session-context identifiers. Confirm `platform=imessage`, a non-empty `chatId`, and `chatId == userId`. Do not record message content, tokens, or unrelated session data.
-4. Hash the verified stable ID locally:
+3. In staging, send one direct iMessage from Swati and inspect only the Hermes session-context identifiers. Confirm `platform=photon`, `userId` is Swati's E.164 number, and `chatId` is exactly `any;-;<userId>`. That is Photon's direct-message GUID; group identifiers must not match it. Do not record message content, tokens, or unrelated session data.
+4. Hash the verified E.164 `userId` locally:
 
    ```bash
-   printf %s '<verified-stable-id>' | shasum -a 256
+   printf %s '<verified-e164-user-id>' | shasum -a 256
    ```
 
    Configure the result as `HERMES_ADMIN_IMESSAGE_ID_SHA256` on the Insight server. Do not put the raw identifier in source control.
@@ -35,7 +35,7 @@ Do not copy `HERMES_ADMIN_TOOL_SHARED_SECRET`, the `insight-admin` plugin, or th
 7. Run the repository plugin tests and `hermes config check` for the default profile.
 8. Set `HERMES_IMESSAGE_INTAKE_ENABLED=true` in staging.
 9. From Swati's verified direct iMessage session, test contact search, case creation, and case read. Confirm the case and audit record use `origin_platform=imessage` and actor kind `admin`.
-10. Attempt the tool from a non-iMessage session and from an iMessage session whose `chatId` and `userId` do not match. Both must fail without returning Academy data.
+10. Attempt the tool from a non-Photon session, a Photon group session, and a Photon session whose `chatId` is not exactly `any;-;<userId>`. All must fail without returning Academy data.
 11. Enable production only after all staging checks pass. Keep the Academy profile, Meta callback, and `HERMES_TOOL_SHARED_SECRET` unchanged.
 
 ## Read-only Calendar free/busy worker

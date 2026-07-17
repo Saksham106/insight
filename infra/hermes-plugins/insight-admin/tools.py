@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -42,9 +43,9 @@ def call_insight(action, payload):
         return json.dumps({"error": "Unsupported scheduling action"})
     actor = _session_actor()
     if (
-        actor["platform"] != "imessage"
-        or not actor["chatId"]
-        or actor["userId"] != actor["chatId"]
+        actor["platform"] != "photon"
+        or not re.fullmatch(r"\+[1-9]\d{7,14}", actor["userId"])
+        or actor["chatId"] != f'any;-;{actor["userId"]}'
     ):
         return json.dumps({"error": "This admin tool requires Swati's direct iMessage conversation"})
     url = os.environ.get("INSIGHT_HERMES_ADMIN_TOOL_URL", "")
