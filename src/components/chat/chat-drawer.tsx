@@ -220,7 +220,7 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
                       {initials}
                     </div>
                     {count > 0 && (
-                      <span style={{ position: "absolute", top: "-3px", right: "-3px", backgroundColor: "#ef4444", color: "white", fontSize: "10px", fontWeight: 700, borderRadius: "999px", minWidth: "17px", height: "17px", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
+                      <span style={{ position: "absolute", top: "-3px", right: "-3px", backgroundColor: "var(--color-error)", color: "white", fontSize: "10px", fontWeight: 700, borderRadius: "999px", minWidth: "17px", height: "17px", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
                         {count > 99 ? "99+" : count}
                       </span>
                     )}
@@ -277,7 +277,7 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
                       {initials}
                     </div>
                     {count > 0 && (
-                      <span style={{ position: "absolute", top: "-4px", right: "-4px", backgroundColor: "#ef4444", color: "white", fontSize: "10px", fontWeight: 700, borderRadius: "999px", minWidth: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1 }}>
+                      <span style={{ position: "absolute", top: "-4px", right: "-4px", backgroundColor: "var(--color-error)", color: "white", fontSize: "10px", fontWeight: 700, borderRadius: "999px", minWidth: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1 }}>
                         {count > 99 ? "99+" : count}
                       </span>
                     )}

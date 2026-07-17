@@ -107,7 +107,7 @@ function WorkflowLinks({
               width: "38px",
               height: "38px",
               borderRadius: "10px",
-              backgroundColor: "rgba(27,53,96,0.08)",
+              backgroundColor: "var(--color-accent-soft)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -405,7 +405,7 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
             style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "6px" }}
           >
             Open chat
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
               {totalUnread > 99 ? "99+" : totalUnread}
             </span>
           </Button>
@@ -505,7 +505,7 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
                   width: "38px",
                   height: "38px",
                   borderRadius: "10px",
-                  backgroundColor: "rgba(27,53,96,0.08)",
+                  backgroundColor: "var(--color-accent-soft)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -599,7 +599,7 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
                       </span>
                     )}
                     {chipUnread > 0 && (
-                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: "20px", height: "20px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: "20px", height: "20px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
                         {chipUnread > 99 ? "99+" : chipUnread}
                       </span>
                     )}
@@ -637,7 +637,7 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
                       >
                         Open chat
                         {(chatUnread[conversationId] ?? 0) > 0 && (
-                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
                             {(chatUnread[conversationId] ?? 0) > 99 ? "99+" : chatUnread[conversationId]}
                           </span>
                         )}

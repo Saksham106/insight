@@ -37,8 +37,8 @@ export default function ForgotPasswordPage() {
 
   return (
     <div
-      className="bg-background px-6"
-      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}
+      className="px-6"
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--color-paper-2)" }}
     >
       <Card style={{ width: "100%", maxWidth: "28rem" }}>
         <CardHeader>

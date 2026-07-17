@@ -33,7 +33,7 @@ const GUTTER_WIDTH = 52;
 
 const VARIANT_STYLE: Record<WeekGridBlock["variant"], React.CSSProperties> = {
   blocked:   { backgroundColor: "rgba(217,72,72,0.14)", borderColor: "#d94848", color: "#9b2c2c" },
-  available: { backgroundColor: "rgba(27,53,96,0.10)", borderColor: "var(--color-navy)", color: "var(--color-navy)" },
+  available: { backgroundColor: "var(--color-accent-soft)", borderColor: "var(--color-accent)", color: "var(--color-accent-deep)" },
   session:   { backgroundColor: "#eaf2f8", borderColor: "#12304a", color: "#12304a" },
   slot:      { backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-foreground)" },
 };
@@ -238,7 +238,7 @@ export function WeekGrid({
                     top: `${minutesToY(draftHere.startMin, dayStartMin, PX_PER_MINUTE)}px`,
                     height: `${(draftHere.endMin - draftHere.startMin) * PX_PER_MINUTE}px`,
                     left: "3px", right: "3px", borderRadius: "6px",
-                    border: "1px dashed var(--color-navy)", backgroundColor: "rgba(27,53,96,0.08)", pointerEvents: "none",
+                    border: "1px dashed var(--color-accent)", backgroundColor: "var(--color-accent-soft)", pointerEvents: "none",
                   }} />
                 )}
               </div>

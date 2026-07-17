@@ -281,7 +281,7 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "4px",
-                      backgroundColor: "rgba(27,53,96,0.1)",
+                      backgroundColor: "var(--color-accent-soft)",
                       color: "var(--color-navy)",
                       borderRadius: "4px",
                       padding: "2px 6px 2px 8px",
@@ -460,7 +460,7 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
               <p
                 style={{
                   fontSize: "13px",
-                  color: status.type === "success" ? "#16a34a" : "#dc2626",
+                  color: status.type === "success" ? "var(--color-success)" : "var(--color-error)",
                   margin: 0,
                 }}
               >

@@ -246,7 +246,7 @@ export function SettingsPage({
                     border: "1px solid transparent",
                     borderRadius: "8px",
                     padding: "0 12px",
-                    background: active ? "rgba(27,53,96,0.08)" : "transparent",
+                    background: active ? "var(--color-accent-soft)" : "transparent",
                     color: active ? "var(--color-navy)" : "var(--color-slate)",
                     cursor: "pointer",
                     fontSize: "14px",
@@ -492,7 +492,7 @@ function ReminderToggle({
 
 function StatusMessage({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-sm" style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#16a34a", margin: 0 }}>
+    <p className="text-sm" style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--color-success)", margin: 0 }}>
       <CheckCircle size={15} />
       {children}
     </p>

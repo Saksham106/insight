@@ -129,7 +129,7 @@ export function ParentDashboard({ childProfiles, parentId, view = "overview" }: 
               style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "6px" }}
             >
               Open chat
-              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
                 {totalUnread > 99 ? "99+" : totalUnread}
               </span>
             </Button>
@@ -180,7 +180,7 @@ export function ParentDashboard({ childProfiles, parentId, view = "overview" }: 
                             >
                               Open chat
                               {count > 0 && (
-                                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 3px", fontSize: "10px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
                                   {count > 99 ? "99+" : count}
                                 </span>
                               )}

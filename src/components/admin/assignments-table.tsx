@@ -173,7 +173,7 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
           description={selected.is_active ? "This assignment is currently active." : "This assignment is currently disabled."}
           onClose={closeModal}
         >
-          {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}
+          {error && <p className="text-sm" style={{ color: "var(--color-error)" }}>{error}</p>}
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <Button
               variant="outline"
@@ -186,7 +186,7 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
             <Button
               disabled={loading}
               onClick={() => setConfirmDelete(true)}
-              style={{ width: "100%", justifyContent: "center", backgroundColor: "#dc2626", border: "none" }}
+              style={{ width: "100%", justifyContent: "center", backgroundColor: "var(--color-error)", border: "none" }}
             >
               Delete assignment
             </Button>
@@ -201,7 +201,7 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
           description={`This will permanently remove the pairing between ${teacherName} and ${studentName}. This cannot be undone.`}
           onClose={closeModal}
         >
-          {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}
+          {error && <p className="text-sm" style={{ color: "var(--color-error)" }}>{error}</p>}
           <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
             <Button variant="outline" disabled={loading} onClick={() => setConfirmDelete(false)}>
               Cancel
@@ -209,7 +209,7 @@ export function AssignmentsTable({ assignments }: AssignmentsTableProps) {
             <Button
               disabled={loading}
               onClick={handleDelete}
-              style={{ backgroundColor: "#dc2626", border: "none" }}
+              style={{ backgroundColor: "var(--color-error)", border: "none" }}
             >
               {loading ? "Deleting…" : "Yes, delete"}
             </Button>

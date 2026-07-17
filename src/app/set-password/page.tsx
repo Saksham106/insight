@@ -143,11 +143,8 @@ export default function SetPasswordPage() {
 
   return (
     <div
-      className="bg-background"
-      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", padding: "24px" }}
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", backgroundColor: "var(--color-paper-2)", padding: "24px" }}
     >
-      <div aria-hidden style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "900px", height: "700px", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(18,48,74,0.165) 0%, transparent 68%)", pointerEvents: "none" }} />
-      <div aria-hidden style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(18,48,74,0.13) 1px, transparent 1px), linear-gradient(90deg, rgba(18,48,74,0.13) 1px, transparent 1px)", backgroundSize: "44px 44px", maskImage: "radial-gradient(ellipse 62% 78% at 50% 50%, black 35%, transparent 75%)", WebkitMaskImage: "radial-gradient(ellipse 62% 78% at 50% 50%, black 35%, transparent 75%)", pointerEvents: "none" }} />
 
       <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "26rem" }}>
         <Card>

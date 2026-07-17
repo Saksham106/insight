@@ -174,7 +174,7 @@ export function SlotPicker({ assignments, singleAssignmentId }: SlotPickerProps)
             width: "38px",
             height: "38px",
             borderRadius: "10px",
-            backgroundColor: "rgba(27,53,96,0.08)",
+            backgroundColor: "var(--color-accent-soft)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",

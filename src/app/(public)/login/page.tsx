@@ -184,21 +184,15 @@ export default function LoginPage() {
 
   return (
     <div
-      className="bg-background"
-      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", padding: "24px" }}
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", backgroundColor: "var(--color-paper-2)", padding: "24px" }}
     >
-      {/* Blue tint blob */}
-      <div aria-hidden style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "900px", height: "700px", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(18,48,74,0.165) 0%, transparent 68%)", pointerEvents: "none" }} />
-      {/* Grid with oval mask */}
-      <div aria-hidden style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(18,48,74,0.13) 1px, transparent 1px), linear-gradient(90deg, rgba(18,48,74,0.13) 1px, transparent 1px)", backgroundSize: "44px 44px", maskImage: "radial-gradient(ellipse 62% 78% at 50% 50%, black 35%, transparent 75%)", WebkitMaskImage: "radial-gradient(ellipse 62% 78% at 50% 50%, black 35%, transparent 75%)", pointerEvents: "none" }} />
-
       {/* Card — single centered element so it sits perfectly in the middle */}
       <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "26rem", display: "flex", flexDirection: "column", gap: "14px" }}>
         <Button
           asChild
           variant="outline"
           size="sm"
-          style={{ width: "fit-content", borderRadius: "9999px", backgroundColor: "rgba(255,255,255,0.86)", color: "var(--color-navy)", fontWeight: 600 }}
+          style={{ width: "fit-content", borderRadius: "var(--radius-pill)", fontWeight: 600 }}
         >
           <Link href="/">
             <ArrowLeft size={15} />
@@ -211,10 +205,10 @@ export default function LoginPage() {
 
             {/* Branding inside the card */}
             <div style={{ textAlign: "center", marginBottom: "28px" }}>
-              <Link href="/" style={{ display: "inline-block", fontSize: "14px", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--color-navy)", marginBottom: "10px", textDecoration: "none" }}>
+              <Link href="/" style={{ display: "inline-block", fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-ink)", marginBottom: "10px", textDecoration: "none" }}>
                 Insight Academy
               </Link>
-              <h1 style={{ fontSize: "22px", fontWeight: 700, color: "var(--color-navy)", margin: 0 }}>
+              <h1 style={{ fontSize: "24px", fontWeight: 700, color: "var(--color-ink)", margin: 0 }}>
                 Welcome back
               </h1>
               <p style={{ fontSize: "13px", color: "var(--color-muted)", marginTop: "6px" }}>
@@ -277,7 +271,7 @@ export default function LoginPage() {
               <JoinInterestModal
                 buttonLabel="Request an invite"
                 buttonVariant="outline"
-                buttonStyle={{ width: "100%", borderRadius: "8px", borderColor: "var(--color-navy)", color: "var(--color-navy)", fontWeight: 600 }}
+                buttonStyle={{ width: "100%", borderRadius: "var(--radius-input)", fontWeight: 600 }}
               />
             </div>
 

@@ -26,7 +26,7 @@ export function EmptyState({ icon: Icon, title, description }: EmptyStateProps) 
           width: "48px",
           height: "48px",
           borderRadius: "12px",
-          backgroundColor: "rgba(27,53,96,0.07)",
+          backgroundColor: "var(--color-accent-soft)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

@@ -1,0 +1,55 @@
+/* Hallmark · genre: playful · design-system: design.md · designed-as-app
+ * theme: custom · vibe: "lamplight, cream paper, honeyed amber, calm focus"
+ * paper: oklch(97% 0.015 80) · accent: oklch(64% 0.14 75)
+ * display: Bricolage Grotesque · body: Geist · axes: light / geometric-sans / chromatic-amber
+ * studied: no · context: user-provided · portable token export — mirror of src/app/globals.css
+ */
+:root {
+  /* Color — warm study-room */
+  --color-paper:        oklch(97% 0.015 80);
+  --color-paper-2:      oklch(94.5% 0.018 80);
+  --color-paper-3:      oklch(91.5% 0.02 80);
+  --color-card:         oklch(99% 0.008 85);
+  --color-ink:          oklch(24% 0.015 70);
+  --color-ink-2:        oklch(42% 0.018 70);
+  --color-muted:        oklch(50% 0.018 70);
+  --color-rule:         oklch(88% 0.018 80);
+  --color-rule-2:       oklch(91% 0.016 80);
+  --color-accent:       oklch(64% 0.14 75);
+  --color-accent-hover: oklch(61.5% 0.145 73);
+  --color-accent-soft:  oklch(92% 0.045 85);
+  --color-accent-deep:  oklch(46% 0.11 65);
+  --color-accent-ink:   oklch(24% 0.015 70);
+  --color-focus:        oklch(58% 0.19 75);
+  --color-success:      oklch(50% 0.11 150);
+  --color-success-soft: oklch(94% 0.04 150);
+  --color-warning:      oklch(55% 0.13 60);
+  --color-error:        oklch(52% 0.16 30);
+
+  /* Type */
+  --font-display: var(--font-bricolage, "Bricolage Grotesque"), var(--font-geist-sans), ui-sans-serif, sans-serif;
+  --font-body:    var(--font-geist-sans, "Geist"), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    var(--font-geist-mono, "Geist Mono"), ui-monospace, monospace;
+  --text-display:   clamp(2.25rem, 4.5vw, 3.5rem);
+  --text-display-s: clamp(1.75rem, 3.2vw, 2.5rem);
+
+  /* Space — 4pt scale */
+  --space-3xs: 0.25rem;  --space-2xs: 0.5rem;  --space-xs: 0.75rem;
+  --space-sm:  1rem;     --space-md:  1.5rem;  --space-lg: 2rem;
+  --space-xl:  3rem;     --space-2xl: 4.5rem;  --space-3xl: 7rem;
+
+  /* Motion */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-short: 180ms;
+  --dur-med:   240ms;
+
+  /* Shape */
+  --radius-card:  12px;
+  --radius-input: 8px;
+  --radius-pill:  999px;
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px oklch(46% 0.11 65 / 0.06), 0 4px 12px -6px oklch(46% 0.11 65 / 0.1);
+  --shadow-lift: 0 8px 24px -12px oklch(46% 0.11 65 / 0.28);
+}

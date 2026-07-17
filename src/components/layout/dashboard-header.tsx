@@ -111,10 +111,19 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
           >
             {/* Left: branding */}
             <Link href={`/${role}`} style={{ textDecoration: "none", flexShrink: 0 }}>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate">
-                Insight Academy
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 700,
+                  fontSize: "16px",
+                  letterSpacing: "-0.02em",
+                  color: "var(--color-ink)",
+                }}
+              >
+                Insight&nbsp;Academy
               </p>
-              <p className="text-lg font-semibold text-navy">Dashboard</p>
+              <p className="text-xs" style={{ margin: 0, color: "var(--color-muted)" }}>Dashboard</p>
             </Link>
 
             {/* Center: nav tabs (desktop only) */}
@@ -133,11 +142,11 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                         gap: "6px",
                         height: "40px",
                         padding: "0 14px",
-                        color: active ? "var(--color-navy)" : "var(--color-slate)",
+                        color: active ? "var(--color-ink)" : "var(--color-ink-2)",
                         fontSize: "13px",
                         fontWeight: active ? 600 : 500,
                         textDecorationLine: active ? "underline" : "none",
-                        textDecorationColor: "var(--color-navy)",
+                        textDecorationColor: "var(--color-accent)",
                         textDecorationThickness: "2px",
                         textUnderlineOffset: "6px",
                         whiteSpace: "nowrap",
@@ -146,7 +155,7 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                     >
                       {item.label}
                       {isChats && chatUnread > 0 && (
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
                           {chatUnread > 99 ? "99+" : chatUnread}
                         </span>
                       )}
@@ -328,7 +337,7 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                         border: "none",
                         cursor: "pointer",
                         fontSize: "14px",
-                        color: "#dc2626",
+                        color: "var(--color-error)",
                       }}
                     >
                       Log out
@@ -385,14 +394,14 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                         fontSize: "14px",
                         fontWeight: active ? 600 : 500,
                         color: active ? "var(--color-navy)" : "var(--color-slate)",
-                        backgroundColor: active ? "rgba(27,53,96,0.06)" : "transparent",
+                        backgroundColor: active ? "var(--color-accent-soft)" : "transparent",
                         textDecoration: "none",
-                        borderLeft: active ? "3px solid var(--color-navy)" : "3px solid transparent",
+                        borderLeft: active ? "3px solid var(--color-accent)" : "3px solid transparent",
                       }}
                     >
                       {item.label}
                       {isChats && chatUnread > 0 && (
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "20px", height: "20px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "#ef4444", color: "white" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "20px", height: "20px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
                           {chatUnread > 99 ? "99+" : chatUnread}
                         </span>
                       )}

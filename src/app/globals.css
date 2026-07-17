@@ -1,20 +1,68 @@
+/* Hallmark · genre: playful · macrostructure: Split Studio (marketing) / Workbench (app) · design-system: design.md · designed-as-app
+ * theme: custom · vibe: "lamplight, cream paper, honeyed amber, calm focus"
+ * paper: oklch(97% 0.015 80) · accent: oklch(64% 0.14 75) · nav: N1a · footer: Ft5
+ * display: Bricolage Grotesque · body: Geist · axes: light / geometric-sans / chromatic-amber
+ * studied: no · context: user-provided
+ * pre-emit critique: P4 H4 E4 S4 R5 V4
+ */
 @import "tailwindcss";
 
 :root {
-  --radius: 14px;
-  --color-background: #f8fafc;
-  --color-foreground: #1f2937;
-  --color-surface: #ffffff;
-  --color-border: #d9e2ec;
-  --color-navy: #12304a;
-  --color-slate: #3f5f7a;
-  --color-soft: #eaf2f8;
-  --color-gold: #d8a24a;
-  --color-gold-light: #f6e8c8;
-  --color-muted: #667085;
-  --color-success: #2e7d32;
-  --color-warning: #b7791f;
-  --color-error: #c2410c;
+  /* Warm study-room — canonical tokens (mirrored in /tokens.css) */
+  --color-paper:        oklch(97% 0.015 80);
+  --color-paper-2:      oklch(94.5% 0.018 80);
+  --color-paper-3:      oklch(91.5% 0.02 80);
+  --color-card:         oklch(99% 0.008 85);
+  --color-ink:          oklch(24% 0.015 70);
+  --color-ink-2:        oklch(42% 0.018 70);
+  --color-rule:         oklch(88% 0.018 80);
+  --color-rule-2:       oklch(91% 0.016 80);
+  --color-accent:       oklch(64% 0.14 75);
+  --color-accent-hover: oklch(61.5% 0.145 73);
+  --color-accent-soft:  oklch(92% 0.045 85);
+  --color-accent-deep:  oklch(46% 0.11 65);
+  --color-accent-ink:   oklch(24% 0.015 70);
+  --color-focus:        oklch(58% 0.19 75);
+
+  /* Legacy aliases — existing components reference these names */
+  --radius: 12px;
+  --color-background: var(--color-paper);
+  --color-foreground: var(--color-ink);
+  --color-surface: var(--color-card);
+  --color-border: var(--color-rule);
+  --color-navy: oklch(32% 0.045 55);
+  --color-slate: var(--color-ink-2);
+  --color-soft: var(--color-paper-2);
+  --color-gold: var(--color-accent);
+  --color-gold-light: var(--color-accent-soft);
+  --color-muted: oklch(50% 0.018 70);
+  --color-success: oklch(50% 0.11 150);
+  --color-success-soft: oklch(94% 0.04 150);
+  --color-warning: oklch(55% 0.13 60);
+  --color-error: oklch(52% 0.16 30);
+
+  /* Type */
+  --font-display: var(--font-bricolage), var(--font-geist-sans), ui-sans-serif, sans-serif;
+  --text-display:   clamp(2.25rem, 4.5vw, 3.5rem);
+  --text-display-s: clamp(1.75rem, 3.2vw, 2.5rem);
+
+  /* Space — 4pt scale */
+  --space-3xs: 0.25rem;  --space-2xs: 0.5rem;  --space-xs: 0.75rem;
+  --space-sm:  1rem;     --space-md:  1.5rem;  --space-lg: 2rem;
+  --space-xl:  3rem;     --space-2xl: 4.5rem;  --space-3xl: 7rem;
+
+  /* Motion */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-short: 180ms;
+  --dur-med:   240ms;
+
+  /* Shape + elevation */
+  --radius-card:  12px;
+  --radius-input: 8px;
+  --radius-pill:  999px;
+  --shadow-card: 0 1px 2px oklch(46% 0.11 65 / 0.06), 0 4px 12px -6px oklch(46% 0.11 65 / 0.1);
+  --shadow-lift: 0 8px 24px -12px oklch(46% 0.11 65 / 0.28);
 }
 
 @theme inline {
@@ -29,17 +77,50 @@
   --color-gold-light: var(--color-gold-light);
   --color-muted: var(--color-muted);
   --color-success: var(--color-success);
+  --color-success-soft: var(--color-success-soft);
   --color-warning: var(--color-warning);
   --color-error: var(--color-error);
+  --color-paper: var(--color-paper);
+  --color-paper-2: var(--color-paper-2);
+  --color-paper-3: var(--color-paper-3);
+  --color-card: var(--color-card);
+  --color-ink: var(--color-ink);
+  --color-ink-2: var(--color-ink-2);
+  --color-rule: var(--color-rule);
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-accent-deep: var(--color-accent-deep);
+  --color-accent-ink: var(--color-accent-ink);
+  --color-focus: var(--color-focus);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-bricolage);
   --radius: var(--radius);
+}
+
+html,
+body {
+  overflow-x: clip;
 }
 
 body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-style: normal;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 /* Responsive form grids — collapse to single column on mobile */
@@ -55,6 +136,23 @@ body {
   gap: 12px;
 }
 
+/* Split Studio diptych — marketing pages */
+.diptych {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2xl);
+  align-items: center;
+}
+
+.hover-lift {
+  transition: transform var(--dur-short) var(--ease-out), box-shadow var(--dur-short) var(--ease-out);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+}
+
 @media (max-width: 768px) {
   .form-grid-3,
   .form-grid-2 {
@@ -68,6 +166,11 @@ body {
   .landing-contact-grid {
     grid-template-columns: 1fr !important;
   }
+
+  .diptych {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
 }
 
 @keyframes skeleton-pulse {
@@ -78,4 +181,21 @@ body {
 .skeleton {
   background-color: var(--color-border);
   animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-lift,
+  .hover-lift:hover {
+    transition-duration: 120ms;
+    transform: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 120ms !important;
+    scroll-behavior: auto !important;
+  }
 }
