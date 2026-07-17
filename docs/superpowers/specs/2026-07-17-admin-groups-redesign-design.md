@@ -63,12 +63,20 @@ presenting a single simple concept to the admin.
 
 ## Phase 1b — Sessions rebuilt on groups (build second)
 
-- Schedule: pick a group → pick date/time (host teacher's availability), optionally
-  narrow to specific members rather than the whole group.
-- Data model: sessions reference the group (`conversation_id`) and an attendee set
-  (`session_participants`), with a host teacher. `assignment_id` kept nullable for
-  backward compatibility. Busy/availability computed from host teacher + student
-  attendees.
+- Schedule: pick a **host teacher** → pick **one or more students** (their assigned
+  students; "select all" shortcut) → date/time/duration/notes. Covers a single 1:1
+  or a whole group class in one action.
+- **Data model (fan-out, chosen over a new session_participants table):**
+  `sessions.assignment_id` is NOT NULL and every teacher×student pair already has a
+  derived assignment (from Phase 1a group creation). So scheduling for N students
+  creates N sessions — one per (teacher, student) assignment — linked by a shared
+  new `group_session_id uuid`. This reuses the entire existing sessions/booking/email
+  stack unchanged: each teacher and student sees the session via their assignment
+  exactly as today, and booking busy-time already keys off the teacher. Only the
+  admin scheduling UI, an admin group-schedule API, and the admin sessions display
+  (which groups a batch into one row with cancel-as-group) are new.
+- Admin can cancel a whole batch (cancels every session sharing the
+  `group_session_id` and notifies each pair).
 
 ## Non-goals (this spec)
 - Teacher/student schedule + booking-rules simplification (later phase).
