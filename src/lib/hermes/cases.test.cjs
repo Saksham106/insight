@@ -168,6 +168,20 @@ test("tool route records explicit tutor ownership and fail-closed Calendar write
   assert.match(route, /workspace_state/);
 });
 
+test("approval requests optionally notify only Swati with a server-bound WhatsApp code", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  assert.match(route, /HERMES_WHATSAPP_APPROVALS_ENABLED/);
+  assert.match(route, /HERMES_ADMIN_WHATSAPP_E164/);
+  assert.match(route, /WHATSAPP_TEMPLATE_ADMIN_APPROVAL/);
+  assert.match(route, /hermes_whatsapp_approval_bindings/);
+  assert.match(route, /buildApprovalTemplateMessage/);
+  assert.match(route, /notification_status/);
+  assert.match(route, /notification_message_id/);
+  assert.match(env, /HERMES_WHATSAPP_APPROVALS_ENABLED=false/);
+  assert.match(env, /WHATSAPP_TEMPLATE_ADMIN_APPROVAL=/);
+});
+
 test("Hermes skill identifies automation, honors STOP, forbids transcript sharing, and escalates", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "infra/hermes-skills/insight-scheduling/SKILL.md"), "utf8");
   assert.match(source, /automated assistant/i);

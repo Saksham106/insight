@@ -5,6 +5,7 @@ import { academyInformation, communicationDecision, parseIMessageAdminActor, par
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
 import { parseCalendarEventResult, parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } from "@/lib/hermes/workspace-jobs";
+import { buildApprovalTemplateMessage, generateApprovalCode } from "@/lib/hermes/whatsapp-approvals";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job"] as const;
@@ -201,7 +202,58 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const { data: approval, error } = await supabase.rpc("request_hermes_approval", { p_case_id: caseId, p_payload: approvalPayload });
         if (error || !approval) throw error ?? new Error("approval_create_failed");
         await audit("approval_requested", "scheduling_case", caseId, { approvalId: approval.id });
-        return NextResponse.json({ approval: { id: approval.id, case_id: approval.case_id, action: approval.action, status: approval.status, requested_at: approval.requested_at, payload: approval.payload } }, { status: 201 });
+        let notification = { status: "disabled" };
+        if (process.env.HERMES_WHATSAPP_APPROVALS_ENABLED === "true") {
+          notification = { status: "failed" };
+          const adminNumber = process.env.HERMES_ADMIN_WHATSAPP_E164;
+          const templateName = process.env.WHATSAPP_TEMPLATE_ADMIN_APPROVAL;
+          const phoneNumberId = process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID;
+          const accessToken = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN;
+          if (adminNumber && templateName && phoneNumberId && accessToken) {
+            try {
+              let binding: { id: string; code: string } | null = null;
+              for (let attempt = 0; attempt < 5 && !binding; attempt += 1) {
+                const inserted = await supabase
+                  .from("hermes_whatsapp_approval_bindings")
+                  .insert({ approval_id: approval.id, code: generateApprovalCode(), expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() })
+                  .select("id, code")
+                  .maybeSingle();
+                if (inserted.data) binding = inserted.data;
+                else if (inserted.error?.code === "23505") {
+                  const existing = await supabase.from("hermes_whatsapp_approval_bindings").select("id, code").eq("approval_id", approval.id).maybeSingle();
+                  if (existing.data) binding = existing.data;
+                } else break;
+              }
+              if (binding) {
+                const graphPayload = buildApprovalTemplateMessage({
+                  to: adminNumber,
+                  templateName,
+                  locale: process.env.WHATSAPP_TEMPLATE_LOCALE ?? "en_US",
+                  code: binding.code,
+                  approvalPayload: approval.payload,
+                });
+                const version = process.env.WHATSAPP_CLOUD_API_VERSION ?? "v23.0";
+                const response = await fetch(`https://graph.facebook.com/${version}/${phoneNumberId}/messages`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+                  body: JSON.stringify(graphPayload),
+                });
+                const result = response.ok ? await response.json().catch(() => ({})) : {};
+                const messageId = typeof result?.messages?.[0]?.id === "string" ? result.messages[0].id : null;
+                await supabase.from("hermes_whatsapp_approval_bindings").update({
+                  notification_status: response.ok && messageId ? "sent" : "failed",
+                  notification_message_id: response.ok ? messageId : null,
+                  updated_at: new Date().toISOString(),
+                }).eq("id", binding.id);
+                notification = { status: response.ok && messageId ? "sent" : "failed" };
+              }
+            } catch {
+              notification = { status: "failed" };
+            }
+          }
+          await audit("approval_notification", "scheduling_case", caseId, { approvalId: approval.id, channel: "whatsapp", status: notification.status });
+        }
+        return NextResponse.json({ approval: { id: approval.id, case_id: approval.case_id, action: approval.action, status: approval.status, requested_at: approval.requested_at, payload: approval.payload }, notification }, { status: 201 });
       }
       case "confirm_class": {
         const caseId = stringValue(payload, "caseId", 80);
