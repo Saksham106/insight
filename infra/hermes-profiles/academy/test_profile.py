@@ -49,6 +49,22 @@ class AcademyProfileTests(unittest.TestCase):
         self.assertIn("/admin/hermes", readme)
         self.assertIn("rollback", readme)
 
+    def test_monthly_settlement_workflow_is_bounded_and_tutor_report_driven(self):
+        readme = (PROFILE_DIR / "README.md").read_text().lower()
+        agents = (PROFILE_DIR / "AGENTS.md").read_text().lower()
+        for required in (
+            "tutor report is the financial source of truth",
+            "family charges",
+            "does not move money",
+            "whatsapp_template_tutor_report_request",
+            "whatsapp_template_family_invoice",
+            "whatsapp_template_payment_reminder",
+            "whatsapp_template_payment_received",
+        ):
+            self.assertIn(required, readme)
+        self.assertIn("submit_tutor_report", agents)
+        self.assertIn("never infer", agents)
+
     def test_academy_help_hook_is_registered_for_help_and_whoami(self):
         hook_dir = PROFILE_DIR / "hooks" / "academy-help"
         manifest = (hook_dir / "HOOK.yaml").read_text()

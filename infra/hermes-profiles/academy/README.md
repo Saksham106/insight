@@ -62,7 +62,7 @@ This setting removes Hermes's duplicate phone allowlist; it does not make the Ac
 
 ## Swati approval notifications
 
-Insight can notify Swati on WhatsApp when Kitty creates a pending class proposal. This is an Insight webhook and database capability, not an Academy-profile credential: the Academy profile never receives the Meta token, approval codes, Google authorization, or database service key. `/admin/hermes` remains the authoritative fallback while this feature is disabled or if delivery fails.
+Insight can notify Swati on WhatsApp when Kitty creates a pending class proposal or monthly settlement. This is an Insight webhook and database capability, not an Academy-profile credential: the Academy profile never receives the Meta token, approval codes, Google authorization, or database service key. A valid WhatsApp or iMessage decision is sufficient; `/admin/hermes` is the audit and fallback path when delivery fails.
 
 Keep the server switch off until the Meta template and staging probes pass:
 
@@ -70,10 +70,11 @@ Keep the server switch off until the Meta template and staging probes pass:
 HERMES_WHATSAPP_APPROVALS_ENABLED=false
 HERMES_ADMIN_WHATSAPP_E164=<Swati's verified E.164 number>
 WHATSAPP_TEMPLATE_ADMIN_APPROVAL=<approved Utility template name>
+WHATSAPP_TEMPLATE_SETTLEMENT_APPROVAL=<approved Utility template name>
 WHATSAPP_TEMPLATE_LOCALE=en_US
 ```
 
-Create and obtain Meta approval for one fixed Utility template. Its body has four parameters—class start, class end, timezone, and reference code—and no participant names, phone numbers, free-form notes, or Calendar details. Use two quick-reply buttons in this order: `Approve` and `Reject`. Insight supplies the code-bound payloads `approval:approve:<CODE>` and `approval:reject:<CODE>`; do not put a fixed code into the template. Meta template creation and approval happen outside this repository.
+Create and obtain Meta approval for fixed class and settlement Utility templates. The class body has class start, class end, timezone, and reference code. The settlement body has month, total family charges, total tutor claims, currency, and reference code. Neither includes participant names, phone numbers, free-form notes, or Calendar details. Both use quick-reply buttons in this order: `Approve` and `Reject`. Insight supplies the code-bound payloads `approval:approve:<CODE>` and `approval:reject:<CODE>`; do not put a fixed code into a template. Meta template creation and approval happen outside this repository.
 
 Swati can use either quick reply or send exactly `APPROVE <CODE>` or `REJECT <CODE>`. Generic replies such as “yes”, “ok”, or emoji are not decisions. Insight accepts a decision only when the feature is enabled, the sender exactly matches `HERMES_ADMIN_WHATSAPP_E164`, the six-character code is pending and unexpired, and that approval has not already been consumed. A recognized admin command is handled before contact forwarding and is never sent to Kitty as conversation text. Codes expire after 48 hours and expose no case data by themselves.
 
@@ -88,6 +89,24 @@ Before production activation, test all of these in staging:
 7. Confirm audit records contain the channel and outcome but not message text, the approval code, or participant details.
 
 Enable `HERMES_WHATSAPP_APPROVALS_ENABLED=true` only after those probes pass. The current release does not send automatic class reminders.
+
+## Monthly tutor settlements
+
+Enable the settlement tools independently and only after applying `20260717022438_add_academy_settlements.sql` and completing staging probes:
+
+```dotenv
+HERMES_SETTLEMENTS_ENABLED=false
+WHATSAPP_TEMPLATE_TUTOR_REPORT_REQUEST=<approved Utility template name>
+WHATSAPP_TEMPLATE_FAMILY_INVOICE=<approved Utility template name>
+WHATSAPP_TEMPLATE_PAYMENT_REMINDER=<approved Utility template name>
+WHATSAPP_TEMPLATE_PAYMENT_RECEIVED=<approved Utility template name>
+```
+
+For this release, the tutor report is the financial source of truth. Kitty asks each tutor to report the students taught, class count, total minutes, optional lesson dates, and the tutor's claimed payout. Insight and Google Calendar are not used to infer or reconcile those numbers. Swati resolves each student and billing contact and enters the family charges. Kitty then creates one immutable approval snapshot containing the invoice and payout totals. Swati may approve that exact snapshot using the code-bound WhatsApp message, her verified iMessage conversation, or the Kitty dashboard; the first valid decision is authoritative across all three channels.
+
+After approval, Kitty may send the approved family invoice, payment reminder, payment-received acknowledgement, or tutor-report request using the configured templates. Swati still verifies incoming payment and sends each tutor's share herself. Recording a family payment or tutor payout only changes Insight's bookkeeping status; Kitty does not move money, connect to a bank, or initiate a transfer. Keep source reports, approval snapshots, invoice records, payout records, messages, and audit events for traceability.
+
+In staging, use synthetic contacts and verify tutor self-submission, Swati-only charge entry, rejection and revision, cross-channel approval races, template failure, payment eligibility only after related family invoices are paid, idempotent status recording, and feature-flag rollback. Set `HERMES_SETTLEMENTS_ENABLED=true` only after all probes pass. Rollback by setting it to `false`; leave records intact and finish any real payments manually.
 
 ### Approval notification rollback
 

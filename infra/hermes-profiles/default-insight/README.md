@@ -35,7 +35,7 @@ Do not copy `HERMES_ADMIN_TOOL_SHARED_SECRET`, the `insight-admin` plugin, or th
 7. Run the repository plugin tests and `hermes config check` for the default profile.
 8. Set `HERMES_IMESSAGE_INTAKE_ENABLED=true` in staging.
 9. From Swati's verified direct iMessage session, test contact search, case creation, and case read. Confirm the case and audit record use `origin_platform=imessage` and actor kind `admin`.
-10. Attempt the tool from a non-Photon session, a Photon group session, and a Photon session whose `chatId` is not exactly `any;-;<userId>`. All must fail without returning Academy data.
+10. Attempt the tool from a non-iMessage/non-Photon session, a Photon group session, and a Photon session whose `chatId` is not exactly `any;-;<userId>`. All must fail without returning Academy data.
 11. Enable production only after all staging checks pass. Keep the Academy profile, Meta callback, and `HERMES_TOOL_SHARED_SECRET` unchanged.
 
 ## Read-only Calendar free/busy worker
@@ -93,6 +93,12 @@ In staging, upgrade the default profile's `gws` OAuth authorization to the minim
 5. Disable `HERMES_CALENDAR_WRITES_ENABLED` and pause the no-agent schedule. New Swati confirmations must fail closed while other tutor cases remain usable.
 
 Rollback is to disable the flag first, pause the worker, and leave jobs/audit rows intact. Calendar events already created are not deleted automatically; compare the server-only Calendar link to the event ID and perform manual cleanup in Google Calendar if the approved class is cancelled. Calendar update/cancel, Meet creation, and reminders are not included yet.
+
+## Calendar versus WhatsApp outreach
+
+An event on Swati's Google Calendar does not automatically create an Insight case or send a WhatsApp reminder. Calendar storage, Kitty scheduling, and outbound messaging are separate approved workflows. For a Swati-taught class, she first asks Kitty through iMessage or WhatsApp to coordinate it; Insight may then queue narrow free/busy and event-create jobs for the default profile. A reminder is sent only when a separate approved workflow explicitly requests one and the recipient passes Insight's contact, consent, policy, service-window, and template checks.
+
+Monthly settlements are separate as well: the tutor report, including Swati's own report when she is the tutor, is the financial source of truth. Calendar events are not treated as evidence for class counts, hours, family charges, or tutor payout amounts.
 
 ## Rollback
 
