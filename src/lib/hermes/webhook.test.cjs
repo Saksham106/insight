@@ -38,6 +38,20 @@ test("projects supported message and status events with deterministic keys", () 
   ]);
 });
 
+test("projects only backend button identifiers for approval parsing", () => {
+  const interactive = structuredClone(fixture);
+  interactive.entry[0].changes[0].value.statuses = [];
+  interactive.entry[0].changes[0].value.messages = [
+    { id: "wamid.button", from: "84917583553", timestamp: "1784217600", type: "interactive", interactive: { type: "button_reply", button_reply: { id: "approval:approve:ABCD23", title: "Yes please" } } },
+    { id: "wamid.template", from: "84917583553", timestamp: "1784217601", type: "button", button: { payload: "approval:reject:ABCD23", text: "No" } },
+  ];
+  const events = projectWebhookEvents(interactive);
+  assert.equal(events[0].interactiveId, "approval:approve:ABCD23");
+  assert.equal(events[0].body, "Yes please");
+  assert.equal(events[1].interactiveId, "approval:reject:ABCD23");
+  assert.equal(events[1].body, "No");
+});
+
 test("ignores malformed and unsupported changes without throwing", () => {
   assert.deepEqual(projectWebhookEvents({ entry: [{ changes: [{ field: "account_update", value: {} }] }] }), []);
   assert.deepEqual(projectWebhookEvents(null), []);
@@ -89,4 +103,9 @@ test("webhook route handles verification, raw signatures, idempotency, and forwa
   assert.match(source, /forwarded_at/);
   assert.match(source, /consent_status: "withdrawn"/);
   assert.match(source, /isInboundContactEligible/);
+  assert.match(source, /parseApprovalReply/);
+  assert.match(source, /HERMES_WHATSAPP_APPROVALS_ENABLED/);
+  assert.match(source, /HERMES_ADMIN_WHATSAPP_E164/);
+  assert.match(source, /decide_hermes_approval_by_whatsapp/);
+  assert.match(source, /whatsapp-approval:/);
 });
