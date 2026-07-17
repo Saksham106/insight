@@ -180,6 +180,17 @@ test("Academy settlements are immutable, admin-scoped, and use tutor reports as 
   assert.match(sql, /total_minor >= 0/);
   assert.match(sql, /source_channel in \('whatsapp', 'imessage_admin', 'admin'\)/);
   assert.match(sql, /create unique index academy_tutor_reports_one_active/);
+  for (const index of [
+    "academy_tutor_reports_tutor_idx",
+    "academy_tutor_reports_supersedes_idx",
+    "academy_report_lines_student_idx",
+    "academy_report_lines_billed_idx",
+    "academy_family_invoices_approval_idx",
+    "academy_family_invoices_billed_idx",
+    "academy_family_invoices_student_idx",
+    "academy_tutor_payouts_approval_idx",
+    "academy_tutor_payouts_tutor_idx",
+  ]) assert.match(sql, new RegExp(`create index ${index}`));
   assert.doesNotMatch(sql, /\bfrom public\.sessions\b/);
   assert.doesNotMatch(sql, /calendar/);
   assert.match(sql, /alter table public\.hermes_messages[\s\S]+add column settlement_cycle_id uuid references public\.academy_settlement_cycles/);
@@ -210,6 +221,7 @@ test("settlement approvals bind exactly one subject and decide atomically across
   assert.match(sql, /v_binding\.expires_at <= now\(\)/);
   assert.match(sql, /v_approval\.payload_digest/);
   assert.match(sql, /v_approval\.proposal_version <> v_cycle\.version/);
+  assert.match(sql, /status not in \('ready', 'superseded'\)[\s\S]+settlement_reports_incomplete/);
   assert.match(sql, /v_approval\.consumed_at is not null/);
   assert.match(sql, /p_decision = 'rejected'[\s\S]+status = 'ready_for_approval'/);
   assert.match(sql, /v_approval\.consumed_at is not null[\s\S]+return v_cycle/);

@@ -96,4 +96,7 @@ test("sender route is internal-authenticated and idempotent", () => {
   assert.match(source, /academy_settlement_cycles/);
   assert.match(source, /family_invoice_id/);
   assert.match(source, /settlement_cycle_id/);
+  assert.match(source, /buildSettlementMessageContent/);
+  assert.match(source, /body\.text = financialContent\.body/);
+  assert.match(source, /body\.bodyParameters = financialContent\.bodyParameters/);
 });

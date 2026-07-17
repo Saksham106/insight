@@ -50,6 +50,51 @@ export function parseMinorAmount(input: unknown): number {
   return boundedInteger(input, 0, MAX_MINOR_AMOUNT, "invalid_minor_amount");
 }
 
+function settlementPeriodLabel(periodStart: unknown): string {
+  return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(`${parseSettlementMonth(periodStart)}T00:00:00.000Z`));
+}
+
+function formatMinorCurrency(totalMinor: unknown, currencyInput: unknown): string {
+  const currency = parseCurrency(currencyInput);
+  const formatter = new Intl.NumberFormat("en-US", { style: "currency", currency });
+  const digits = formatter.resolvedOptions().maximumFractionDigits ?? 2;
+  return formatter.format(parseMinorAmount(totalMinor) / (10 ** digits));
+}
+
+export function buildSettlementMessageContent(input: {
+  intent: "tutor_report_request" | "family_invoice" | "payment_reminder" | "payment_received";
+  periodStart: unknown;
+  currency: unknown;
+  totalMinor?: unknown;
+  itemSnapshot?: unknown;
+}): { body: string; bodyParameters: string[] } {
+  const period = settlementPeriodLabel(input.periodStart);
+  const currency = parseCurrency(input.currency);
+  if (input.intent === "tutor_report_request") {
+    return {
+      body: `Please send your MyInsightAcademy tutor report for ${period}, including each student, class count, total minutes, optional lesson dates, and your claimed payout in ${currency}.`,
+      bodyParameters: [period, currency],
+    };
+  }
+  if (!Array.isArray(input.itemSnapshot) || input.itemSnapshot.length < 1 || input.itemSnapshot.length > 1000) throw new Error("invalid_invoice_snapshot");
+  const totals = input.itemSnapshot.reduce((sum, raw) => {
+    const item = recordValue(raw, "invalid_invoice_snapshot");
+    return {
+      classes: sum.classes + boundedInteger(item.classCount, 1, 200, "invalid_invoice_snapshot"),
+      minutes: sum.minutes + boundedInteger(item.totalMinutes, 1, 50_000, "invalid_invoice_snapshot"),
+    };
+  }, { classes: 0, minutes: 0 });
+  const amount = formatMinorCurrency(input.totalMinor, currency);
+  const detail = `${totals.classes} ${totals.classes === 1 ? "class" : "classes"} (${totals.minutes} minutes)`;
+  const body = input.intent === "family_invoice"
+    ? `Your MyInsightAcademy statement for ${period} includes ${detail}. Amount due: ${amount}. Reply if anything looks incorrect.`
+    : input.intent === "payment_reminder"
+      ? `Reminder: ${amount} is due for ${detail} with MyInsightAcademy in ${period}. Reply if anything looks incorrect.`
+      : `We recorded your payment of ${amount} for ${detail} with MyInsightAcademy in ${period}. Thank you.`;
+  return { body, bodyParameters: [period, String(totals.classes), String(totals.minutes), amount] };
+}
+
 export interface TutorReportLineInput {
   reportedStudentName: string;
   studentContactId?: string;

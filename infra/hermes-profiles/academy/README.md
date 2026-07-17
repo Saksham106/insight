@@ -102,6 +102,8 @@ WHATSAPP_TEMPLATE_PAYMENT_REMINDER=<approved Utility template name>
 WHATSAPP_TEMPLATE_PAYMENT_RECEIVED=<approved Utility template name>
 ```
 
+The tutor-report request template parameters are month and currency. The family invoice, reminder, and payment-received templates use month, class count, total minutes, and the locale-formatted amount, in that order. Insight derives every value and any in-window free-form copy from the stored settlement or approved invoice snapshot; the agent cannot supply financial wording or amounts.
+
 For this release, the tutor report is the financial source of truth. Kitty asks each tutor to report the students taught, class count, total minutes, optional lesson dates, and the tutor's claimed payout. Insight and Google Calendar are not used to infer or reconcile those numbers. Swati resolves each student and billing contact and enters the family charges. Kitty then creates one immutable approval snapshot containing the invoice and payout totals. Swati may approve that exact snapshot using the code-bound WhatsApp message, her verified iMessage conversation, or the Kitty dashboard; the first valid decision is authoritative across all three channels.
 
 After approval, Kitty may send the approved family invoice, payment reminder, payment-received acknowledgement, or tutor-report request using the configured templates. Swati still verifies incoming payment and sends each tutor's share herself. Recording a family payment or tutor payout only changes Insight's bookkeeping status; Kitty does not move money, connect to a bank, or initiate a transfer. Keep source reports, approval snapshots, invoice records, payout records, messages, and audit events for traceability.

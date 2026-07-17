@@ -12,6 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 };
 
 const {
+  buildSettlementMessageContent,
   buildSettlementApprovalSummary,
   parseCurrency,
   parseMinorAmount,
@@ -118,6 +119,34 @@ test("builds a deterministic exact approval summary and totals", () => {
   });
   assert.deepEqual(second, first);
   assert.deepEqual(first.totals, { familyChargesMinor: 850000, tutorPayoutsMinor: 550000 });
+});
+
+test("derives family financial messages only from the approved invoice snapshot", () => {
+  const content = buildSettlementMessageContent({
+    intent: "family_invoice",
+    periodStart: "2026-06-01",
+    currency: "USD",
+    totalMinor: 12345,
+    itemSnapshot: [
+      { classCount: 2, totalMinutes: 120 },
+      { classCount: 1, totalMinutes: 45 },
+    ],
+  });
+  assert.deepEqual(content.bodyParameters, ["June 2026", "3", "165", "$123.45"]);
+  assert.match(content.body, /3 classes \(165 minutes\)/);
+  assert.match(content.body, /\$123\.45/);
+  assert.throws(() => buildSettlementMessageContent({ intent: "family_invoice", periodStart: "2026-06-01", currency: "USD", totalMinor: 1, itemSnapshot: [{ classCount: -1, totalMinutes: 60 }] }), /invalid_invoice_snapshot/);
+});
+
+test("derives tutor-report requests from the settlement month and currency", () => {
+  assert.deepEqual(buildSettlementMessageContent({
+    intent: "tutor_report_request",
+    periodStart: "2026-06-01",
+    currency: "VND",
+  }), {
+    body: "Please send your MyInsightAcademy tutor report for June 2026, including each student, class count, total minutes, optional lesson dates, and your claimed payout in VND.",
+    bodyParameters: ["June 2026", "VND"],
+  });
 });
 
 test("settlement evidence logic has no session, Calendar, transcript, or database dependency", () => {

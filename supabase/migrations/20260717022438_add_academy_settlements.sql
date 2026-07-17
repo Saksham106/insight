@@ -94,9 +94,21 @@ alter table public.hermes_messages
   add column family_invoice_id uuid references public.academy_family_invoices(id) on delete set null;
 
 create index academy_tutor_reports_cycle_status on public.academy_tutor_reports(settlement_cycle_id, status);
+create index academy_tutor_reports_tutor_idx on public.academy_tutor_reports(tutor_contact_id);
+create index academy_tutor_reports_supersedes_idx on public.academy_tutor_reports(supersedes_report_id)
+  where supersedes_report_id is not null;
 create index academy_tutor_report_lines_report on public.academy_tutor_report_lines(tutor_report_id);
+create index academy_report_lines_student_idx on public.academy_tutor_report_lines(student_contact_id)
+  where student_contact_id is not null;
+create index academy_report_lines_billed_idx on public.academy_tutor_report_lines(billed_contact_id)
+  where billed_contact_id is not null;
 create index academy_family_invoices_cycle_status on public.academy_family_invoices(settlement_cycle_id, status);
+create index academy_family_invoices_approval_idx on public.academy_family_invoices(approval_id);
+create index academy_family_invoices_billed_idx on public.academy_family_invoices(billed_contact_id);
+create index academy_family_invoices_student_idx on public.academy_family_invoices(student_contact_id);
 create index academy_tutor_payouts_cycle_status on public.academy_tutor_payouts(settlement_cycle_id, status);
+create index academy_tutor_payouts_approval_idx on public.academy_tutor_payouts(approval_id);
+create index academy_tutor_payouts_tutor_idx on public.academy_tutor_payouts(tutor_contact_id);
 create index hermes_messages_settlement_cycle_idx on public.hermes_messages(settlement_cycle_id)
   where settlement_cycle_id is not null;
 create index hermes_messages_family_invoice_idx on public.hermes_messages(family_invoice_id)
@@ -385,6 +397,10 @@ begin
     select 1 from public.academy_tutor_reports
     where settlement_cycle_id = p_cycle_id and status = 'ready'
   ) then raise exception 'ready_tutor_report_required'; end if;
+  if exists (
+    select 1 from public.academy_tutor_reports
+    where settlement_cycle_id = p_cycle_id and status not in ('ready', 'superseded')
+  ) then raise exception 'settlement_reports_incomplete'; end if;
   if exists (
     select 1
     from public.academy_tutor_report_lines l

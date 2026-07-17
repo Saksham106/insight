@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { verifyServiceRequest } from "@/lib/hermes/auth";
 import { buildGraphMessageRequest, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, type WhatsAppIntent } from "@/lib/hermes/meta";
+import { buildSettlementMessageContent } from "@/lib/hermes/settlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
@@ -31,20 +32,25 @@ export async function POST(request: Request) {
   const financialIntents: WhatsAppIntent[] = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"];
   const isFinancial = financialIntents.includes(body.intent);
   let approved = false;
+  let financialContent: { body: string; bodyParameters: string[] } | null = null;
   if (isFinancial) {
     if (process.env.HERMES_SETTLEMENTS_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (body.intent === "tutor_report_request") {
       if (!body.settlementCycleId || body.familyInvoiceId || contact.role !== "teacher") return NextResponse.json({ error: "Tutor report request requires one tutor and settlement cycle" }, { status: 403 });
-      const { data: cycle } = await supabase.from("academy_settlement_cycles").select("id, status").eq("id", body.settlementCycleId).maybeSingle();
+      const { data: cycle } = await supabase.from("academy_settlement_cycles").select("id, status, period_start, currency").eq("id", body.settlementCycleId).maybeSingle();
       if (!cycle || !["collecting", "needs_attention", "ready_for_approval"].includes(cycle.status)) return NextResponse.json({ error: "Settlement cycle is unavailable" }, { status: 409 });
+      financialContent = buildSettlementMessageContent({ intent: body.intent, periodStart: cycle.period_start, currency: cycle.currency });
     } else {
       if (!body.familyInvoiceId || body.caseId || body.settlementCycleId) return NextResponse.json({ error: "Financial message requires one family invoice" }, { status: 400 });
       const { data: invoice } = await supabase.from("academy_family_invoices")
-        .select("id, settlement_cycle_id, billed_contact_id, status, approval_id")
+        .select("id, settlement_cycle_id, billed_contact_id, status, approval_id, total_minor, currency, item_snapshot")
         .eq("id", body.familyInvoiceId).maybeSingle();
       if (!invoice || invoice.billed_contact_id !== body.contactId) return NextResponse.json({ error: "Contact is not the billed recipient" }, { status: 403 });
       if (body.intent === "payment_received" ? invoice.status !== "paid" : !["approved", "sent"].includes(invoice.status)) return NextResponse.json({ error: "Family invoice is not in the required state" }, { status: 409 });
       body.settlementCycleId = invoice.settlement_cycle_id;
+      const { data: cycle } = await supabase.from("academy_settlement_cycles").select("period_start").eq("id", invoice.settlement_cycle_id).maybeSingle();
+      if (!cycle) return NextResponse.json({ error: "Settlement cycle is unavailable" }, { status: 409 });
+      financialContent = buildSettlementMessageContent({ intent: body.intent as "family_invoice" | "payment_reminder" | "payment_received", periodStart: cycle.period_start, currency: invoice.currency, totalMinor: invoice.total_minor, itemSnapshot: invoice.item_snapshot });
       approved = true;
     }
   } else {
@@ -57,6 +63,10 @@ export async function POST(request: Request) {
     if (caseRecord.human_takeover) return NextResponse.json({ error: "Swati has taken over this case" }, { status: 409 });
     if (body.intent === "class_confirmation" && caseRecord.status !== "confirmed") return NextResponse.json({ error: "Class is not confirmed" }, { status: 409 });
     if (body.intent === "class_confirmation" && caseRecord.tutor_kind === "swati" && caseRecord.workspace_state !== "ready") return NextResponse.json({ error: "Swati's Calendar event is not ready" }, { status: 409 });
+  }
+  if (financialContent) {
+    body.text = financialContent.body;
+    body.bodyParameters = financialContent.bodyParameters;
   }
   if ((recentCount ?? 0) >= 20) return NextResponse.json({ error: "Sender rate limit reached" }, { status: 429 });
 
