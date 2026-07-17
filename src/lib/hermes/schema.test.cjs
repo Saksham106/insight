@@ -182,6 +182,8 @@ test("Academy settlements are immutable, admin-scoped, and use tutor reports as 
   assert.match(sql, /create unique index academy_tutor_reports_one_active/);
   assert.doesNotMatch(sql, /\bfrom public\.sessions\b/);
   assert.doesNotMatch(sql, /calendar/);
+  assert.match(sql, /alter table public\.hermes_messages[\s\S]+add column settlement_cycle_id uuid references public\.academy_settlement_cycles/);
+  assert.match(sql, /alter table public\.hermes_messages[\s\S]+add column family_invoice_id uuid references public\.academy_family_invoices/);
 });
 
 test("settlement approvals bind exactly one subject and decide atomically across channels", () => {

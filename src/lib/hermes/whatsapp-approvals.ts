@@ -8,11 +8,20 @@ export interface ApprovalReply {
   code: string;
 }
 
-export interface ApprovalSummary {
+export interface ClassApprovalSummary {
   start: string;
   end: string;
   timezone: string;
 }
+
+export interface SettlementApprovalSummary {
+  periodStart: string;
+  currency: string;
+  familyTotalMinor: number;
+  tutorTotalMinor: number;
+}
+
+export type ApprovalSummary = ClassApprovalSummary | SettlementApprovalSummary;
 
 export function generateApprovalCode(bytes: Buffer = randomBytes(6)) {
   if (bytes.length < 6) throw new Error("insufficient_random_bytes");
@@ -34,6 +43,23 @@ export function parseApprovalReply(input: { body?: unknown; interactiveId?: unkn
 export function summarizeApprovalPayload(input: unknown): ApprovalSummary {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("invalid_approval_payload");
   const value = input as Record<string, unknown>;
+  if (Array.isArray(value.familyInvoices) && Array.isArray(value.tutorPayouts)) {
+    const periodStart = typeof value.periodStart === "string" ? value.periodStart : "";
+    const currency = typeof value.currency === "string" ? value.currency : "";
+    if (!/^\d{4}-\d{2}-01$/.test(periodStart) || !/^[A-Z]{3}$/.test(currency)) throw new Error("invalid_approval_payload");
+    const sum = (items: unknown[], key: string) => items.reduce<number>((total, item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("invalid_approval_payload");
+      const amount = (item as Record<string, unknown>)[key];
+      if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 0) throw new Error("invalid_approval_payload");
+      return total + amount;
+    }, 0);
+    return {
+      periodStart,
+      currency,
+      familyTotalMinor: sum(value.familyInvoices, "totalMinor"),
+      tutorTotalMinor: sum(value.tutorPayouts, "amountMinor"),
+    };
+  }
   const start = typeof value.start === "string" ? new Date(value.start) : new Date(Number.NaN);
   const end = typeof value.end === "string" ? new Date(value.end) : new Date(Number.NaN);
   const timezone = typeof value.timezone === "string" ? value.timezone.trim() : "";
@@ -59,6 +85,9 @@ export function buildApprovalTemplateMessage(input: {
   if (!/^[A-Za-z_]{2,20}$/.test(input.locale)) throw new Error("invalid_template_locale");
   if (!new RegExp(`^${CODE_PATTERN}$`).test(input.code)) throw new Error("invalid_approval_code");
   const summary = summarizeApprovalPayload(input.approvalPayload);
+  const parameters = "start" in summary
+    ? [summary.start, summary.end, summary.timezone, input.code]
+    : [summary.periodStart, summary.familyTotalMinor.toString(), summary.tutorTotalMinor.toString(), summary.currency, input.code];
   return {
     messaging_product: "whatsapp",
     recipient_type: "individual",
@@ -68,12 +97,7 @@ export function buildApprovalTemplateMessage(input: {
       name: input.templateName,
       language: { code: input.locale },
       components: [
-        { type: "body", parameters: [
-          { type: "text", text: summary.start },
-          { type: "text", text: summary.end },
-          { type: "text", text: summary.timezone },
-          { type: "text", text: input.code },
-        ] },
+        { type: "body", parameters: parameters.map((text) => ({ type: "text", text })) },
         { type: "button", sub_type: "quick_reply", index: "0", parameters: [{ type: "payload", payload: `approval:approve:${input.code}` }] },
         { type: "button", sub_type: "quick_reply", index: "1", parameters: [{ type: "payload", payload: `approval:reject:${input.code}` }] },
       ],

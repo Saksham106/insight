@@ -411,8 +411,25 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
           } else break;
         }
         if (!binding) throw new Error("settlement_approval_binding_failed");
-        await audit("approval_requested", "settlement_cycle", cycleId, { approvalId: approval.id });
-        return NextResponse.json({ approval: { id: approval.id, status: approval.status, payload: approval.payload, code: binding.code, expiresAt: binding.expires_at } }, { status: 201 });
+        let notification = { status: "disabled" };
+        if (process.env.HERMES_WHATSAPP_APPROVALS_ENABLED === "true") {
+          notification = { status: "failed" };
+          const adminNumber = process.env.HERMES_ADMIN_WHATSAPP_E164;
+          const templateName = process.env.WHATSAPP_TEMPLATE_SETTLEMENT_APPROVAL;
+          const phoneNumberId = process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID;
+          const accessToken = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN;
+          if (adminNumber && templateName && phoneNumberId && accessToken) {
+            const graphPayload = buildApprovalTemplateMessage({ to: adminNumber, templateName, locale: process.env.WHATSAPP_TEMPLATE_LOCALE ?? "en_US", code: binding.code, approvalPayload: approval.payload });
+            const version = process.env.WHATSAPP_CLOUD_API_VERSION ?? "v23.0";
+            const response = await fetch(`https://graph.facebook.com/${version}/${phoneNumberId}/messages`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(graphPayload) });
+            const result = response.ok ? await response.json().catch(() => ({})) : {};
+            const messageId = typeof result?.messages?.[0]?.id === "string" ? result.messages[0].id : null;
+            await supabase.from("hermes_whatsapp_approval_bindings").update({ notification_status: response.ok && messageId ? "sent" : "failed", notification_message_id: response.ok ? messageId : null, updated_at: new Date().toISOString() }).eq("id", binding.id);
+            notification = { status: response.ok && messageId ? "sent" : "failed" };
+          }
+        }
+        await audit("approval_requested", "settlement_cycle", cycleId, { approvalId: approval.id, notificationStatus: notification.status });
+        return NextResponse.json({ approval: { id: approval.id, status: approval.status, payload: approval.payload, code: binding.code, expiresAt: binding.expires_at }, notification }, { status: 201 });
       }
       case "decide_approval": {
         if (mode !== "imessage_admin") return rejectRequest("WhatsApp approval commands are handled directly by Kitty", 409, "deterministic_whatsapp_required");
@@ -467,9 +484,12 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
       case "send_message": {
         const contactId = stringValue(payload, "contactId", 80);
         const intent = stringValue(payload, "intent", 40) as WhatsAppIntent;
-        if (!["permission_request", "availability_request", "time_proposal", "class_confirmation", "reschedule_request", "class_reminder", "human_attention"].includes(intent)) return failure("Invalid intent");
+        if (!["permission_request", "availability_request", "time_proposal", "class_confirmation", "reschedule_request", "class_reminder", "human_attention", "tutor_report_request", "family_invoice", "payment_reminder", "payment_received"].includes(intent)) return failure("Invalid intent");
         const idempotencyKey = stringValue(payload, "idempotencyKey", 128);
-        const caseId = stringValue(payload, "caseId", 80);
+        const financialIntent = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"].includes(intent);
+        const caseId = financialIntent ? undefined : stringValue(payload, "caseId", 80);
+        const settlementCycleId = typeof payload.settlementCycleId === "string" ? payload.settlementCycleId : undefined;
+        const familyInvoiceId = typeof payload.familyInvoiceId === "string" ? payload.familyInvoiceId : undefined;
         if (intent === "class_confirmation") {
           const { data: caseRecord, error: caseError } = await supabase
             .from("hermes_scheduling_cases")
@@ -485,12 +505,12 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         }
         const senderSecret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
         if (!senderSecret) return failure("Sender unavailable", 503);
-        const senderBody = JSON.stringify({ contactId, caseId, intent, text: typeof payload.text === "string" ? payload.text.slice(0, 2000) : undefined, bodyParameters: Array.isArray(payload.bodyParameters) ? payload.bodyParameters.slice(0, 10).map(String) : undefined, idempotencyKey, approvalId: typeof payload.approvalId === "string" ? payload.approvalId : undefined });
+        const senderBody = JSON.stringify({ contactId, caseId, settlementCycleId, familyInvoiceId, intent, text: typeof payload.text === "string" ? payload.text.slice(0, 2000) : undefined, bodyParameters: Array.isArray(payload.bodyParameters) ? payload.bodyParameters.slice(0, 10).map(String) : undefined, idempotencyKey, approvalId: typeof payload.approvalId === "string" ? payload.approvalId : undefined });
         const timestamp = Date.now().toString();
         const senderRequestId = `${auth.requestId}-send`;
         const response = await fetch(new URL("/api/whatsapp/send", request.url), { method: "POST", headers: { "content-type": "application/json", "x-hermes-timestamp": timestamp, "x-hermes-request-id": senderRequestId, "x-hermes-signature": signServiceRequest(senderBody, timestamp, senderRequestId, senderSecret) }, body: senderBody });
         const result = await response.json();
-        await audit(response.ok ? "message_requested" : "message_rejected", "contact", contactId, { caseId: caseId ?? null, intent, status: response.status });
+        await audit(response.ok ? "message_requested" : "message_rejected", "contact", contactId, { caseId: caseId ?? null, settlementCycleId: settlementCycleId ?? null, familyInvoiceId: familyInvoiceId ?? null, intent, status: response.status });
         return NextResponse.json(result, { status: response.status });
       }
       case "escalate_to_swati": {

@@ -47,3 +47,22 @@ test("builds a fixed utility template with two code-bound quick replies", () => 
   assert.deepEqual(result.template.components[2], { type: "button", sub_type: "quick_reply", index: "1", parameters: [{ type: "payload", payload: "approval:reject:ABCD23" }] });
   assert.equal(JSON.stringify(result).includes("private"), false);
 });
+
+test("summarizes an exact settlement without exposing family or tutor details", () => {
+  const payload = {
+    periodStart: "2026-06-01",
+    currency: "VND",
+    version: 2,
+    familyInvoices: [{ billedContactId: "private", studentContactId: "private", totalMinor: 850000, items: [{ private: true }] }],
+    tutorPayouts: [{ tutorContactId: "private", reportId: "private", amountMinor: 550000 }],
+  };
+  assert.deepEqual(summarizeApprovalPayload(payload), {
+    periodStart: "2026-06-01", currency: "VND", familyTotalMinor: 850000, tutorTotalMinor: 550000,
+  });
+  const result = buildApprovalTemplateMessage({ to: "+84917583553", templateName: "kitty_settlement_approval", locale: "en_US", code: "ABCD23", approvalPayload: payload });
+  const serialized = JSON.stringify(result);
+  assert.match(serialized, /850000/);
+  assert.match(serialized, /550000/);
+  assert.equal(serialized.includes("billedContactId"), false);
+  assert.equal(serialized.includes("tutorContactId"), false);
+});

@@ -89,10 +89,18 @@ create table public.academy_tutor_payouts (
   check ((status = 'paid') = (paid_at is not null))
 );
 
+alter table public.hermes_messages
+  add column settlement_cycle_id uuid references public.academy_settlement_cycles(id) on delete set null,
+  add column family_invoice_id uuid references public.academy_family_invoices(id) on delete set null;
+
 create index academy_tutor_reports_cycle_status on public.academy_tutor_reports(settlement_cycle_id, status);
 create index academy_tutor_report_lines_report on public.academy_tutor_report_lines(tutor_report_id);
 create index academy_family_invoices_cycle_status on public.academy_family_invoices(settlement_cycle_id, status);
 create index academy_tutor_payouts_cycle_status on public.academy_tutor_payouts(settlement_cycle_id, status);
+create index hermes_messages_settlement_cycle_idx on public.hermes_messages(settlement_cycle_id)
+  where settlement_cycle_id is not null;
+create index hermes_messages_family_invoice_idx on public.hermes_messages(family_invoice_id)
+  where family_invoice_id is not null;
 
 alter table public.hermes_approvals alter column case_id drop not null;
 alter table public.hermes_approvals

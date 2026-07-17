@@ -7,6 +7,10 @@ export type WhatsAppIntent =
   | "class_confirmation"
   | "reschedule_request"
   | "class_reminder"
+  | "tutor_report_request"
+  | "family_invoice"
+  | "payment_reminder"
+  | "payment_received"
   | "human_attention";
 
 export interface TemplateConfig {
@@ -74,6 +78,10 @@ export function templateMapFromEnv(env: NodeJS.ProcessEnv): TemplateMap {
     ["class_confirmation", env.WHATSAPP_TEMPLATE_CLASS_CONFIRMATION],
     ["reschedule_request", env.WHATSAPP_TEMPLATE_RESCHEDULE_REQUEST],
     ["class_reminder", env.WHATSAPP_TEMPLATE_CLASS_REMINDER],
+    ["tutor_report_request", env.WHATSAPP_TEMPLATE_TUTOR_REPORT_REQUEST],
+    ["family_invoice", env.WHATSAPP_TEMPLATE_FAMILY_INVOICE],
+    ["payment_reminder", env.WHATSAPP_TEMPLATE_PAYMENT_REMINDER],
+    ["payment_received", env.WHATSAPP_TEMPLATE_PAYMENT_RECEIVED],
     ["human_attention", env.WHATSAPP_TEMPLATE_HUMAN_ATTENTION],
   ];
   return Object.fromEntries(entries.filter((entry): entry is [WhatsAppIntent, string] => Boolean(entry[1])).map(([intent, name]) => [intent, { name, locale }]));
