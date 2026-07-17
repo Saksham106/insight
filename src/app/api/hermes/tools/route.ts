@@ -4,12 +4,14 @@ import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
 import { academyInformation, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
+import { parseCurrency, parseSettlementMonth, sanitizeFamilyCharges, sanitizeTutorReport } from "@/lib/hermes/settlements";
 import { parseCalendarEventResult, parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } from "@/lib/hermes/workspace-jobs";
 import { buildApprovalTemplateMessage, generateApprovalCode } from "@/lib/hermes/whatsapp-approvals";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job"] as const;
+const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job", "start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"] as const;
 type Action = (typeof ACTIONS)[number];
+const SETTLEMENT_ACTIONS = new Set<Action>(["start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"]);
 type ToolMode = "whatsapp" | "imessage_admin";
 type JsonObject = Record<string, unknown>;
 const CONTACT_FIELDS = "id, display_name, role, timezone, communication_policy, consent_status, is_active";
@@ -52,6 +54,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
   };
   const action = parsed.action;
   if (typeof action !== "string" || !ACTIONS.includes(action as Action)) return rejectRequest("Unsupported action", 400, "unsupported_action");
+  if (SETTLEMENT_ACTIONS.has(action as Action) && process.env.HERMES_SETTLEMENTS_ENABLED !== "true") return rejectRequest("Not found", 404, "settlements_disabled");
   let payload: JsonObject;
   try { payload = objectValue(parsed.payload ?? {}); } catch { return rejectRequest("Invalid payload", 400, "invalid_payload"); }
 
@@ -342,6 +345,124 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
             updatedAt: job.updated_at,
           },
         });
+      }
+      case "start_settlement_cycle": {
+        const periodStart = parseSettlementMonth(payload.periodStart);
+        const currency = parseCurrency(payload.currency);
+        const { data: cycle, error } = await supabase
+          .from("academy_settlement_cycles")
+          .upsert({ period_start: periodStart, currency }, { onConflict: "period_start,currency", ignoreDuplicates: true })
+          .select("id, period_start, currency, status, version, created_at, updated_at")
+          .maybeSingle();
+        if (error) throw error;
+        const resolved = cycle ?? (await supabase.from("academy_settlement_cycles").select("id, period_start, currency, status, version, created_at, updated_at").eq("period_start", periodStart).eq("currency", currency).single()).data;
+        if (!resolved) throw new Error("settlement_cycle_create_failed");
+        await audit("settlement_cycle_started", "settlement_cycle", resolved.id, { periodStart, currency });
+        return NextResponse.json({ cycle: resolved }, { status: cycle ? 201 : 200 });
+      }
+      case "get_settlement_cycle": {
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const [{ data: cycle, error }, reports, invoices, payouts] = await Promise.all([
+          supabase.from("academy_settlement_cycles").select("id, period_start, currency, status, version, closed_at, created_at, updated_at").eq("id", cycleId).maybeSingle(),
+          supabase.from("academy_tutor_reports").select("id, tutor_contact_id, revision, status, claimed_payout_minor, source_channel, submitted_at, lines:academy_tutor_report_lines(id, reported_student_name, student_contact_id, billed_contact_id, class_count, total_minutes, lesson_dates, family_charge_minor, resolution_status)").eq("settlement_cycle_id", cycleId).neq("status", "superseded").order("submitted_at"),
+          supabase.from("academy_family_invoices").select("id, billed_contact_id, student_contact_id, total_minor, currency, status, sent_at, paid_at").eq("settlement_cycle_id", cycleId).order("created_at"),
+          supabase.from("academy_tutor_payouts").select("id, tutor_report_id, tutor_contact_id, amount_minor, currency, status, paid_at").eq("settlement_cycle_id", cycleId).order("created_at"),
+        ]);
+        if (error || reports.error || invoices.error || payouts.error) throw error ?? reports.error ?? invoices.error ?? payouts.error;
+        if (!cycle) return failure("Settlement cycle not found", 404);
+        return NextResponse.json({ cycle, reports: reports.data ?? [], invoices: invoices.data ?? [], payouts: payouts.data ?? [] });
+      }
+      case "submit_tutor_report": {
+        if (actorKind === "contact" && (!actorContact || actorContact.role !== "teacher")) return rejectRequest("Only an approved tutor can submit a tutor report", 403, "teacher_required");
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const tutorContactId = actorKind === "contact" ? actorContact!.id : stringValue(payload, "tutorContactId", 80);
+        const report = sanitizeTutorReport(payload.report);
+        const { data: created, error } = await supabase.rpc("submit_academy_tutor_report", {
+          p_cycle_id: cycleId,
+          p_tutor_contact_id: tutorContactId,
+          p_claimed_payout_minor: report.claimedPayoutMinor,
+          p_source_channel: actorKind === "contact" ? "whatsapp" : mode === "imessage_admin" ? "imessage_admin" : "admin",
+          p_lines: report.lines,
+        });
+        if (error || !created) throw error ?? new Error("tutor_report_create_failed");
+        await audit("tutor_report_submitted", "tutor_report", created.id, { cycleId, revision: created.revision, lineCount: report.lines.length });
+        return NextResponse.json({ report: { id: created.id, cycleId: created.settlement_cycle_id, revision: created.revision, status: created.status, submittedAt: created.submitted_at } }, { status: 201 });
+      }
+      case "set_family_charges": {
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const charges = sanitizeFamilyCharges(payload.charges);
+        const { data: cycle, error } = await supabase.rpc("set_academy_family_charges", { p_cycle_id: cycleId, p_charges: charges });
+        if (error || !cycle) throw error ?? new Error("family_charges_failed");
+        await audit("family_charges_set", "settlement_cycle", cycleId, { chargeCount: charges.length });
+        return NextResponse.json({ cycle: { id: cycle.id, status: cycle.status, version: cycle.version } });
+      }
+      case "request_settlement_approval": {
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const { data: approval, error } = await supabase.rpc("request_academy_settlement_approval", { p_cycle_id: cycleId });
+        if (error || !approval) throw error ?? new Error("settlement_approval_create_failed");
+        let binding: { id: string; code: string; expires_at: string } | null = null;
+        for (let attempt = 0; attempt < 5 && !binding; attempt += 1) {
+          const inserted = await supabase.from("hermes_whatsapp_approval_bindings")
+            .insert({ approval_id: approval.id, code: generateApprovalCode(), expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() })
+            .select("id, code, expires_at").maybeSingle();
+          if (inserted.data) binding = inserted.data;
+          else if (inserted.error?.code === "23505") {
+            binding = (await supabase.from("hermes_whatsapp_approval_bindings").select("id, code, expires_at").eq("approval_id", approval.id).maybeSingle()).data;
+          } else break;
+        }
+        if (!binding) throw new Error("settlement_approval_binding_failed");
+        await audit("approval_requested", "settlement_cycle", cycleId, { approvalId: approval.id });
+        return NextResponse.json({ approval: { id: approval.id, status: approval.status, payload: approval.payload, code: binding.code, expiresAt: binding.expires_at } }, { status: 201 });
+      }
+      case "decide_approval": {
+        if (mode !== "imessage_admin") return rejectRequest("WhatsApp approval commands are handled directly by Kitty", 409, "deterministic_whatsapp_required");
+        const code = stringValue(payload, "code", 6).toUpperCase();
+        const decision = stringValue(payload, "decision", 10).toLowerCase();
+        if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code) || !["approved", "rejected"].includes(decision)) return failure("Invalid approval command");
+        const { data: approval, error } = await supabase.rpc("decide_hermes_approval_by_channel", {
+          p_approval_id: null,
+          p_code: code,
+          p_decided_by: null,
+          p_decision: decision,
+          p_external_id: auth.requestId,
+          p_channel: "imessage",
+        });
+        if (error || !approval) return failure("Approval is expired, stale, or already decided differently", 409);
+        let settlement = null;
+        if (decision === "approved" && approval.settlement_cycle_id && !approval.consumed_at) {
+          const finalized = await supabase.rpc("finalize_academy_settlement", { p_approval_id: approval.id });
+          if (finalized.error) return failure("Approval was recorded, but settlement finalization needs attention", 409);
+          settlement = finalized.data;
+        }
+        return NextResponse.json({ approval: { id: approval.id, status: approval.status, action: approval.action }, settlement: settlement ? { id: settlement.id, status: settlement.status } : null });
+      }
+      case "record_family_payment": {
+        const invoiceId = stringValue(payload, "invoiceId", 80);
+        const { data: invoice, error } = await supabase.rpc("record_academy_family_payment", { p_invoice_id: invoiceId });
+        if (error || !invoice) throw error ?? new Error("family_payment_failed");
+        await audit("family_payment_recorded", "family_invoice", invoiceId, { cycleId: invoice.settlement_cycle_id });
+        return NextResponse.json({ invoice: { id: invoice.id, status: invoice.status, paidAt: invoice.paid_at } });
+      }
+      case "record_tutor_payout": {
+        const payoutId = stringValue(payload, "payoutId", 80);
+        const { data: payout, error } = await supabase.rpc("record_academy_tutor_payout", { p_payout_id: payoutId });
+        if (error || !payout) throw error ?? new Error("tutor_payout_failed");
+        await audit("tutor_payout_recorded", "tutor_payout", payoutId, { cycleId: payout.settlement_cycle_id });
+        return NextResponse.json({ payout: { id: payout.id, status: payout.status, paidAt: payout.paid_at } });
+      }
+      case "close_settlement_cycle": {
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const [invoiceResult, payoutResult] = await Promise.all([
+          supabase.from("academy_family_invoices").select("id", { count: "exact", head: true }).eq("settlement_cycle_id", cycleId).not("status", "in", '("paid","void")'),
+          supabase.from("academy_tutor_payouts").select("id", { count: "exact", head: true }).eq("settlement_cycle_id", cycleId).not("status", "in", '("paid","void")'),
+        ]);
+        if (invoiceResult.error || payoutResult.error) throw invoiceResult.error ?? payoutResult.error;
+        if ((invoiceResult.count ?? 0) > 0 || (payoutResult.count ?? 0) > 0) return failure("Invoices and tutor payouts must be complete before closing", 409);
+        const { data: cycle, error } = await supabase.from("academy_settlement_cycles").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", cycleId).eq("status", "collecting_payments").select("id, status, closed_at").maybeSingle();
+        if (error) throw error;
+        if (!cycle) return failure("Settlement cycle is not ready to close", 409);
+        await audit("settlement_cycle_closed", "settlement_cycle", cycleId);
+        return NextResponse.json({ cycle: { id: cycle.id, status: cycle.status, closedAt: cycle.closed_at } });
       }
       case "send_message": {
         const contactId = stringValue(payload, "contactId", 80);

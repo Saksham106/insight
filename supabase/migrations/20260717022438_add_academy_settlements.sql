@@ -154,6 +154,151 @@ create trigger set_academy_family_invoices_updated_at before update on public.ac
 create trigger set_academy_tutor_payouts_updated_at before update on public.academy_tutor_payouts
   for each row execute function public.set_updated_at();
 
+create function public.submit_academy_tutor_report(
+  p_cycle_id uuid,
+  p_tutor_contact_id uuid,
+  p_claimed_payout_minor bigint,
+  p_source_channel text,
+  p_lines jsonb
+)
+returns public.academy_tutor_reports
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_cycle public.academy_settlement_cycles;
+  v_previous public.academy_tutor_reports;
+  v_report public.academy_tutor_reports;
+  v_revision integer;
+begin
+  if p_claimed_payout_minor < 0 then raise exception 'invalid_claimed_payout'; end if;
+  if p_source_channel not in ('whatsapp', 'imessage_admin', 'admin') then raise exception 'invalid_source_channel'; end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) not between 1 and 100 then
+    raise exception 'invalid_report_lines';
+  end if;
+  select * into v_cycle from public.academy_settlement_cycles where id = p_cycle_id for update;
+  if not found then raise exception 'settlement_cycle_not_found'; end if;
+  if v_cycle.status not in ('collecting', 'needs_attention', 'ready_for_approval') then
+    raise exception 'settlement_not_collecting';
+  end if;
+  if not exists (
+    select 1 from public.hermes_contacts
+    where id = p_tutor_contact_id and role = 'teacher' and is_active = true and deleted_at is null
+      and consent_status = 'attested' and communication_policy = 'direct'
+  ) then raise exception 'approved_tutor_required'; end if;
+
+  select * into v_previous from public.academy_tutor_reports
+    where settlement_cycle_id = p_cycle_id and tutor_contact_id = p_tutor_contact_id
+      and status <> 'superseded'
+    for update;
+  select coalesce(max(revision), 0) + 1 into v_revision
+    from public.academy_tutor_reports
+    where settlement_cycle_id = p_cycle_id and tutor_contact_id = p_tutor_contact_id;
+  if v_previous.id is not null then
+    update public.academy_tutor_reports set status = 'superseded', updated_at = now()
+      where id = v_previous.id;
+  end if;
+
+  insert into public.academy_tutor_reports(
+    settlement_cycle_id, tutor_contact_id, revision, supersedes_report_id,
+    status, claimed_payout_minor, source_channel
+  ) values (
+    p_cycle_id, p_tutor_contact_id, v_revision, v_previous.id,
+    'needs_attention', p_claimed_payout_minor, p_source_channel
+  ) returning * into v_report;
+
+  insert into public.academy_tutor_report_lines(
+    tutor_report_id, reported_student_name, student_contact_id,
+    class_count, total_minutes, lesson_dates, resolution_status
+  )
+  select v_report.id,
+    btrim(item->>'reportedStudentName'),
+    nullif(item->>'studentContactId', '')::uuid,
+    (item->>'classCount')::integer,
+    (item->>'totalMinutes')::integer,
+    array(select jsonb_array_elements_text(coalesce(item->'lessonDates', '[]'::jsonb))::date),
+    case when nullif(item->>'studentContactId', '') is null then 'unresolved' else 'resolved' end
+  from jsonb_array_elements(p_lines) item;
+
+  update public.academy_settlement_cycles set status = 'needs_attention', updated_at = now()
+    where id = p_cycle_id;
+  insert into public.hermes_audit_events(actor_type, actor_contact_id, event_type, entity_type, entity_id, metadata)
+    values ('contact', p_tutor_contact_id, 'tutor_report_submitted', 'tutor_report', v_report.id,
+      jsonb_build_object('cycleId', p_cycle_id, 'revision', v_report.revision, 'lineCount', jsonb_array_length(p_lines)));
+  return v_report;
+end;
+$$;
+
+create function public.set_academy_family_charges(p_cycle_id uuid, p_charges jsonb)
+returns public.academy_settlement_cycles
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_cycle public.academy_settlement_cycles;
+  v_item jsonb;
+  v_line_id uuid;
+  v_updated integer := 0;
+begin
+  if jsonb_typeof(p_charges) <> 'array' or jsonb_array_length(p_charges) not between 1 and 1000 then
+    raise exception 'invalid_family_charges';
+  end if;
+  select * into v_cycle from public.academy_settlement_cycles where id = p_cycle_id for update;
+  if not found then raise exception 'settlement_cycle_not_found'; end if;
+  if v_cycle.status not in ('collecting', 'needs_attention', 'ready_for_approval') then
+    raise exception 'settlement_not_editable';
+  end if;
+
+  for v_item in select value from jsonb_array_elements(p_charges) loop
+    v_line_id := (v_item->>'reportLineId')::uuid;
+    if (v_item->>'familyChargeMinor')::bigint < 0 then raise exception 'invalid_family_charge'; end if;
+    if not exists (
+      select 1 from public.hermes_contacts
+      where id = (v_item->>'studentContactId')::uuid and role = 'student'
+        and is_active = true and deleted_at is null
+    ) then raise exception 'student_contact_unavailable'; end if;
+    if not exists (
+      select 1 from public.hermes_contacts
+      where id = (v_item->>'billedContactId')::uuid and role in ('parent', 'student')
+        and is_active = true and deleted_at is null and consent_status = 'attested'
+        and communication_policy = 'direct'
+    ) then raise exception 'billing_contact_unavailable'; end if;
+    update public.academy_tutor_report_lines l
+      set student_contact_id = (v_item->>'studentContactId')::uuid,
+          billed_contact_id = (v_item->>'billedContactId')::uuid,
+          family_charge_minor = (v_item->>'familyChargeMinor')::bigint,
+          resolution_status = 'confirmed_by_swati', updated_at = now()
+      from public.academy_tutor_reports r
+      where l.id = v_line_id and r.id = l.tutor_report_id
+        and r.settlement_cycle_id = p_cycle_id and r.status <> 'superseded';
+    if not found then raise exception 'report_line_unavailable'; end if;
+    v_updated := v_updated + 1;
+  end loop;
+
+  if v_updated <> jsonb_array_length(p_charges) then raise exception 'family_charge_count_mismatch'; end if;
+  update public.academy_tutor_reports r set status = 'ready', updated_at = now()
+    where r.settlement_cycle_id = p_cycle_id and r.status in ('submitted', 'needs_attention')
+      and not exists (
+        select 1 from public.academy_tutor_report_lines l
+        where l.tutor_report_id = r.id
+          and (l.resolution_status <> 'confirmed_by_swati' or l.family_charge_minor is null)
+      );
+  update public.academy_settlement_cycles
+    set status = case when exists (
+      select 1 from public.academy_tutor_reports
+      where settlement_cycle_id = p_cycle_id and status not in ('ready', 'superseded')
+    ) then 'needs_attention' else 'ready_for_approval' end,
+    updated_at = now()
+    where id = p_cycle_id returning * into v_cycle;
+  insert into public.hermes_audit_events(actor_type, event_type, entity_type, entity_id, metadata)
+    values ('admin', 'family_charges_set', 'settlement_cycle', p_cycle_id,
+      jsonb_build_object('chargeCount', v_updated));
+  return v_cycle;
+end;
+$$;
+
 create function public.build_academy_settlement_payload(p_cycle_id uuid)
 returns jsonb
 language plpgsql
@@ -455,6 +600,8 @@ end;
 $$;
 
 revoke execute on function public.build_academy_settlement_payload(uuid) from public, anon, authenticated;
+revoke execute on function public.submit_academy_tutor_report(uuid, uuid, bigint, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.set_academy_family_charges(uuid, jsonb) from public, anon, authenticated;
 revoke execute on function public.request_academy_settlement_approval(uuid) from public, anon, authenticated;
 revoke execute on function public.decide_hermes_approval_by_channel(uuid, text, uuid, text, text, text) from public, anon, authenticated;
 revoke execute on function public.decide_hermes_approval_by_whatsapp(text, text, text) from public, anon, authenticated;
@@ -462,6 +609,8 @@ revoke execute on function public.finalize_academy_settlement(uuid) from public,
 revoke execute on function public.record_academy_family_payment(uuid) from public, anon, authenticated;
 revoke execute on function public.record_academy_tutor_payout(uuid) from public, anon, authenticated;
 grant execute on function public.build_academy_settlement_payload(uuid) to service_role;
+grant execute on function public.submit_academy_tutor_report(uuid, uuid, bigint, text, jsonb) to service_role;
+grant execute on function public.set_academy_family_charges(uuid, jsonb) to service_role;
 grant execute on function public.request_academy_settlement_approval(uuid) to service_role;
 grant execute on function public.decide_hermes_approval_by_channel(uuid, text, uuid, text, text, text) to service_role;
 grant execute on function public.decide_hermes_approval_by_whatsapp(text, text, text) to service_role;

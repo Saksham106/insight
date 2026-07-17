@@ -192,6 +192,8 @@ test("settlement approvals bind exactly one subject and decide atomically across
   assert.match(sql, /add column decision_channel text/);
   assert.match(sql, /decision_channel in \('whatsapp', 'imessage', 'dashboard'\)/);
   for (const fn of [
+    "submit_academy_tutor_report",
+    "set_academy_family_charges",
     "request_academy_settlement_approval",
     "decide_hermes_approval_by_channel",
     "finalize_academy_settlement",

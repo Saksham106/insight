@@ -60,6 +60,14 @@ class PluginTests(unittest.TestCase):
         self.assertIn("request_swati_freebusy", self.tools.ACTIONS)
         self.assertIn("get_workspace_job", self.tools.ACTIONS)
 
+    def test_exposes_admin_settlement_and_exact_approval_actions(self):
+        for action in (
+            "start_settlement_cycle", "get_settlement_cycle", "set_family_charges",
+            "request_settlement_approval", "decide_approval", "record_family_payment",
+            "record_tutor_payout", "close_settlement_cycle",
+        ):
+            self.assertIn(action, self.tools.ACTIONS)
+
     def test_request_uses_admin_url_secret_and_session_actor(self):
         with patch.dict(os.environ, {
             "INSIGHT_HERMES_ADMIN_TOOL_URL": "https://myinsightacademy.com/api/hermes/admin-tools",

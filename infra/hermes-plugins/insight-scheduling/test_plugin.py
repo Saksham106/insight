@@ -60,6 +60,11 @@ class PluginTests(unittest.TestCase):
         self.assertIn("request_swati_freebusy", self.tools.ACTIONS)
         self.assertIn("get_workspace_job", self.tools.ACTIONS)
 
+    def test_exposes_only_the_tutor_owned_financial_action(self):
+        self.assertIn("submit_tutor_report", self.tools.ACTIONS)
+        for action in ("start_settlement_cycle", "set_family_charges", "request_settlement_approval", "record_family_payment", "record_tutor_payout"):
+            self.assertNotIn(action, self.tools.ACTIONS)
+
     def test_request_signs_actor_and_payload_without_exposing_secret(self):
         with patch.dict(os.environ, {
             "INSIGHT_HERMES_TOOL_URL": "https://myinsightacademy.com/api/hermes/tools",

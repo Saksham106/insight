@@ -25,6 +25,14 @@ ACTIONS = (
     "escalate_to_swati",
     "request_swati_freebusy",
     "get_workspace_job",
+    "start_settlement_cycle",
+    "get_settlement_cycle",
+    "set_family_charges",
+    "request_settlement_approval",
+    "decide_approval",
+    "record_family_payment",
+    "record_tutor_payout",
+    "close_settlement_cycle",
 )
 
 

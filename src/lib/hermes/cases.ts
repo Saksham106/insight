@@ -43,7 +43,7 @@ export function parseIMessageAdminActor(
 }
 
 export type HermesToolActorKind = "admin" | "contact" | "unknown";
-export type HermesToolActorScope = "admin" | "self" | "case_member" | "self_case_member" | "denied";
+export type HermesToolActorScope = "admin" | "self" | "case_member" | "self_case_member" | "self_financial" | "denied";
 
 export function toolActorScope(action: string, actorKind: HermesToolActorKind): HermesToolActorScope {
   if (actorKind === "admin") return "admin";
@@ -51,6 +51,7 @@ export function toolActorScope(action: string, actorKind: HermesToolActorKind): 
   if (action === "get_academy_info" || action === "get_contact" || action === "list_my_cases") return "self";
   if (action === "get_case" || action === "request_reschedule" || action === "escalate_to_swati") return "case_member";
   if (action === "record_availability") return "self_case_member";
+  if (action === "submit_tutor_report") return "self_financial";
   return "denied";
 }
 
