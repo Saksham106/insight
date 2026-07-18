@@ -63,7 +63,12 @@ export interface AdminAssignmentRow {
   conversation: { id: string }[] | null;
 }
 
-export type AdminSession = Session & { teacherName: string; studentName: string };
+export type AdminSession = Session & {
+  teacherName: string;
+  studentName: string;
+  studentId: string | null;
+  group_session_id: string | null;
+};
 
 interface AuthUserOnboardingState {
   email: string | null;
@@ -228,7 +233,7 @@ const fetchAdminData = unstable_cache(
     supabase
       .from("sessions")
       .select(
-        "id, assignment_id, scheduled_at, duration_minutes, notes, status, proposed_by, assignment:assignment_id (teacher:teacher_id (full_name), student:student_id (full_name))",
+        "id, assignment_id, scheduled_at, duration_minutes, notes, status, proposed_by, group_session_id, assignment:assignment_id (teacher:teacher_id (full_name), student:student_id (id, full_name))",
       )
       .order("scheduled_at", { ascending: true }),
     supabase.from("labels").select("id, name, color").order("name", { ascending: true }),
@@ -312,8 +317,10 @@ const fetchAdminData = unstable_cache(
       notes: s.notes,
       status: s.status,
       proposed_by: s.proposed_by,
+      group_session_id: (s.group_session_id as string | null) ?? null,
       teacherName: (teacher as { full_name: string } | null)?.full_name ?? "Teacher",
       studentName: (student as { full_name: string } | null)?.full_name ?? "Student",
+      studentId: (student as { id: string } | null)?.id ?? null,
     } as AdminSession;
   });
 

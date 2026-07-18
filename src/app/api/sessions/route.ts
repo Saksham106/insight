@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
 import { sendSessionEmail } from "@/lib/email";
+import { notifyAssignmentBothParties } from "@/lib/email/session-notify";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -54,69 +55,18 @@ export async function POST(request: Request) {
   // Notify — fire and forget. Admin sessions notify BOTH parties; a teacher/student
   // proposal notifies only the other party.
   if (isAdmin) {
-    notifyBothParties("scheduled", assignment_id, scheduled_at, duration_minutes, notes).catch((e) =>
-      console.error("[email] admin session scheduled:", e),
-    );
+    notifyAssignmentBothParties({
+      event: "scheduled",
+      assignmentId: assignment_id,
+      scheduledAt: scheduled_at,
+      durationMinutes: duration_minutes,
+      notes,
+    }).catch((e) => console.error("[email] admin session scheduled:", e));
   } else {
     sendNotification("proposed", assignment_id, proposed_by, scheduled_at, duration_minutes, notes).catch(() => {});
   }
 
   return NextResponse.json({ sessionId: session.id });
-}
-
-// Emails both the teacher and the student, each with their own name, timezone,
-// and dashboard link, attributing the session to their counterpart.
-async function notifyBothParties(
-  event: "scheduled",
-  assignmentId: string,
-  scheduledAt: string,
-  durationMinutes: number,
-  notes?: string | null,
-) {
-  const admin = createAdminClient();
-
-  const { data: assignment } = await admin
-    .from("teacher_student_assignments")
-    .select("teacher_id, student_id, teacher:teacher_id (full_name), student:student_id (full_name)")
-    .eq("id", assignmentId)
-    .single();
-
-  if (!assignment) return;
-
-  const teacher = Array.isArray(assignment.teacher) ? assignment.teacher[0] : assignment.teacher;
-  const student = Array.isArray(assignment.student) ? assignment.student[0] : assignment.student;
-
-  const teacherName = (teacher as { full_name: string } | null)?.full_name ?? "Teacher";
-  const studentName = (student as { full_name: string } | null)?.full_name ?? "Student";
-
-  const recipients = [
-    { id: assignment.teacher_id as string, name: teacherName, otherName: studentName, role: "teacher" as const },
-    { id: assignment.student_id as string, name: studentName, otherName: teacherName, role: "student" as const },
-  ];
-
-  await Promise.all(
-    recipients.map(async (r) => {
-      const [{ data: authUser }, { data: recipientProfile }] = await Promise.all([
-        admin.auth.admin.getUserById(r.id),
-        admin.from("profiles").select("timezone").eq("id", r.id).single(),
-      ]);
-
-      const recipientEmail = authUser?.user?.email;
-      if (!recipientEmail) return;
-
-      await sendSessionEmail({
-        event,
-        recipientEmail,
-        recipientName: r.name,
-        actorName: r.otherName,
-        scheduledAt,
-        durationMinutes,
-        notes,
-        role: r.role,
-        recipientTimezone: (recipientProfile as { timezone?: string | null } | null)?.timezone,
-      });
-    }),
-  );
 }
 
 async function sendNotification(
