@@ -160,8 +160,9 @@ function ComposePanel({ teachers, students, onClose }: ComposeProps) {
       style={{
         position: "fixed",
         bottom: 0,
-        right: "24px",
-        width: "500px",
+        right: "16px",
+        // Cap to the viewport on phones so the docked panel never runs off-screen.
+        width: "min(500px, calc(100vw - 32px))",
         backgroundColor: "var(--color-surface)",
         borderRadius: "12px 12px 0 0",
         boxShadow: "0 -2px 16px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08)",
