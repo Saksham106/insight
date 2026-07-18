@@ -81,7 +81,7 @@ export function AvailabilityEditor() {
           <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
             <p className="text-sm font-semibold text-navy">Availability</p>
             <p className="text-sm text-muted" style={{ lineHeight: 1.45 }}>
-              Set your weekly hours, booking rules, and one-off date overrides so students can book directly.
+              Set the hours students can book you each week. Add specific-date changes or booking rules below.
             </p>
             {!loading && !error && settings && (
               <p className="text-xs text-muted" style={{ marginTop: "2px" }}>
@@ -112,7 +112,7 @@ export function AvailabilityEditor() {
             <summary className="text-sm font-semibold text-navy" style={{ cursor: "pointer" }}>Your weekly hours</summary>
             <div style={{ marginTop: "16px" }}>
               <WeeklyHoursEditor
-                mode={settings.availability_mode}
+                mode="restricted"
                 rules={rules}
                 overrides={overrides}
                 timezone={timezone}

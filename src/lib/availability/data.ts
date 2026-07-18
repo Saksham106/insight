@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS: Omit<BookingSettings, "teacher_id"> = {
   minimum_notice_hours: 12,
   max_days_ahead: 30,
   auto_confirm: true,
-  availability_mode: "open",
+  availability_mode: "restricted",
   open_day_start: "08:00",
   open_day_end: "20:00",
   timezone: null,
