@@ -62,11 +62,11 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
         gridTemplateColumns: isMobile ? "1fr" : "320px 1fr",
         borderRadius: "12px",
         overflow: "hidden",
-        height: "72vh",
+        height: "calc(100dvh - 13rem)",
       }}
     >
       {showList && (
-        <div style={{ display: "flex", flexDirection: "column", borderRight: isMobile ? "none" : "1px solid var(--color-border)", minHeight: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", borderRight: isMobile ? "none" : "1px solid var(--color-border)", minHeight: 0, minWidth: 0 }}>
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-border)" }}>
             <p className="text-base font-semibold text-navy">All chats</p>
             <p className="text-xs text-muted">Read-only view of every conversation.</p>
@@ -132,7 +132,7 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
       )}
 
       {showThread && (
-        <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
           {active ? (
             <AdminThread
               key={active.id}
@@ -188,7 +188,7 @@ function AdminThread({
   const subtitle = conversation.isGroup ? conversation.members.map((m) => m.full_name.split(" ")[0]).join(", ") : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, height: "100%" }}>
       {onBack && (
         <button
           type="button"
@@ -202,7 +202,7 @@ function AdminThread({
       {initial === null ? (
         <p className="text-sm text-muted" style={{ padding: "16px" }}>Loading messages…</p>
       ) : (
-        <div style={{ flex: 1, minHeight: 0 }}>
+        <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
           <ChatWindow
             conversationId={conversation.id}
             currentUserId={currentUserId}
@@ -210,6 +210,7 @@ function AdminThread({
             initialMessages={initial}
             initialHasMore={hasMore}
             readOnly
+            fill
           />
         </div>
       )}

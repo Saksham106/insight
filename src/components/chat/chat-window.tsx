@@ -27,6 +27,10 @@ interface ChatWindowProps {
   initialMessages: ChatMessage[];
   initialHasMore?: boolean;
   readOnly?: boolean;
+  // When embedded in a parent that already sizes it (e.g. the two-pane chat
+  // panels), fill the parent's height. Standalone pages leave this false and the
+  // window sizes itself to the viewport below the header.
+  fill?: boolean;
 }
 
 export function ChatWindow({
@@ -36,6 +40,7 @@ export function ChatWindow({
   initialMessages,
   initialHasMore = false,
   readOnly = false,
+  fill = false,
 }: ChatWindowProps) {
   const supabase = useMemo(() => createClient(), []);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
@@ -143,10 +148,24 @@ export function ChatWindow({
   return (
     <div
       className="rounded-lg border border-border bg-surface"
-      style={{ display: "flex", flexDirection: "column", height: "70vh" }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        // Fill the sizing parent when embedded; otherwise take the viewport
+        // below the dashboard header. `dvh` tracks the mobile visual viewport so
+        // the composer stays above the on-screen keyboard.
+        height: fill ? "100%" : "calc(100dvh - 8rem)",
+        minHeight: 0,
+        minWidth: 0,
+      }}
     >
-      <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--color-border)" }}>
-        <h1 className="text-lg font-semibold text-navy">{title}</h1>
+      <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--color-border)", flexShrink: 0 }}>
+        <h1
+          className="text-lg font-semibold text-navy"
+          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
+          {title}
+        </h1>
       </div>
       <div ref={scrollRef} className="px-6 py-4" style={{ flex: 1, overflowY: "auto" }}>
         {hasMore && (
@@ -169,7 +188,7 @@ export function ChatWindow({
         )}
       </div>
       {readOnly ? null : (
-        <div className="px-6 py-4" style={{ borderTop: "1px solid var(--color-border)" }}>
+        <div className="px-6 py-4" style={{ borderTop: "1px solid var(--color-border)", flexShrink: 0 }}>
           <MessageInput conversationId={conversationId} onSend={handleSend} />
         </div>
       )}

@@ -89,7 +89,9 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
         gridTemplateColumns: isMobile ? "1fr" : "320px 1fr",
         borderRadius: "12px",
         overflow: "hidden",
-        height: "72vh",
+        // Fill the viewport below the page heading; `dvh` shrinks with the mobile
+        // keyboard so the composer stays visible instead of hiding behind it.
+        height: "calc(100dvh - 13rem)",
       }}
     >
       {/* Conversation list */}
@@ -100,6 +102,7 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
             flexDirection: "column",
             borderRight: isMobile ? "none" : "1px solid var(--color-border)",
             minHeight: 0,
+            minWidth: 0,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", padding: "14px 16px", borderBottom: "1px solid var(--color-border)" }}>
@@ -197,7 +200,7 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
 
       {/* Active conversation */}
       {showThread && (
-        <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
           {activeConversation ? (
             <ActiveConversation
               key={activeConversation.id}
@@ -264,7 +267,7 @@ function ActiveConversation({
     : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, height: "100%" }}>
       {onBack && (
         <button
           type="button"
@@ -278,13 +281,14 @@ function ActiveConversation({
       {initial === null ? (
         <p className="text-sm text-muted" style={{ padding: "16px" }}>Loading messages…</p>
       ) : (
-        <div style={{ flex: 1, minHeight: 0 }}>
+        <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
           <ChatWindow
             conversationId={conversation.id}
             currentUserId={currentUserId}
             title={conversation.isGroup ? `${conversation.title}${subtitle ? ` · ${subtitle}` : ""}` : conversation.title}
             initialMessages={initial}
             initialHasMore={hasMore}
+            fill
           />
         </div>
       )}
