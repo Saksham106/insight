@@ -649,7 +649,7 @@ export function StudentDashboard({ assignments, studentId, view = "overview" }: 
                     <h3 className="text-base font-semibold text-navy">
                       {selected.teacher?.full_name ?? "Teacher"}
                     </h3>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                       <Button
                         size="sm"
                         variant={showBooking ? "default" : "outline"}
