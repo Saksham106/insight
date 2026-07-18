@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AdminUserCard } from "@/components/admin/admin-user-card";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { EditUserModal, type LabelOption } from "@/components/admin/edit-user-modal";
 import { getOnboardingStatus } from "@/lib/onboarding-status";
@@ -94,7 +95,31 @@ export function TeachersTable({ teachers, allLabels }: TeachersTableProps) {
     );
   }, [teachers, filter]);
 
-  const colSpan = isMobile ? 4 : 5;
+  const renderActions = (teacher: Teacher) => {
+    const onboarding = getOnboardingStatus(teacher);
+    return (
+      <>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setEditing(teacher)}
+          aria-label={`Edit ${teacher.full_name}`}
+          style={{ display: "flex", alignItems: "center", padding: "0 10px" }}
+        >
+          <Pencil size={14} />
+        </Button>
+        {onboarding.label === "Invite sent" ? (
+          <Button variant="outline" size="sm" onClick={() => resendCredentials(teacher)} disabled={resendingId === teacher.id}>
+            {resendingId === teacher.id ? "Resending..." : "Resend"}
+          </Button>
+        ) : null}
+        <Button variant="outline" size="sm" onClick={() => toggleUser(teacher)} disabled={loadingId === teacher.id}>
+          {teacher.is_active ? "Disable" : "Enable"}
+        </Button>
+        <DeleteUserButton userId={teacher.id} userName={teacher.full_name} onError={setStatus} onDeleted={setStatus} />
+      </>
+    );
+  };
 
   const toggleUser = async (teacher: Teacher) => {
     setStatus(null);
@@ -154,81 +179,62 @@ export function TeachersTable({ teachers, allLabels }: TeachersTableProps) {
         style={{ maxWidth: "320px" }}
       />
       {status ? <p className="text-sm text-muted">{status}</p> : null}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Labels</TableHead>
-            <TableHead>Onboarding</TableHead>
-            {!isMobile && <TableHead>Created</TableHead>}
-            <TableHead className="text-right">Action</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filtered.length === 0 && (
-            <tr><td colSpan={colSpan} style={{ padding: "0", paddingTop: "8px" }}>
-              <EmptyState icon={Users} title="No teachers found" description="Invite a teacher or adjust the filter." />
-            </td></tr>
-          )}
+
+      {filtered.length === 0 ? (
+        <EmptyState icon={Users} title="No teachers found" description="Invite a teacher or adjust the filter." />
+      ) : isMobile ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {filtered.map((teacher) => {
             const onboarding = getOnboardingStatus(teacher);
-
             return (
-              <TableRow key={teacher.id} style={teacher.is_active ? undefined : { opacity: 0.55 }}>
-                <TableCell className="font-medium">{teacher.full_name}</TableCell>
-                <TableCell>
-                  <LabelBadges labels={teacher.labels} />
-                </TableCell>
-                <TableCell>
-                  <Badge variant={onboarding.variant}>{onboarding.label}</Badge>
-                </TableCell>
-                {!isMobile && (
+              <AdminUserCard
+                key={teacher.id}
+                name={teacher.full_name}
+                active={teacher.is_active}
+                status={<Badge variant={onboarding.variant}>{onboarding.label}</Badge>}
+                meta={teacher.labels.length ? <LabelBadges labels={teacher.labels} /> : null}
+                actions={renderActions(teacher)}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Labels</TableHead>
+              <TableHead>Onboarding</TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map((teacher) => {
+              const onboarding = getOnboardingStatus(teacher);
+              return (
+                <TableRow key={teacher.id} style={teacher.is_active ? undefined : { opacity: 0.55 }}>
+                  <TableCell className="font-medium">{teacher.full_name}</TableCell>
+                  <TableCell>
+                    <LabelBadges labels={teacher.labels} />
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={onboarding.variant}>{onboarding.label}</Badge>
+                  </TableCell>
                   <TableCell>
                     {new Date(teacher.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                   </TableCell>
-                )}
-                <TableCell className="text-right">
-                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center" }}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditing(teacher)}
-                      aria-label={`Edit ${teacher.full_name}`}
-                      style={{ display: "flex", alignItems: "center", padding: "0 10px" }}
-                    >
-                      <Pencil size={14} />
-                    </Button>
-                    {onboarding.label === "Invite sent" ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => resendCredentials(teacher)}
-                        disabled={resendingId === teacher.id}
-                      >
-                        {resendingId === teacher.id ? "Resending..." : "Resend"}
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleUser(teacher)}
-                      disabled={loadingId === teacher.id}
-                    >
-                      {teacher.is_active ? "Disable" : "Enable"}
-                    </Button>
-                    <DeleteUserButton
-                      userId={teacher.id}
-                      userName={teacher.full_name}
-                      onError={setStatus}
-                      onDeleted={setStatus}
-                    />
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  <TableCell className="text-right">
+                    <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center" }}>
+                      {renderActions(teacher)}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
 
       {editing && (
         <EditUserModal

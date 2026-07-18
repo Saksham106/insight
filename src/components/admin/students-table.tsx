@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AdminUserCard } from "@/components/admin/admin-user-card";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { EditUserModal, type UserOption } from "@/components/admin/edit-user-modal";
 import { getOnboardingStatus } from "@/lib/onboarding-status";
@@ -53,8 +54,6 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-
-  const colSpan = isMobile ? 3 : 4;
 
   const toggleUser = async (student: Student) => {
     setStatus(null);
@@ -105,80 +104,86 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
     router.refresh();
   };
 
+  const renderActions = (student: Student) => {
+    const onboarding = getOnboardingStatus(student);
+    return (
+      <>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setEditing(student)}
+          aria-label={`Edit ${student.full_name}`}
+          style={{ display: "flex", alignItems: "center", padding: "0 10px" }}
+        >
+          <Pencil size={14} />
+        </Button>
+        {onboarding.label === "Invite sent" ? (
+          <Button variant="outline" size="sm" onClick={() => resendCredentials(student)} disabled={resendingId === student.id}>
+            {resendingId === student.id ? "Resending..." : "Resend"}
+          </Button>
+        ) : null}
+        <Button variant="outline" size="sm" onClick={() => toggleUser(student)} disabled={loadingId === student.id}>
+          {student.is_active ? "Disable" : "Enable"}
+        </Button>
+        <DeleteUserButton userId={student.id} userName={student.full_name} onError={setStatus} onDeleted={setStatus} />
+      </>
+    );
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {status ? <p className="text-sm text-muted">{status}</p> : null}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Onboarding</TableHead>
-            {!isMobile && <TableHead>Created</TableHead>}
-            <TableHead className="text-right">Action</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {students.length === 0 && (
-            <tr><td colSpan={colSpan} style={{ padding: "0", paddingTop: "8px" }}>
-              <EmptyState icon={GraduationCap} title="No students yet" description="Invite a student to get started." />
-            </td></tr>
-          )}
+
+      {students.length === 0 ? (
+        <EmptyState icon={GraduationCap} title="No students yet" description="Invite a student to get started." />
+      ) : isMobile ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {students.map((student) => {
             const onboarding = getOnboardingStatus(student);
-
             return (
-              <TableRow key={student.id} style={student.is_active ? undefined : { opacity: 0.55 }}>
-                <TableCell className="font-medium">{student.full_name}</TableCell>
-                <TableCell>
-                  <Badge variant={onboarding.variant}>{onboarding.label}</Badge>
-                </TableCell>
-                {!isMobile && (
+              <AdminUserCard
+                key={student.id}
+                name={student.full_name}
+                active={student.is_active}
+                status={<Badge variant={onboarding.variant}>{onboarding.label}</Badge>}
+                actions={renderActions(student)}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Onboarding</TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {students.map((student) => {
+              const onboarding = getOnboardingStatus(student);
+              return (
+                <TableRow key={student.id} style={student.is_active ? undefined : { opacity: 0.55 }}>
+                  <TableCell className="font-medium">{student.full_name}</TableCell>
+                  <TableCell>
+                    <Badge variant={onboarding.variant}>{onboarding.label}</Badge>
+                  </TableCell>
                   <TableCell>
                     {new Date(student.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                   </TableCell>
-                )}
-                <TableCell className="text-right">
-                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center" }}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditing(student)}
-                      aria-label={`Edit ${student.full_name}`}
-                      style={{ display: "flex", alignItems: "center", padding: "0 10px" }}
-                    >
-                      <Pencil size={14} />
-                    </Button>
-                    {onboarding.label === "Invite sent" ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => resendCredentials(student)}
-                        disabled={resendingId === student.id}
-                      >
-                        {resendingId === student.id ? "Resending..." : "Resend"}
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleUser(student)}
-                      disabled={loadingId === student.id}
-                    >
-                      {student.is_active ? "Disable" : "Enable"}
-                    </Button>
-                    <DeleteUserButton
-                      userId={student.id}
-                      userName={student.full_name}
-                      onError={setStatus}
-                      onDeleted={setStatus}
-                    />
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  <TableCell className="text-right">
+                    <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center" }}>
+                      {renderActions(student)}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
 
       {editing && (
         <EditUserModal

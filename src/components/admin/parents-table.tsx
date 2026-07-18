@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AdminUserCard } from "@/components/admin/admin-user-card";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { EditUserModal, type UserOption } from "@/components/admin/edit-user-modal";
 import { getOnboardingStatus } from "@/lib/onboarding-status";
@@ -59,7 +60,6 @@ export function ParentsTable({ parents, allStudents }: ParentsTableProps) {
     [allStudents],
   );
 
-  const colSpan = isMobile ? 4 : 5;
 
   const toggleUser = async (parent: Parent) => {
     setStatus(null);
@@ -110,91 +110,104 @@ export function ParentsTable({ parents, allStudents }: ParentsTableProps) {
     router.refresh();
   };
 
+  const renderActions = (parent: Parent) => {
+    const onboarding = getOnboardingStatus(parent);
+    return (
+      <>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setEditing(parent)}
+          aria-label={`Edit ${parent.full_name}`}
+          style={{ display: "flex", alignItems: "center", padding: "0 10px" }}
+        >
+          <Pencil size={14} />
+        </Button>
+        {onboarding.label === "Invite sent" ? (
+          <Button variant="outline" size="sm" onClick={() => resendCredentials(parent)} disabled={resendingId === parent.id}>
+            {resendingId === parent.id ? "Resending..." : "Resend"}
+          </Button>
+        ) : null}
+        <Button variant="outline" size="sm" onClick={() => toggleUser(parent)} disabled={loadingId === parent.id}>
+          {parent.is_active ? "Disable" : "Enable"}
+        </Button>
+        <DeleteUserButton userId={parent.id} userName={parent.full_name} onError={setStatus} onDeleted={setStatus} />
+      </>
+    );
+  };
+
+  const childNamesFor = (parent: Parent) =>
+    parent.childIds.map((id) => studentNameById.get(id)).filter((name): name is string => Boolean(name));
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {status ? <p className="text-sm text-muted">{status}</p> : null}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Children</TableHead>
-            <TableHead>Onboarding</TableHead>
-            {!isMobile && <TableHead>Created</TableHead>}
-            <TableHead className="text-right">Action</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {parents.length === 0 && (
-            <tr><td colSpan={colSpan} style={{ padding: "0", paddingTop: "8px" }}>
-              <EmptyState icon={Users} title="No parents yet" description="Invite a parent and link them to their children." />
-            </td></tr>
-          )}
+
+      {parents.length === 0 ? (
+        <EmptyState icon={Users} title="No parents yet" description="Invite a parent and link them to their children." />
+      ) : isMobile ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {parents.map((parent) => {
             const onboarding = getOnboardingStatus(parent);
-            const childNames = parent.childIds
-              .map((id) => studentNameById.get(id))
-              .filter((name): name is string => Boolean(name));
-
+            const childNames = childNamesFor(parent);
             return (
-              <TableRow key={parent.id} style={parent.is_active ? undefined : { opacity: 0.55 }}>
-                <TableCell className="font-medium">{parent.full_name}</TableCell>
-                <TableCell>
-                  {childNames.length > 0 ? (
-                    <span className="text-sm text-foreground">{childNames.join(", ")}</span>
-                  ) : (
-                    <span className="text-sm text-muted">—</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={onboarding.variant}>{onboarding.label}</Badge>
-                </TableCell>
-                {!isMobile && (
+              <AdminUserCard
+                key={parent.id}
+                name={parent.full_name}
+                active={parent.is_active}
+                status={<Badge variant={onboarding.variant}>{onboarding.label}</Badge>}
+                meta={
+                  <p className="text-sm text-muted">
+                    {childNames.length > 0 ? `Children: ${childNames.join(", ")}` : "No linked children"}
+                  </p>
+                }
+                actions={renderActions(parent)}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Children</TableHead>
+              <TableHead>Onboarding</TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {parents.map((parent) => {
+              const onboarding = getOnboardingStatus(parent);
+              const childNames = childNamesFor(parent);
+              return (
+                <TableRow key={parent.id} style={parent.is_active ? undefined : { opacity: 0.55 }}>
+                  <TableCell className="font-medium">{parent.full_name}</TableCell>
+                  <TableCell>
+                    {childNames.length > 0 ? (
+                      <span className="text-sm text-foreground">{childNames.join(", ")}</span>
+                    ) : (
+                      <span className="text-sm text-muted">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={onboarding.variant}>{onboarding.label}</Badge>
+                  </TableCell>
                   <TableCell>
                     {new Date(parent.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                   </TableCell>
-                )}
-                <TableCell className="text-right">
-                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center" }}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditing(parent)}
-                      aria-label={`Edit ${parent.full_name}`}
-                      style={{ display: "flex", alignItems: "center", padding: "0 10px" }}
-                    >
-                      <Pencil size={14} />
-                    </Button>
-                    {onboarding.label === "Invite sent" ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => resendCredentials(parent)}
-                        disabled={resendingId === parent.id}
-                      >
-                        {resendingId === parent.id ? "Resending..." : "Resend"}
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleUser(parent)}
-                      disabled={loadingId === parent.id}
-                    >
-                      {parent.is_active ? "Disable" : "Enable"}
-                    </Button>
-                    <DeleteUserButton
-                      userId={parent.id}
-                      userName={parent.full_name}
-                      onError={setStatus}
-                      onDeleted={setStatus}
-                    />
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  <TableCell className="text-right">
+                    <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center" }}>
+                      {renderActions(parent)}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
 
       {editing && (
         <EditUserModal
