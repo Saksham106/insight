@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+profile_home="${HERMES_PROFILE_HOME:-/opt/data}"
+env_file="${HERMES_ENV_FILE:-${profile_home}/.env}"
+hermes_bin="${HERMES_BIN:-hermes}"
+python_bin="${HERMES_PYTHON_BIN:-/opt/hermes/.venv/bin/python}"
+selected_user="${INSIGHT_TEST_ADMIN_E164:-}"
+
+if [[ ! -r "${env_file}" ]]; then
+  echo "Insight CLI test launcher cannot read the default profile environment." >&2
+  exit 1
+fi
+
+admin_id="$(${python_bin} - "${env_file}" "${selected_user}" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+
+env_path = Path(sys.argv[1])
+selected = sys.argv[2].strip()
+allowed_value = ""
+
+for raw_line in env_path.read_text().splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    if key.strip() != "PHOTON_ALLOWED_USERS":
+        continue
+    allowed_value = value.strip()
+    if len(allowed_value) >= 2 and allowed_value[0] == allowed_value[-1] and allowed_value[0] in "\"'":
+        allowed_value = allowed_value[1:-1]
+    break
+
+allowed = [item.strip() for item in allowed_value.split(",") if item.strip()]
+valid = re.compile(r"^\+[1-9]\d{7,14}$")
+if not allowed or any(not valid.fullmatch(item) for item in allowed):
+    raise SystemExit("Default profile has no valid Photon administrator allowlist.")
+
+if selected:
+    if not valid.fullmatch(selected) or selected not in allowed:
+        raise SystemExit("INSIGHT_TEST_ADMIN_E164 is not permitted by the Photon allowlist.")
+    admin_id = selected
+elif len(allowed) == 1:
+    admin_id = allowed[0]
+else:
+    raise SystemExit("Multiple Photon users are allowed; set INSIGHT_TEST_ADMIN_E164 before launching.")
+
+print(admin_id)
+PY
+)"
+
+echo "Starting the production Insight admin test CLI. Actions are real and audited as iMessage." >&2
+
+exec env \
+  HERMES_HOME="${profile_home}" \
+  HERMES_SESSION_PLATFORM="photon" \
+  HERMES_SESSION_USER_ID="${admin_id}" \
+  HERMES_SESSION_CHAT_ID="any;-;${admin_id}" \
+  "${hermes_bin}" -t hermes-cli,insight_admin "$@"

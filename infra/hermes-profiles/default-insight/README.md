@@ -38,6 +38,24 @@ Do not copy `HERMES_ADMIN_TOOL_SHARED_SECRET`, the `insight-admin` plugin, or th
 10. Attempt the tool from a non-iMessage/non-Photon session, a Photon group session, and a Photon session whose `chatId` is not exactly `any;-;<userId>`. All must fail without returning Academy data.
 11. Enable production only after all staging checks pass. Keep the Academy profile, Meta callback, and `HERMES_TOOL_SHARED_SECRET` unchanged.
 
+## Operator CLI test launcher
+
+For temporary operator testing from the default profile, install `hermes-insight-test` at `/opt/data/.local/bin/hermes-insight-test`. The launcher reads the existing `PHOTON_ALLOWED_USERS` value without printing it, requires exactly one valid E.164 identity unless `INSIGHT_TEST_ADMIN_E164` selects an allowed identity, and launches the CLI with the existing `hermes-cli` and `insight_admin` toolsets.
+
+Run it only from the tenant's protected operator terminal:
+
+```bash
+hermes-insight-test
+```
+
+The simulated context exists only for that process. Actions are real production actions and are audited as iMessage because the launcher deliberately exercises the existing verified-Photon authorization path. Exit the CLI to remove the context. Do not install this launcher in the Academy profile or expose it through a shared shell account.
+
+Remove the production launcher when testing is complete:
+
+```bash
+rm /opt/data/.local/bin/hermes-insight-test
+```
+
 ## Read-only Calendar free/busy worker
 
 The `insight-workspace` plugin lets the default profile process typed Calendar free/busy jobs without sharing Google authorization across profiles. Insight holds the queue. The default profile claims a job over a separately authenticated HMAC endpoint, asks `gws` about the authenticated account's `primary` calendar, and returns only busy intervals. The Academy profile does not receive the worker secret, Google credentials, event titles, descriptions, attendees, locations, links, or conversation history.
