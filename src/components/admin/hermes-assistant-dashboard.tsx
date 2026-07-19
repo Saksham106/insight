@@ -1,6 +1,7 @@
 import { AlertCircle, Banknote, Bot, Clock3, MessageSquareText, Users } from "lucide-react";
 
 import { HermesContactImport } from "@/components/admin/hermes-contact-import";
+import { HermesContactQuickAdd } from "@/components/admin/hermes-contact-quick-add";
 import { HermesApprovalActions } from "@/components/admin/hermes-approval-actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,6 +58,7 @@ export function HermesAssistantDashboard({ contacts, cases, approvals, messages,
       </header>
 
       {loadError ? <p className="text-sm text-error">{loadError}</p> : null}
+      <HermesContactQuickAdd />
       <HermesContactImport />
 
       <section className="form-grid-2" style={{ gap: "16px" }}>

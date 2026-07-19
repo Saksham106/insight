@@ -36,6 +36,28 @@ test("contact import supports the required classifications and consent", () => {
   assert.match(source, /\.vcf/);
 });
 
+test("Kitty dashboard quick-adds one consented WhatsApp contact at a time", () => {
+  const source = read("src/components/admin/hermes-contact-quick-add.tsx");
+  for (const role of ["Teacher", "Student", "Parent", "Employee", "Other"]) {
+    assert.ok(source.includes(role), `missing ${role}`);
+  }
+  assert.match(source, /Quick add contact/);
+  assert.match(source, /\/api\/admin\/hermes\/contacts/);
+  assert.match(source, /consent/i);
+  assert.match(source, /setDisplayName\(""\)/);
+  assert.match(source, /setPhone\(""\)/);
+  assert.match(source, /setRole\(""\)/);
+  assert.match(source, /setConsent\(false\)/);
+  assert.match(source, /router\.refresh\(\)/);
+
+  const dashboard = read("src/components/admin/hermes-assistant-dashboard.tsx");
+  assert.match(dashboard, /HermesContactQuickAdd/);
+  assert.ok(
+    dashboard.indexOf("<HermesContactQuickAdd") < dashboard.indexOf("<HermesContactImport"),
+    "quick add should appear before bulk import",
+  );
+});
+
 test("contact mutation routes authorize administrators before privileged access", () => {
   for (const relative of [
     "src/app/api/admin/hermes/contacts/route.ts",
