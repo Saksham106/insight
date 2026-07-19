@@ -11,6 +11,15 @@ LAUNCHER = PROFILE_DIR / "hermes-insight-test"
 
 
 class InsightAdminCliLauncherTests(unittest.TestCase):
+    def test_profile_instructions_document_direct_send_and_template_shape(self):
+        instructions = (PROFILE_DIR / "AGENTS.md").read_text()
+
+        self.assertIn("immediately validates", instructions)
+        self.assertIn("Nothing is uploaded", instructions)
+        self.assertIn("exactly those three body variables", instructions)
+        self.assertIn("recipient name,class description,scheduled date/time with timezone", instructions)
+        self.assertIn("A Google Calendar event is not required", instructions)
+
     def run_launcher(self, allowed_users: str, selected_user: str | None = None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

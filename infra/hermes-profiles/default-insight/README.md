@@ -15,7 +15,7 @@ Do not copy `HERMES_ADMIN_TOOL_SHARED_SECRET`, the `insight-admin` plugin, or th
 ## Safe activation
 
 1. Apply `20260716150000_add_hermes_case_origin.sql` and deploy the application while `HERMES_IMESSAGE_INTAKE_ENABLED=false`.
-2. Copy `infra/hermes-plugins/insight-admin` only into the default profile's plugins directory and enable only its `insight_admin` toolset for the iMessage platform.
+2. Copy `infra/hermes-plugins/insight-admin` only into the default profile's plugins directory, install `infra/hermes-profiles/default-insight/AGENTS.md` as the default profile's `AGENTS.md`, and enable only its `insight_admin` toolset for the iMessage platform.
 3. In staging, send one direct iMessage from Swati and inspect only the Hermes session-context identifiers. Confirm `platform=photon`, `userId` is Swati's E.164 number, and `chatId` is exactly `any;-;<userId>`. That is Photon's direct-message GUID; group identifiers must not match it. Do not record message content, tokens, or unrelated session data.
 4. Hash the verified E.164 `userId` locally:
 
@@ -115,6 +115,8 @@ Rollback is to disable the flag first, pause the worker, and leave jobs/audit ro
 ## Calendar versus WhatsApp outreach
 
 An event on Swati's Google Calendar does not automatically create an Insight case or send a WhatsApp reminder. Calendar storage, Kitty scheduling, and outbound messaging are separate approved workflows. For a Swati-taught class, she first asks Kitty through iMessage or WhatsApp to coordinate it; Insight may then queue narrow free/busy and event-create jobs for the default profile. A reminder is sent only when a separate approved workflow explicitly requests one and the recipient passes Insight's contact, consent, policy, service-window, and template checks.
+
+`insight_admin` does not upload an outbound request for the Academy profile to process. It calls the signed Insight admin endpoint, and Insight synchronously calls Meta after validating the contact, case, policy, consent, service window, and approved template. The Academy profile remains responsible for inbound WhatsApp conversations. The approved `class_reminder` template takes exactly three body variables in order: recipient name, class description, and scheduled date/time with timezone.
 
 Monthly settlements are separate as well: the tutor report, including Swati's own report when she is the tutor, is the financial source of truth. Calendar events are not treated as evidence for class counts, hours, family charges, or tutor payout amounts.
 

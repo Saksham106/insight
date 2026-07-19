@@ -68,6 +68,17 @@ class PluginTests(unittest.TestCase):
         ):
             self.assertIn(action, self.tools.ACTIONS)
 
+    def test_tool_schema_documents_direct_whatsapp_send_contract(self):
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+
+        self.assertIn("sends synchronously", source)
+        self.assertIn("does not upload or queue", source)
+        self.assertIn("contactId", source)
+        self.assertIn("caseId", source)
+        self.assertIn("idempotencyKey", source)
+        self.assertIn("bodyParameters", source)
+        self.assertIn("recipient name, class description, scheduled date/time with timezone", source)
+
     def test_request_uses_admin_url_secret_and_session_actor(self):
         with patch.dict(os.environ, {
             "INSIGHT_HERMES_ADMIN_TOOL_URL": "https://myinsightacademy.com/api/hermes/admin-tools",

@@ -3,6 +3,21 @@
 from .tools import ACTIONS, handle_insight_admin
 
 
+PAYLOAD_GUIDANCE = (
+    "Use exact camelCase payload fields. Common contracts: "
+    "get_academy_info={topic: about|scheduling|privacy|ai_assistant|subjects|contact}; "
+    "search_contacts={query}; get_contact={contactId}; "
+    "create_case={title,tutorKind,timezone,participants:[{contactId,participantRole}]}; "
+    "get_case={caseId}; send_message={contactId,caseId,intent,text?,bodyParameters?,"
+    "idempotencyKey,approvalId?}. Scheduling messages require a case and the recipient must be "
+    "a participant. send_message sends synchronously from Insight to the WhatsApp Cloud API; it "
+    "does not upload or queue work for the Academy profile. Outside the 24-hour service window, "
+    "class_reminder uses the approved template with exactly three bodyParameters in this order: "
+    "recipient name, class description, scheduled date/time with timezone. A corrected retry after "
+    "a failed reserved send needs a new idempotencyKey. Do not claim delivery unless the tool reports it."
+)
+
+
 def register(ctx):
     ctx.register_tool(
         name="insight_admin",
@@ -12,13 +27,13 @@ def register(ctx):
             "name": "insight_admin",
             "description": (
                 "Use the shared Insight scheduling service as Swati. Identity comes from the current "
-                "direct iMessage session."
+                "direct iMessage session. " + PAYLOAD_GUIDANCE
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {"type": "string", "enum": list(ACTIONS)},
-                    "payload": {"type": "object"},
+                    "payload": {"type": "object", "description": PAYLOAD_GUIDANCE},
                 },
                 "required": ["action", "payload"],
                 "additionalProperties": False,
