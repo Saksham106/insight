@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { buildGraphMessageRequest, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv } = require(path.join(__dirname, "meta.ts"));
+const { buildGraphMessageRequest, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters } = require(path.join(__dirname, "meta.ts"));
 
 const templates = {
   availability_request: { name: "class_availability_request", locale: "en_US" },
@@ -66,6 +66,42 @@ test("maps every settlement template and fails closed without one", () => {
   assert.deepEqual(selectWhatsAppDelivery(contact({ serviceWindowExpiresAt: null }), "family_invoice", new Date(), {}), { kind: "blocked", reason: "template_unavailable" });
 });
 
+test("builds exact semantic parameters for approved scheduling templates", () => {
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "permission_request", recipientName: "Little", templateData: {} }).bodyParameters, []);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "availability_request", recipientName: "Little", templateData: { classDescription: "mathematics class" } }).bodyParameters, ["Little", "mathematics class"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "time_proposal", recipientName: "Little", templateData: { proposedDateTime: "Monday at 4 PM Eastern Time", classDescription: "mathematics class" } }).bodyParameters, ["Little", "Monday at 4 PM Eastern Time", "mathematics class"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "class_confirmation", recipientName: "Little", templateData: { classDescription: "mathematics class", confirmedDateTime: "Monday at 4 PM Eastern Time" } }).bodyParameters, ["Little", "mathematics class", "Monday at 4 PM Eastern Time"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "reschedule_request", recipientName: "Little", templateData: { classDescription: "mathematics class on Monday at 3 PM Eastern Time" } }).bodyParameters, ["Little", "mathematics class on Monday at 3 PM Eastern Time"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "class_reminder", recipientName: "Little", templateData: { classDescription: "mathematics class", scheduledDateTime: "Monday at 3 PM Eastern Time" } }).bodyParameters, ["Little", "mathematics class", "Monday at 3 PM Eastern Time"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "human_attention", recipientName: "Little", templateData: { matter: "your mathematics schedule" } }).bodyParameters, ["Little", "your mathematics schedule"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "admin_reschedule_alert", recipientName: "Swati", templateData: { requesterName: "Little", caseSummary: "mathematics class: requested Monday at 4 PM" } }).bodyParameters, ["Swati", "Little", "mathematics class: requested Monday at 4 PM"]);
+});
+
+test("semantic scheduling builders reject missing, blank, and unknown fields", () => {
+  assert.throws(() => buildSchedulingMessageContent({ intent: "class_reminder", recipientName: "Little", templateData: { classDescription: "Math" } }), /invalid_scheduledDateTime/);
+  assert.throws(() => buildSchedulingMessageContent({ intent: "admin_reschedule_alert", recipientName: "Swati", templateData: { requesterName: "Little", caseSummary: "" } }), /invalid_caseSummary/);
+  assert.throws(() => buildSchedulingMessageContent({ intent: "family_invoice", recipientName: "Parent", templateData: {} }), /unsupported_scheduling_intent/);
+});
+
+test("legacy scheduling arrays are count-checked and recipient-bound", () => {
+  assert.deepEqual(validateSchedulingBodyParameters("class_reminder", "Little", ["Wrong", "mathematics class", "Monday at 3 PM"]), ["Little", "mathematics class", "Monday at 3 PM"]);
+  assert.throws(() => validateSchedulingBodyParameters("class_reminder", "Little", ["Little", "Monday at 3 PM"]), /invalid_bodyParameters/);
+});
+
+test("maps the internal Swati reschedule alert template", () => {
+  assert.deepEqual(templateMapFromEnv({ WHATSAPP_TEMPLATE_ADMIN_RESCHEDULE_ALERT: "kitty_reschedule_alert" }).admin_reschedule_alert, {
+    name: "kitty_reschedule_alert",
+    locale: "en_US",
+  });
+});
+
+test("builds the Utility-compatible Swati reschedule alert body", () => {
+  assert.equal(
+    buildSchedulingMessageContent({ intent: "admin_reschedule_alert", recipientName: "Swati", templateData: { requesterName: "Little", caseSummary: "mathematics class - requested Monday at 4 PM Eastern Time" } }).body,
+    "Hi Swati, scheduling update for Little: mathematics class - requested Monday at 4 PM Eastern Time. Reply to coordinate this existing class.",
+  );
+});
+
 test("builds fixed text and template Graph payloads", () => {
   assert.deepEqual(buildGraphMessageRequest({ to: "+84 917 583 553", delivery: { kind: "free_form" }, body: "Hello" }), {
     messaging_product: "whatsapp", recipient_type: "individual", to: "84917583553", type: "text", text: { preview_url: false, body: "Hello" },
@@ -99,4 +135,9 @@ test("sender route is internal-authenticated and idempotent", () => {
   assert.match(source, /buildSettlementMessageContent/);
   assert.match(source, /body\.text = financialContent\.body/);
   assert.match(source, /body\.bodyParameters = financialContent\.bodyParameters/);
+  assert.match(source, /buildSchedulingMessageContent/);
+  assert.match(source, /validateSchedulingBodyParameters/);
+  assert.match(source, /display_name/);
+  assert.match(source, /admin_reschedule_alert/);
+  assert.match(source, /HERMES_ADMIN_WHATSAPP_E164/);
 });

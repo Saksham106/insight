@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
@@ -5,11 +6,12 @@ import { academyInformation, communicationDecision, parseIMessageAdminActor, par
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
 import { parseCurrency, parseSettlementMonth, sanitizeFamilyCharges, sanitizeTutorReport } from "@/lib/hermes/settlements";
+import { normalizeToolPayload } from "@/lib/hermes/tool-contracts";
 import { parseCalendarEventResult, parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } from "@/lib/hermes/workspace-jobs";
 import { buildApprovalTemplateMessage, generateApprovalCode } from "@/lib/hermes/whatsapp-approvals";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job", "start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"] as const;
+const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "list_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job", "start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"] as const;
 type Action = (typeof ACTIONS)[number];
 const SETTLEMENT_ACTIONS = new Set<Action>(["start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"]);
 type ToolMode = "whatsapp" | "imessage_admin";
@@ -56,7 +58,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
   if (typeof action !== "string" || !ACTIONS.includes(action as Action)) return rejectRequest("Unsupported action", 400, "unsupported_action");
   if (SETTLEMENT_ACTIONS.has(action as Action) && process.env.HERMES_SETTLEMENTS_ENABLED !== "true") return rejectRequest("Not found", 404, "settlements_disabled");
   let payload: JsonObject;
-  try { payload = objectValue(parsed.payload ?? {}); } catch { return rejectRequest("Invalid payload", 400, "invalid_payload"); }
+  try { payload = normalizeToolPayload(action, objectValue(parsed.payload ?? {})); } catch { return rejectRequest("Invalid payload", 400, "invalid_payload"); }
 
   const imessageActor = mode === "imessage_admin"
     ? parseIMessageAdminActor(parsed.actor, process.env.HERMES_ADMIN_IMESSAGE_ID_SHA256)
@@ -96,6 +98,39 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
     if (actorKind === "admin") return true;
     const { data } = await supabase.from("hermes_case_participants").select("id").eq("case_id", caseId).eq("contact_id", actorContact!.id).maybeSingle();
     return Boolean(data);
+  };
+  const notifySwatiOfCaseAttention = async (input: { caseId: string; reason: string; eventType: "reschedule_requested" | "human_escalation" }) => {
+    const adminNumber = process.env.HERMES_ADMIN_WHATSAPP_E164;
+    const senderSecret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
+    if (!adminNumber || !senderSecret) return { status: "failed", error: "admin_notification_unavailable" };
+    const [{ data: adminContact }, { data: caseRecord }] = await Promise.all([
+      supabase.from("hermes_contacts").select("id, display_name").eq("whatsapp_e164", adminNumber).eq("is_active", true).is("deleted_at", null).maybeSingle(),
+      supabase.from("hermes_scheduling_cases").select("id, title").eq("id", input.caseId).maybeSingle(),
+    ]);
+    if (!adminContact || !caseRecord) return { status: "failed", error: "admin_notification_target_unavailable" };
+    const requesterName = actorContact?.display_name ?? "Kitty";
+    const caseSummary = `${caseRecord.title} — ${input.reason}`.slice(0, 500);
+    const idempotencyKey = `admin-attention-${createHash("sha256").update(`${input.caseId}:${actorContact?.id ?? actorKind}:${input.eventType}:${input.reason}`).digest("hex")}`;
+    const senderBody = JSON.stringify({
+      contactId: adminContact.id,
+      caseId: input.caseId,
+      intent: "admin_reschedule_alert",
+      templateData: { requesterName, caseSummary },
+      idempotencyKey,
+    });
+    const timestamp = Date.now().toString();
+    const senderRequestId = `${auth.requestId}-admin-alert`;
+    const response = await fetch(new URL("/api/whatsapp/send", request.url), {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-hermes-timestamp": timestamp, "x-hermes-request-id": senderRequestId, "x-hermes-signature": signServiceRequest(senderBody, timestamp, senderRequestId, senderSecret) },
+      body: senderBody,
+    });
+    const result = await response.json().catch(() => ({}));
+    const notification = response.ok
+      ? { status: typeof result?.message?.status === "string" ? result.message.status : "accepted", duplicate: result?.duplicate === true }
+      : { status: response.status === 409 ? "blocked" : "failed", error: typeof result?.error === "string" ? result.error : "admin_notification_failed" };
+    await audit("admin_attention_notification", "scheduling_case", input.caseId, { channel: "whatsapp", status: notification.status, duplicate: "duplicate" in notification ? notification.duplicate : false });
+    return notification;
   };
 
   try {
@@ -169,6 +204,36 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         if (error) throw error;
         return NextResponse.json({ contact: projectContact(actorContact), cases: (data ?? []).map((item) => ({ participantRole: item.participant_role, responseStatus: item.response_status, availability: item.availability, case: Array.isArray(item.case) ? item.case[0] : item.case })).filter((item) => item.case) });
       }
+      case "list_cases": {
+        if (actorKind !== "admin") return rejectRequest("This action is only available to Swati", 403, "admin_required");
+        const status = typeof payload.status === "string" ? payload.status : null;
+        if (status && !["draft", "collecting_availability", "proposing", "awaiting_approval", "confirmed", "cancelled", "needs_attention"].includes(status)) return failure("Invalid case status");
+        const contactId = typeof payload.contactId === "string" ? payload.contactId : null;
+        const limit = typeof payload.limit === "number" && Number.isInteger(payload.limit) ? Math.min(Math.max(payload.limit, 1), 50) : 20;
+        let caseIds: string[] | null = null;
+        if (contactId) {
+          const { data: memberships, error } = await supabase.from("hermes_case_participants").select("case_id").eq("contact_id", contactId).limit(50);
+          if (error) throw error;
+          caseIds = (memberships ?? []).map((item) => item.case_id);
+          if (caseIds.length === 0) return NextResponse.json({ cases: [] });
+        }
+        let builder = supabase.from("hermes_scheduling_cases").select("id, title, status, timezone, tutor_kind, human_takeover, proposed_times, resolution, created_at, updated_at").order("updated_at", { ascending: false }).limit(limit);
+        if (status) builder = builder.eq("status", status);
+        if (caseIds) builder = builder.in("id", caseIds);
+        const { data: cases, error } = await builder;
+        if (error) throw error;
+        const ids = (cases ?? []).map((item) => item.id);
+        const { data: participants, error: participantError } = ids.length
+          ? await supabase.from("hermes_case_participants").select("case_id, contact_id, participant_role, availability, response_status, contact:hermes_contacts(id, display_name, role, timezone, communication_policy, consent_status, is_active)").in("case_id", ids)
+          : { data: [], error: null };
+        if (participantError) throw participantError;
+        return NextResponse.json({
+          cases: (cases ?? []).map((caseRecord) => ({
+            ...caseRecord,
+            participants: projectCaseParticipantsForActor((participants ?? []).filter((item) => item.case_id === caseRecord.id), "admin", null),
+          })),
+        });
+      }
       case "record_availability": {
         const caseId = stringValue(payload, "caseId", 80);
         const contactId = actorKind === "contact" ? actorContact!.id : stringValue(payload, "contactId", 80);
@@ -188,7 +253,8 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         if (error) throw error;
         if (!changed) return failure("Case is unavailable", 409);
         await audit("reschedule_requested", "scheduling_case", caseId, { reason });
-        return NextResponse.json({ status: "needs_attention", humanTakeover: true });
+        const notification = await notifySwatiOfCaseAttention({ caseId, reason, eventType: "reschedule_requested" });
+        return NextResponse.json({ status: "needs_attention", humanTakeover: true, notification });
       }
       case "propose_times": {
         const caseId = stringValue(payload, "caseId", 80);
@@ -505,7 +571,8 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         }
         const senderSecret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
         if (!senderSecret) return failure("Sender unavailable", 503);
-        const senderBody = JSON.stringify({ contactId, caseId, settlementCycleId, familyInvoiceId, intent, text: typeof payload.text === "string" ? payload.text.slice(0, 2000) : undefined, bodyParameters: Array.isArray(payload.bodyParameters) ? payload.bodyParameters.slice(0, 10).map(String) : undefined, idempotencyKey, approvalId: typeof payload.approvalId === "string" ? payload.approvalId : undefined });
+        const templateData = payload.templateData && typeof payload.templateData === "object" && !Array.isArray(payload.templateData) ? payload.templateData : undefined;
+        const senderBody = JSON.stringify({ contactId, caseId, settlementCycleId, familyInvoiceId, intent, text: typeof payload.text === "string" ? payload.text.slice(0, 2000) : undefined, bodyParameters: Array.isArray(payload.bodyParameters) ? payload.bodyParameters.slice(0, 10).map(String) : undefined, templateData, idempotencyKey, approvalId: typeof payload.approvalId === "string" ? payload.approvalId : undefined });
         const timestamp = Date.now().toString();
         const senderRequestId = `${auth.requestId}-send`;
         const response = await fetch(new URL("/api/whatsapp/send", request.url), { method: "POST", headers: { "content-type": "application/json", "x-hermes-timestamp": timestamp, "x-hermes-request-id": senderRequestId, "x-hermes-signature": signServiceRequest(senderBody, timestamp, senderRequestId, senderSecret) }, body: senderBody });
@@ -522,7 +589,8 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const { error } = await supabase.from("hermes_scheduling_cases").update({ status: "needs_attention", human_takeover: true }).eq("id", caseId);
         if (error) throw error;
         await audit("human_escalation", "scheduling_case", caseId, { reason });
-        return NextResponse.json({ status: "needs_attention", humanTakeover: true });
+        const notification = await notifySwatiOfCaseAttention({ caseId, reason, eventType: "human_escalation" });
+        return NextResponse.json({ status: "needs_attention", humanTakeover: true, notification });
       }
     }
   } catch (error) {

@@ -8,12 +8,13 @@ PAYLOAD_GUIDANCE = (
     "get_academy_info={topic: about|scheduling|privacy|ai_assistant|subjects|contact}; "
     "search_contacts={query}; get_contact={contactId}; "
     "create_case={title,tutorKind,timezone,participants:[{contactId,participantRole}]}; "
-    "get_case={caseId}; send_message={contactId,caseId,intent,text?,bodyParameters?,"
+    "get_case={caseId}; list_cases={status?,contactId?,limit?}; "
+    "send_message={contactId,caseId,intent,text?,templateData?,bodyParameters?,"
     "idempotencyKey,approvalId?}. Scheduling messages require a case and the recipient must be "
     "a participant. send_message sends synchronously from Insight to the WhatsApp Cloud API; it "
     "does not upload or queue work for the Academy profile. Outside the 24-hour service window, "
-    "class_reminder uses the approved template with exactly three bodyParameters in this order: "
-    "recipient name, class description, scheduled date/time with timezone. A corrected retry after "
+    "For class_reminder, use templateData={classDescription,scheduledDateTime}; Insight supplies the "
+    "recipient name and exact approved template parameter order. bodyParameters is legacy-only. A corrected retry after "
     "a failed reserved send needs a new idempotencyKey. Do not claim delivery unless the tool reports it."
 )
 

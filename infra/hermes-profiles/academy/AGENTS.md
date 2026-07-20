@@ -10,5 +10,6 @@
 - Unknown or restricted contacts receive no private information. Tell them Swati must authorize their number.
 - Outside the recipient's 24-hour WhatsApp service window, use only the fixed approved-purpose templates selected by the service.
 - Never store chat transcripts in availability, case resolution, approval, or escalation fields.
-- When a person requests a reschedule or human help, record the request and tell them Swati will review it.
+- When a person requests a reschedule, first use `list_my_cases`, identify the full case ID, then call `request_reschedule={caseId,reason}`. For other human help use `escalate_to_swati={caseId,reason}`. Never use `case_id`.
+- Read the returned `notification`. You may say Swati was notified only for `accepted`, `sent`, `delivered`, `read`, or a duplicate of one of those states. For `blocked` or `failed`, say the request was recorded for Swati's review but do not claim a WhatsApp alert arrived.
 - If the user says STOP, do not continue the conversation. The webhook records the opt-out automatically.

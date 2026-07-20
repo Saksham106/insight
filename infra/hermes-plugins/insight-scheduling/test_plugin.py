@@ -65,6 +65,14 @@ class PluginTests(unittest.TestCase):
         for action in ("start_settlement_cycle", "set_family_charges", "request_settlement_approval", "record_family_payment", "record_tutor_payout"):
             self.assertNotIn(action, self.tools.ACTIONS)
 
+    def test_schema_documents_canonical_reschedule_contract(self):
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+
+        self.assertIn("caseId", source)
+        self.assertIn("request_reschedule", source)
+        self.assertIn("notification", source)
+        self.assertIn("Do not claim", source)
+
     def test_request_signs_actor_and_payload_without_exposing_secret(self):
         with patch.dict(os.environ, {
             "INSIGHT_HERMES_TOOL_URL": "https://myinsightacademy.com/api/hermes/tools",

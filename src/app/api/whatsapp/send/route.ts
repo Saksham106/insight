@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { verifyServiceRequest } from "@/lib/hermes/auth";
-import { buildGraphMessageRequest, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, type WhatsAppIntent } from "@/lib/hermes/meta";
+import { buildGraphMessageRequest, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters, type WhatsAppIntent } from "@/lib/hermes/meta";
 import { buildSettlementMessageContent } from "@/lib/hermes/settlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   const auth = secret ? verifyServiceRequest(request, rawBody, secret) : null;
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: { contactId?: string; caseId?: string; settlementCycleId?: string; familyInvoiceId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; idempotencyKey?: string; approvalId?: string };
+  let body: { contactId?: string; caseId?: string; settlementCycleId?: string; familyInvoiceId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; templateData?: Record<string, unknown>; idempotencyKey?: string; approvalId?: string };
   try { body = JSON.parse(rawBody); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.contactId || !body.intent || !body.idempotencyKey) return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
   const [{ data: contact }, { count: recentCount }] = await Promise.all([
     supabase.from("hermes_contacts")
-      .select("id, role, whatsapp_e164, communication_policy, consent_status, service_window_expires_at")
+      .select("id, display_name, role, whatsapp_e164, communication_policy, consent_status, service_window_expires_at")
       .eq("id", body.contactId).eq("is_active", true).is("deleted_at", null).maybeSingle(),
     supabase.from("hermes_messages").select("id", { count: "exact", head: true }).eq("direction", "outbound").gte("created_at", new Date(Date.now() - 60_000).toISOString()),
   ]);
@@ -55,14 +55,33 @@ export async function POST(request: Request) {
     }
   } else {
     if (!body.caseId || body.settlementCycleId || body.familyInvoiceId) return NextResponse.json({ error: "Scheduling message requires one case" }, { status: 400 });
+    const isAdminRescheduleAlert = body.intent === "admin_reschedule_alert";
     const [{ data: caseRecord }, { data: participant }] = await Promise.all([
       supabase.from("hermes_scheduling_cases").select("id, status, tutor_kind, workspace_state, human_takeover").eq("id", body.caseId).maybeSingle(),
       supabase.from("hermes_case_participants").select("id").eq("case_id", body.caseId).eq("contact_id", body.contactId).maybeSingle(),
     ]);
-    if (!caseRecord || !participant) return NextResponse.json({ error: "Contact is not a case participant" }, { status: 403 });
-    if (caseRecord.human_takeover) return NextResponse.json({ error: "Swati has taken over this case" }, { status: 409 });
+    if (!caseRecord) return NextResponse.json({ error: "Case not found" }, { status: 404 });
+    if (isAdminRescheduleAlert) {
+      const adminE164 = process.env.HERMES_ADMIN_WHATSAPP_E164?.replace(/\D/g, "");
+      if (!adminE164 || contact.whatsapp_e164.replace(/\D/g, "") !== adminE164) return NextResponse.json({ error: "Admin alert recipient mismatch" }, { status: 403 });
+    } else if (!participant) {
+      return NextResponse.json({ error: "Contact is not a case participant" }, { status: 403 });
+    }
+    if (!isAdminRescheduleAlert && caseRecord.human_takeover) return NextResponse.json({ error: "Swati has taken over this case" }, { status: 409 });
     if (body.intent === "class_confirmation" && caseRecord.status !== "confirmed") return NextResponse.json({ error: "Class is not confirmed" }, { status: 409 });
     if (body.intent === "class_confirmation" && caseRecord.tutor_kind === "swati" && caseRecord.workspace_state !== "ready") return NextResponse.json({ error: "Swati's Calendar event is not ready" }, { status: 409 });
+    try {
+      if (body.templateData && typeof body.templateData === "object" && !Array.isArray(body.templateData)) {
+        const content = buildSchedulingMessageContent({ intent: body.intent, recipientName: contact.display_name, templateData: body.templateData });
+        body.text = content.body;
+        body.bodyParameters = content.bodyParameters;
+      } else {
+        body.bodyParameters = validateSchedulingBodyParameters(body.intent, contact.display_name, body.bodyParameters ?? []);
+        if (!body.text?.trim()) return NextResponse.json({ error: "Scheduling message requires templateData or text" }, { status: 400 });
+      }
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "invalid_templateData" }, { status: 400 });
+    }
   }
   if (financialContent) {
     body.text = financialContent.body;

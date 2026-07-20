@@ -12,7 +12,10 @@ def register(ctx):
             "name": "insight_scheduling",
             "description": (
                 "Use the MyInsightAcademy scheduling service. The service automatically identifies the current "
-                "WhatsApp sender and rejects actions or records they are not allowed to access."
+                "WhatsApp sender and rejects actions or records they are not allowed to access. Use canonical "
+                "camelCase fields. request_reschedule={caseId,reason} and escalate_to_swati={caseId,reason}. "
+                "The response includes notification status. Do not claim Swati was notified unless it reports "
+                "accepted, sent, delivered, read, or duplicate of one of those states."
             ),
             "parameters": {
                 "type": "object",

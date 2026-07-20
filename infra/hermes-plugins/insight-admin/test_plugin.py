@@ -60,6 +60,9 @@ class PluginTests(unittest.TestCase):
         self.assertIn("request_swati_freebusy", self.tools.ACTIONS)
         self.assertIn("get_workspace_job", self.tools.ACTIONS)
 
+    def test_exposes_admin_case_listing(self):
+        self.assertIn("list_cases", self.tools.ACTIONS)
+
     def test_exposes_admin_settlement_and_exact_approval_actions(self):
         for action in (
             "start_settlement_cycle", "get_settlement_cycle", "set_family_charges",
@@ -76,8 +79,10 @@ class PluginTests(unittest.TestCase):
         self.assertIn("contactId", source)
         self.assertIn("caseId", source)
         self.assertIn("idempotencyKey", source)
-        self.assertIn("bodyParameters", source)
-        self.assertIn("recipient name, class description, scheduled date/time with timezone", source)
+        self.assertIn("templateData", source)
+        self.assertIn("classDescription", source)
+        self.assertIn("scheduledDateTime", source)
+        self.assertIn("list_cases", source)
 
     def test_request_uses_admin_url_secret_and_session_actor(self):
         with patch.dict(os.environ, {

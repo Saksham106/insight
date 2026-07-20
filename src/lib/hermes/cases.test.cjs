@@ -93,6 +93,7 @@ test("case contacts receive only their own participant record", () => {
 
 test("gives Swati broad scheduling scope and contacts only self or case-member scope", () => {
   assert.equal(toolActorScope("search_contacts", "admin"), "admin");
+  assert.equal(toolActorScope("list_cases", "admin"), "admin");
   assert.equal(toolActorScope("confirm_class", "admin"), "admin");
   assert.equal(toolActorScope("get_contact", "contact"), "self");
   assert.equal(toolActorScope("record_availability", "contact"), "self_case_member");
@@ -127,9 +128,20 @@ test("tool route requires signed replay-protected requests and audits actions", 
   assert.match(source, /verifyServiceRequest/);
   assert.match(source, /hermes_audit_events/);
   assert.match(source, /request_id/);
-  for (const action of ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"]) assert.match(source, new RegExp(action));
+  for (const action of ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "list_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati"]) assert.match(source, new RegExp(action));
   assert.match(source, /parseWhatsAppToolActor/);
   assert.match(source, /HERMES_ADMIN_WHATSAPP_E164/);
+});
+
+test("reschedule and escalation record state then request an idempotent Swati alert", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  assert.match(source, /notifySwatiOfCaseAttention/);
+  assert.match(source, /admin_reschedule_alert/);
+  assert.match(source, /templateData/);
+  assert.match(source, /requesterName/);
+  assert.match(source, /caseSummary/);
+  assert.match(source, /notification/);
+  assert.match(source, /createHash/);
 });
 
 test("iMessage admin route is separately signed and disabled by default", () => {

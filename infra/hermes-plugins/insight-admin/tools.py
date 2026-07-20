@@ -17,6 +17,7 @@ ACTIONS = (
     "get_contact",
     "create_case",
     "get_case",
+    "list_cases",
     "record_availability",
     "propose_times",
     "request_approval",

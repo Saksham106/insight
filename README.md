@@ -94,6 +94,7 @@ npm run dev
 | WHATSAPP_TEMPLATE_PAYMENT_REMINDER | For monthly bookkeeping | Approved fixed family payment reminder. |
 | WHATSAPP_TEMPLATE_PAYMENT_RECEIVED | For monthly bookkeeping | Approved fixed payment-received acknowledgement. |
 | WHATSAPP_TEMPLATE_HUMAN_ATTENTION | For proactive outreach | Approved Meta template name. |
+| WHATSAPP_TEMPLATE_ADMIN_RESCHEDULE_ALERT | For proactive admin alerts | Approved Utility template that notifies Swati about a scheduling change request. |
 
 Note: Do not commit .env.local. Share secrets out of band.
 
