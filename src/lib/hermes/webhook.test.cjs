@@ -110,6 +110,15 @@ test("webhook route handles verification, raw signatures, idempotency, and forwa
   assert.match(source, /whatsapp-approval:/);
 });
 
+test("delivery status receipts do not overwrite the original message timestamp", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"), "utf8");
+  const statusBranch = source.match(
+    /if \(event\.kind === "status"\) \{([\s\S]*?)continue;/,
+  );
+  assert.ok(statusBranch, "status branch must exist");
+  assert.doesNotMatch(statusBranch[1], /occurred_at/);
+});
+
 test("WhatsApp settlement approval finalizes exact snapshots before reporting success", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"), "utf8");
   assert.match(source, /settlement_cycle_id/);

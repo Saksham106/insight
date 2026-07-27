@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   for (const event of events) {
     if (event.kind === "status") {
       const allowedStatus = ["sent", "delivered", "read", "failed"].includes(event.status) ? event.status : "failed";
-      await supabase.from("hermes_messages").update({ status: allowedStatus, error_code: event.errorCode, occurred_at: event.occurredAt }).eq("meta_message_id", event.metaMessageId);
+      await supabase.from("hermes_messages").update({ status: allowedStatus, error_code: event.errorCode }).eq("meta_message_id", event.metaMessageId);
       continue;
     }
 

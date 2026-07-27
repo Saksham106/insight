@@ -1,32 +1,83 @@
-with recoverable_template_bodies as (
+do $migration$
+declare
+  recovery_count integer;
+begin
+  with ranked_template_attempts as (
+    select
+      attempt.id,
+      lag(attempt.id) over (
+        partition by
+          attempt.contact_id,
+          attempt.case_id,
+          attempt.intent,
+          attempt.template_name,
+          attempt.template_locale
+        order by attempt.created_at, attempt.id
+      ) as previous_attempt_id
+    from public.hermes_messages attempt
+    where attempt.direction = 'outbound'
+      and attempt.message_kind = 'template'
+  ),
+  recoverable_template_bodies as (
+    select target.id
+    from ranked_template_attempts ranked
+    join public.hermes_messages target
+      on target.id = ranked.id
+    join public.hermes_messages source
+      on source.id = ranked.previous_attempt_id
+    where target.intent = 'class_reminder'
+      and target.case_id is not null
+      and target.status in ('accepted', 'sent', 'delivered', 'read')
+      and nullif(btrim(target.body), '') is null
+      and source.status = 'failed'
+      and source.created_at >= target.created_at - interval '30 minutes'
+      and source.body is not null
+      and char_length(btrim(source.body)) between 1 and 65536
+  )
+  select count(*) into recovery_count
+  from recoverable_template_bodies;
+
+  if recovery_count > 1 then
+    raise exception
+      'Refusing ambiguous legacy template recovery: % candidates',
+      recovery_count;
+  end if;
+end
+$migration$;
+
+with ranked_template_attempts as (
+  select
+    attempt.id,
+    lag(attempt.id) over (
+      partition by
+        attempt.contact_id,
+        attempt.case_id,
+        attempt.intent,
+        attempt.template_name,
+        attempt.template_locale
+      order by attempt.created_at, attempt.id
+    ) as previous_attempt_id
+  from public.hermes_messages attempt
+  where attempt.direction = 'outbound'
+    and attempt.message_kind = 'template'
+),
+recoverable_template_bodies as (
   select
     target.id as target_id,
     source.body
-  from public.hermes_messages target
-  join lateral (
-    select source.body
-    from public.hermes_messages source
-    where target.contact_id = source.contact_id
-      and target.case_id is not distinct from source.case_id
-      and target.intent = source.intent
-      and target.template_name = source.template_name
-      and target.template_locale = source.template_locale
-      and source.direction = 'outbound'
-      and source.message_kind = 'template'
-      and source.status = 'failed'
-      and source.occurred_at <= target.occurred_at
-      and source.body is not null
-      and char_length(btrim(source.body)) between 1 and 65536
-    order by source.occurred_at desc, source.created_at desc
-    limit 1
-  ) source on true
-  where target.direction = 'outbound'
-    and target.message_kind = 'template'
+  from ranked_template_attempts ranked
+  join public.hermes_messages target
+    on target.id = ranked.id
+  join public.hermes_messages source
+    on source.id = ranked.previous_attempt_id
+  where target.intent = 'class_reminder'
+    and target.case_id is not null
     and target.status in ('accepted', 'sent', 'delivered', 'read')
-    and (
-      target.body is null
-      or char_length(btrim(target.body)) = 0
-    )
+    and nullif(btrim(target.body), '') is null
+    and source.status = 'failed'
+    and source.created_at >= target.created_at - interval '30 minutes'
+    and source.body is not null
+    and char_length(btrim(source.body)) between 1 and 65536
 )
 update public.hermes_messages target
 set
@@ -37,6 +88,29 @@ where target.id = recovered.target_id;
 
 create or replace view public.hermes_admin_conversation_messages
 with (security_invoker = true) as
+with visible_deliveries as (
+  select
+    delivery.*,
+    case
+      when delivery.direction = 'outbound'
+        and delivery.intent <> 'gateway_transcript'
+        then delivery.created_at
+      else delivery.occurred_at
+    end as transcript_at
+  from public.hermes_messages delivery
+  where delivery.direction in ('inbound', 'outbound')
+    and delivery.message_kind in ('text', 'template')
+    and (
+      (delivery.direction = 'inbound' and delivery.status = 'received')
+      or
+      (
+        delivery.direction = 'outbound'
+        and delivery.status in ('accepted', 'sent', 'delivered', 'read')
+      )
+    )
+    and delivery.body is not null
+    and char_length(btrim(delivery.body)) between 1 and 65536
+)
 select
   'delivery'::text as source,
   delivery.id::text as source_id,
@@ -45,21 +119,9 @@ select
     when delivery.direction = 'inbound' then 'contact'::text
     else 'kitty'::text
   end as speaker,
-  btrim(delivery.body) as body,
-  delivery.occurred_at
-from public.hermes_messages delivery
-where delivery.direction in ('inbound', 'outbound')
-  and delivery.message_kind in ('text', 'template')
-  and (
-    (delivery.direction = 'inbound' and delivery.status = 'received')
-    or
-    (
-      delivery.direction = 'outbound'
-      and delivery.status in ('accepted', 'sent', 'delivered', 'read')
-    )
-  )
-  and delivery.body is not null
-  and char_length(btrim(delivery.body)) between 1 and 65536
+  delivery.body as body,
+  delivery.transcript_at as occurred_at
+from visible_deliveries delivery
 union all
 select
   'session'::text as source,
@@ -72,14 +134,11 @@ from public.hermes_transcript_messages transcript
 where transcript.speaker = 'kitty'
   and not exists (
     select 1
-    from public.hermes_messages delivery
+    from visible_deliveries delivery
     where delivery.contact_id = transcript.contact_id
       and delivery.direction = 'outbound'
-      and delivery.message_kind = 'text'
-      and delivery.status in ('accepted', 'sent', 'delivered', 'read')
-      and delivery.body is not null
-      and char_length(btrim(delivery.body)) between 1 and 65536
-      and delivery.occurred_at between
+      and delivery.message_kind in ('text', 'template')
+      and delivery.transcript_at between
         transcript.occurred_at - interval '2 minutes'
         and transcript.occurred_at + interval '2 minutes'
   );

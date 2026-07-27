@@ -318,13 +318,15 @@ test("template transcript migration recovers legacy bodies and shows only succes
     .toLowerCase();
 
   assert.match(sql, /update public\.hermes_messages target/);
-  assert.match(sql, /target\.contact_id = source\.contact_id/);
-  assert.match(sql, /target\.case_id is not distinct from source\.case_id/);
-  assert.match(sql, /target\.intent = source\.intent/);
-  assert.match(sql, /target\.template_name = source\.template_name/);
-  assert.match(sql, /target\.template_locale = source\.template_locale/);
+  assert.match(sql, /lag\(attempt\.id\) over/);
+  assert.match(sql, /source\.id = ranked\.previous_attempt_id/);
+  assert.match(sql, /target\.intent = 'class_reminder'/);
+  assert.match(sql, /target\.case_id is not null/);
   assert.match(sql, /source\.status = 'failed'/);
-  assert.match(sql, /source\.occurred_at <= target\.occurred_at/);
+  assert.match(
+    sql,
+    /source\.created_at >= target\.created_at - interval '30 minutes'/,
+  );
   assert.match(
     sql,
     /delivery\.message_kind in \('text', 'template'\)/,
@@ -332,6 +334,15 @@ test("template transcript migration recovers legacy bodies and shows only succes
   assert.match(
     sql,
     /delivery\.status in \('accepted', 'sent', 'delivered', 'read'\)/,
+  );
+  assert.match(sql, /end as speaker,\s+delivery\.body as body,/);
+  assert.match(
+    sql,
+    /delivery\.intent <> 'gateway_transcript'\s+then delivery\.created_at/,
+  );
+  assert.match(
+    sql,
+    /from visible_deliveries delivery[\s\S]*delivery\.message_kind in \('text', 'template'\)/,
   );
   assert.doesNotMatch(
     sql,
