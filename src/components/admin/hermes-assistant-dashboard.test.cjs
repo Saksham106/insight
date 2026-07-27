@@ -19,11 +19,36 @@ test("Kitty admin page exposes scheduling, settlement, and audit sections", () =
   const source = read("src/components/admin/hermes-assistant-dashboard.tsx");
   assert.match(source, /> Kitty/);
   assert.doesNotMatch(source, /> Hermes Assistant/);
-  for (const label of ["Contacts", "Needs attention", "Active scheduling", "Monthly settlements", "Recent activity"]) {
+  for (const label of ["WhatsApp conversations", "Needs attention", "Active scheduling", "Monthly settlements", "Recent activity"]) {
     assert.ok(source.includes(label), `missing ${label}`);
   }
   for (const label of ["Tutor reports", "Family invoices", "Tutor payouts"]) {
     assert.ok(source.includes(label), `missing ${label}`);
+  }
+});
+
+test("admins can select every contact and read a privacy-minimized transcript", () => {
+  const source = read("src/components/admin/hermes-assistant-dashboard.tsx");
+  assert.match(source, /import Link from "next\/link"/);
+  assert.doesNotMatch(source, /contacts\.slice\(0,\s*12\)/);
+  assert.match(source, /href=\{`\/admin\/hermes\?contact=\$\{contact\.id\}`\}/);
+  assert.match(source, /aria-current=\{isSelected \? "page" : undefined\}/);
+  assert.match(source, /No WhatsApp messages yet/);
+  assert.match(source, /Select a contact to view their WhatsApp conversation/);
+  assert.match(source, /Conversation with \{selectedContact\.display_name\}/);
+  assert.match(source, /message\.speaker === "kitty"/);
+  assert.match(source, />Kitty</);
+  assert.match(source, />Contact</);
+  assert.match(source, /Transcript temporarily unavailable/);
+  assert.doesNotMatch(source, /dangerouslySetInnerHTML/);
+  for (const forbidden of [
+    "System prompt",
+    "Tool call",
+    "Reasoning",
+    "Model tokens",
+    "Raw JSON",
+  ]) {
+    assert.doesNotMatch(source, new RegExp(forbidden, "i"));
   }
 });
 
