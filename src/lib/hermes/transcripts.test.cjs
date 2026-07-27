@@ -317,7 +317,15 @@ test("template transcript migration recovers legacy bodies and shows only succes
     .readFileSync(path.join(migrationsDir, filename), "utf8")
     .toLowerCase();
 
+  assert.match(
+    sql,
+    /lock table public\.hermes_messages in share row exclusive mode/,
+  );
+  assert.match(sql, /if missing_target_count = 0 then/);
+  assert.match(sql, /if recovery_count <> 1 then/);
   assert.match(sql, /update public\.hermes_messages target/);
+  assert.match(sql, /get diagnostics updated_count = row_count/);
+  assert.match(sql, /if updated_count <> 1 then/);
   assert.match(sql, /lag\(attempt\.id\) over/);
   assert.match(sql, /source\.id = ranked\.previous_attempt_id/);
   assert.match(sql, /target\.intent = 'class_reminder'/);
