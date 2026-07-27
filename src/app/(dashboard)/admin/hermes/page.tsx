@@ -1,4 +1,5 @@
 import { HermesAssistantDashboard } from "@/components/admin/hermes-assistant-dashboard";
+import { parseHermesTab } from "@/components/admin/hermes-dashboard-shared";
 import { requireRole } from "@/lib/auth/require-role";
 import {
   attachAndSortConversationSummaries,
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
 interface HermesAdminPageProps {
   searchParams: Promise<{
     contact?: string | string[];
+    tab?: string | string[];
   }>;
 }
 
@@ -22,6 +24,7 @@ export default async function HermesAdminPage({
   await requireRole(["admin"]);
   const query = await searchParams;
   const requestedContactId = parseSelectedContactId(query.contact);
+  const tab = parseHermesTab(query.tab);
   const supabase = createAdminClient();
   const [contacts, cases, approvals, messages, settlements, summaryResult] =
     await Promise.all([
@@ -72,6 +75,7 @@ export default async function HermesAdminPage({
 
   return (
     <HermesAssistantDashboard
+      tab={tab}
       contacts={attachAndSortConversationSummaries(
         activeContacts,
         summaryResult.data,

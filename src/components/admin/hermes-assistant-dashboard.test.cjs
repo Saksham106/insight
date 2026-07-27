@@ -16,19 +16,48 @@ test("admin overview links to Kitty without exposing the internal Hermes name", 
 });
 
 test("Kitty admin page exposes scheduling, settlement, and audit sections", () => {
-  const source = read("src/components/admin/hermes-assistant-dashboard.tsx");
-  assert.match(source, /> Kitty/);
-  assert.doesNotMatch(source, /> Hermes Assistant/);
+  const shell = read("src/components/admin/hermes-assistant-dashboard.tsx");
+  assert.match(shell, /> Kitty/);
+  assert.doesNotMatch(shell, /> Hermes Assistant/);
+
+  const panels = [
+    "src/components/admin/hermes-conversations-panel.tsx",
+    "src/components/admin/hermes-attention-panel.tsx",
+    "src/components/admin/hermes-scheduling-panel.tsx",
+    "src/components/admin/hermes-settlements-panel.tsx",
+  ]
+    .map(read)
+    .join("\n");
+
   for (const label of ["WhatsApp conversations", "Needs attention", "Active scheduling", "Monthly settlements", "Recent activity"]) {
-    assert.ok(source.includes(label), `missing ${label}`);
+    assert.ok(panels.includes(label), `missing ${label}`);
   }
   for (const label of ["Tutor reports", "Family invoices", "Tutor payouts"]) {
-    assert.ok(source.includes(label), `missing ${label}`);
+    assert.ok(panels.includes(label), `missing ${label}`);
   }
 });
 
+test("every section stays reachable from the tab bar", () => {
+  const shell = read("src/components/admin/hermes-assistant-dashboard.tsx");
+  const shared = read("src/components/admin/hermes-dashboard-shared.tsx");
+
+  // Conversations is the landing view when no tab is requested.
+  assert.match(shared, /DEFAULT_HERMES_TAB: HermesTab = "conversations"/);
+  for (const id of ["conversations", "attention", "scheduling", "settlements", "contacts"]) {
+    assert.ok(shared.includes(`"${id}"`), `missing tab id ${id}`);
+    assert.ok(shell.includes(`tab === "${id}"`), `tab ${id} renders no panel`);
+  }
+  // Switching tabs must not drop the contact currently being read.
+  assert.match(shared, /if \(contactId\) params\.set\("contact", contactId\)/);
+  assert.match(shell, /href=\{hermesTabHref\(id, selectedContact\?\.id \?\? null\)\}/);
+  assert.match(shell, /aria-label="Kitty sections"/);
+
+  // An unknown tab value falls back rather than rendering an empty page.
+  assert.match(shared, /HERMES_TABS\.includes\(candidate as HermesTab\)/);
+});
+
 test("admins can select every contact and read a privacy-minimized transcript", () => {
-  const source = read("src/components/admin/hermes-assistant-dashboard.tsx");
+  const source = read("src/components/admin/hermes-conversations-panel.tsx");
   assert.match(source, /import Link from "next\/link"/);
   assert.doesNotMatch(source, /contacts\.slice\(0,\s*12\)/);
   assert.match(source, /href=\{`\/admin\/hermes\?contact=\$\{contact\.id\}`\}/);
@@ -75,10 +104,10 @@ test("Kitty dashboard quick-adds one consented WhatsApp contact at a time", () =
   assert.match(source, /setConsent\(false\)/);
   assert.match(source, /router\.refresh\(\)/);
 
-  const dashboard = read("src/components/admin/hermes-assistant-dashboard.tsx");
-  assert.match(dashboard, /HermesContactQuickAdd/);
+  const panel = read("src/components/admin/hermes-contacts-panel.tsx");
+  assert.match(panel, /HermesContactQuickAdd/);
   assert.ok(
-    dashboard.indexOf("<HermesContactQuickAdd") < dashboard.indexOf("<HermesContactImport"),
+    panel.indexOf("<HermesContactQuickAdd") < panel.indexOf("<HermesContactImport"),
     "quick add should appear before bulk import",
   );
 });
