@@ -78,7 +78,7 @@ export async function POST(request: Request) {
       const { error: upsertError } = await supabase
         .from("hermes_messages")
         .upsert(rows, {
-          onConflict: "meta_message_id",
+          onConflict: "idempotency_key",
           ignoreDuplicates: true,
         });
       if (upsertError) {

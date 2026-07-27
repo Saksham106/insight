@@ -31,6 +31,7 @@ test("transcript route is signed, replay-protected, minimized, and idempotent", 
     /\.from\("hermes_transcript_messages"\)\s*\.upsert/,
   );
   assert.match(source, /\.from\("hermes_messages"\)\s*\.upsert/);
+  assert.match(source, /onConflict:\s*"idempotency_key"/);
   assert.match(
     source,
     /onConflict:\s*"hermes_session_id,hermes_message_id"/,
