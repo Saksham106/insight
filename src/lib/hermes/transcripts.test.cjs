@@ -307,6 +307,39 @@ test("exact-message migration uses the webhook ledger and outbound-only session 
   assert.match(sql, /security_invoker\s*=\s*true/);
 });
 
+test("template transcript migration recovers legacy bodies and shows only successful templates", () => {
+  const migrationsDir = path.join(process.cwd(), "supabase/migrations");
+  const filename = fs
+    .readdirSync(migrationsDir)
+    .find((entry) => entry.endsWith("_include_successful_whatsapp_templates.sql"));
+  assert.ok(filename, "successful WhatsApp template migration must exist");
+  const sql = fs
+    .readFileSync(path.join(migrationsDir, filename), "utf8")
+    .toLowerCase();
+
+  assert.match(sql, /update public\.hermes_messages target/);
+  assert.match(sql, /target\.contact_id = source\.contact_id/);
+  assert.match(sql, /target\.case_id is not distinct from source\.case_id/);
+  assert.match(sql, /target\.intent = source\.intent/);
+  assert.match(sql, /target\.template_name = source\.template_name/);
+  assert.match(sql, /target\.template_locale = source\.template_locale/);
+  assert.match(sql, /source\.status = 'failed'/);
+  assert.match(sql, /source\.occurred_at <= target\.occurred_at/);
+  assert.match(
+    sql,
+    /delivery\.message_kind in \('text', 'template'\)/,
+  );
+  assert.match(
+    sql,
+    /delivery\.status in \('accepted', 'sent', 'delivered', 'read'\)/,
+  );
+  assert.doesNotMatch(
+    sql,
+    /delivery\.status in \([^)]*'failed'/,
+  );
+  assert.match(sql, /security_invoker\s*=\s*true/);
+});
+
 test("transcript sync configuration is disabled by default and documented", () => {
   const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
   const rootReadme = fs.readFileSync(
