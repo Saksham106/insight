@@ -13,6 +13,15 @@ export interface TranscriptSyncRequest {
   messages: TranscriptSyncMessage[];
 }
 
+export interface TranscriptDatabaseRow {
+  contact_id: string;
+  hermes_session_id: string;
+  hermes_message_id: number;
+  speaker: TranscriptSpeaker;
+  body: string;
+  occurred_at: string;
+}
+
 export type TranscriptSyncParseResult =
   | { ok: true; value: TranscriptSyncRequest }
   | { ok: false; error: string };
@@ -144,4 +153,18 @@ export function parseTranscriptSyncRequest(
       messages,
     },
   };
+}
+
+export function buildTranscriptRows(
+  request: TranscriptSyncRequest,
+  contactId: string,
+): TranscriptDatabaseRow[] {
+  return request.messages.map((message) => ({
+    contact_id: contactId,
+    hermes_session_id: request.sessionId,
+    hermes_message_id: message.messageId,
+    speaker: message.speaker,
+    body: message.text,
+    occurred_at: message.occurredAt,
+  }));
 }

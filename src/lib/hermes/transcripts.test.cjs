@@ -182,3 +182,26 @@ test("transcript migration is service-role-only and idempotent", () => {
   );
   assert.doesNotMatch(sql, /create policy/);
 });
+
+test("projects only approved transcript database columns", () => {
+  const { buildTranscriptRows, parseTranscriptSyncRequest } = loadModule();
+  const parsed = parseTranscriptSyncRequest(validRequest);
+  assert.equal(parsed.ok, true);
+  const rows = buildTranscriptRows(parsed.value, "contact-123");
+  assert.deepEqual(rows[0], {
+    contact_id: "contact-123",
+    hermes_session_id: "whatsapp_cloud:919876543210",
+    hermes_message_id: 41,
+    speaker: "contact",
+    body: "Thank you, I will pay tomorrow.",
+    occurred_at: "2026-07-27T14:30:00.000Z",
+  });
+  assert.deepEqual(Object.keys(rows[0]).sort(), [
+    "body",
+    "contact_id",
+    "hermes_message_id",
+    "hermes_session_id",
+    "occurred_at",
+    "speaker",
+  ]);
+});
