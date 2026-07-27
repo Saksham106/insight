@@ -74,15 +74,37 @@ export async function POST(request: Request) {
     }
 
     if ("source" in payload) {
-      const rows = buildWhatsAppDeliveryRows(payload, contact.id);
-      const { error: upsertError } = await supabase
-        .from("hermes_messages")
-        .upsert(rows, {
-          onConflict: "idempotency_key",
-          ignoreDuplicates: true,
-        });
-      if (upsertError) {
+      const messageIds = payload.messages.map(
+        (message) => message.messageId,
+      );
+      const { data: existingMessages, error: existingError } =
+        await supabase
+          .from("hermes_messages")
+          .select("meta_message_id")
+          .in("meta_message_id", messageIds);
+      if (existingError) {
         return failure("Transcript sync failed", 500);
+      }
+      const existingMessageIds = new Set(
+        (existingMessages ?? []).flatMap((message) =>
+          typeof message.meta_message_id === "string"
+            ? [message.meta_message_id]
+            : [],
+        ),
+      );
+      const rows = buildWhatsAppDeliveryRows(payload, contact.id).filter(
+        (row) => !existingMessageIds.has(row.meta_message_id),
+      );
+      if (rows.length > 0) {
+        const { error: upsertError } = await supabase
+          .from("hermes_messages")
+          .upsert(rows, {
+            onConflict: "idempotency_key",
+            ignoreDuplicates: true,
+          });
+        if (upsertError) {
+          return failure("Transcript sync failed", 500);
+        }
       }
       return NextResponse.json({
         ok: true,
