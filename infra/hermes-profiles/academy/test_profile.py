@@ -95,6 +95,20 @@ class AcademyProfileTests(unittest.TestCase):
             "user_id": "16175950803",
         }))
 
+    def test_transcript_hook_is_incremental_private_and_non_blocking(self):
+        hook_dir = PROFILE_DIR / "hooks" / "insight-transcript-sync"
+        manifest = (hook_dir / "HOOK.yaml").read_text()
+        handler = (hook_dir / "handler.py").read_text()
+
+        self.assertIn("- agent:end", manifest)
+        self.assertIn("- gateway:startup", manifest)
+        self.assertIn("INSIGHT_HERMES_TRANSCRIPT_SYNC_ENABLED", handler)
+        self.assertIn("SessionDB(_hermes_home() / \"state.db\", read_only=True)", handler)
+        self.assertIn('source="whatsapp_cloud"', handler)
+        self.assertIn("_BACKGROUND_TASKS", handler)
+        self.assertIn("tool_calls", handler)
+        self.assertNotIn('"reasoning":', handler)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,5 @@
+name: insight-transcript-sync
+description: Incrementally sync visible Academy WhatsApp messages to the admin dashboard.
+events:
+  - agent:end
+  - gateway:startup
