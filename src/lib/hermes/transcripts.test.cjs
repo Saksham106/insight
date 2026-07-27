@@ -43,6 +43,18 @@ const validRequest = {
   ],
 };
 
+const validDeliveryRequest = {
+  source: "whatsapp_delivery",
+  whatsappUserId: "919876543210",
+  messages: [
+    {
+      messageId: "wamid.HBgMOTE5ODc2NTQzMjEwFQIAERgSQTEx",
+      text: "Session maintenance happened quietly.",
+      occurredAt: "2026-07-27T14:32:00.000Z",
+    },
+  ],
+};
+
 test("parses and minimizes a valid transcript sync request", () => {
   const { parseTranscriptSyncRequest } = loadModule();
   assert.deepEqual(parseTranscriptSyncRequest(validRequest), {
@@ -223,6 +235,76 @@ test("projects only approved transcript database columns", () => {
     "occurred_at",
     "speaker",
   ]);
+});
+
+test("parses exact WhatsApp outbound deliveries and projects ledger columns", () => {
+  const {
+    buildWhatsAppDeliveryRows,
+    parseTranscriptSyncRequest,
+  } = loadModule();
+  const parsed = parseTranscriptSyncRequest(validDeliveryRequest);
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.value, validDeliveryRequest);
+  assert.deepEqual(
+    buildWhatsAppDeliveryRows(parsed.value, "contact-123"),
+    [{
+      contact_id: "contact-123",
+      direction: "outbound",
+      message_kind: "text",
+      intent: "gateway_transcript",
+      body: "Session maintenance happened quietly.",
+      meta_message_id: "wamid.HBgMOTE5ODc2NTQzMjEwFQIAERgSQTEx",
+      idempotency_key:
+        "hermes-rich-sent:wamid.HBgMOTE5ODc2NTQzMjEwFQIAERgSQTEx",
+      status: "sent",
+      occurred_at: "2026-07-27T14:32:00.000Z",
+    }],
+  );
+});
+
+test("rejects malformed WhatsApp delivery payloads", () => {
+  const { parseTranscriptSyncRequest } = loadModule();
+  for (const input of [
+    { ...validDeliveryRequest, sessionId: "not-allowed" },
+    { ...validDeliveryRequest, messages: [] },
+    {
+      ...validDeliveryRequest,
+      messages: [{
+        ...validDeliveryRequest.messages[0],
+        messageId: "not-a-wamid",
+      }],
+    },
+    {
+      ...validDeliveryRequest,
+      messages: [{
+        ...validDeliveryRequest.messages[0],
+        speaker: "kitty",
+      }],
+    },
+  ]) {
+    assert.equal(parseTranscriptSyncRequest(input).ok, false);
+  }
+});
+
+test("exact-message migration uses the webhook ledger and outbound-only session fallback", () => {
+  const migrationsDir = path.join(process.cwd(), "supabase/migrations");
+  const filename = fs
+    .readdirSync(migrationsDir)
+    .find((entry) => entry.endsWith("_use_exact_whatsapp_transcript_messages.sql"));
+  assert.ok(filename, "exact WhatsApp transcript migration must exist");
+  const sql = fs
+    .readFileSync(path.join(migrationsDir, filename), "utf8")
+    .toLowerCase();
+
+  assert.match(sql, /from public\.hermes_messages delivery/);
+  assert.match(sql, /delivery\.direction in \('inbound', 'outbound'\)/);
+  assert.match(sql, /transcript\.speaker = 'kitty'/);
+  assert.match(sql, /not exists/);
+  assert.doesNotMatch(
+    sql,
+    /from public\.hermes_transcript_messages transcript\s+where transcript\.speaker = 'contact'/,
+  );
+  assert.match(sql, /security_invoker\s*=\s*true/);
 });
 
 test("transcript sync configuration is disabled by default and documented", () => {

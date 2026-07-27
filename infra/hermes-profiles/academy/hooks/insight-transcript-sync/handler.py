@@ -22,7 +22,10 @@ SILENT_TOKENS = {"[silent]", "silent", "no_reply", "no reply"}
 
 _BACKGROUND_TASKS = set()
 _SESSION_LOCKS = {}
+_DELIVERY_LOCK = asyncio.Lock()
 _DEFAULT_CURSOR_STORE = None
+_DEFAULT_DELIVERY_STORE = None
+WHATSAPP_MESSAGE_ID = re.compile(r"^wamid\.[A-Za-z0-9._=-]{10,255}$")
 
 
 def sync_enabled(env):
@@ -163,6 +166,52 @@ class CursorStore:
             os.replace(temporary, self.path)
 
 
+class SeenDeliveryStore:
+    """Durable sent-message IDs; bounded to entries retained by Hermes."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self._lock = asyncio.Lock()
+
+    def _read(self):
+        try:
+            value = json.loads(self.path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return set()
+        if not isinstance(value, list):
+            return set()
+        return {
+            item
+            for item in value
+            if isinstance(item, str) and WHATSAPP_MESSAGE_ID.fullmatch(item)
+        }
+
+    def _write(self, values):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        temporary.write_text(
+            json.dumps(sorted(values), separators=(",", ":")),
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
+
+    async def unseen(self, message_ids):
+        async with self._lock:
+            seen = self._read()
+            return [message_id for message_id in message_ids if message_id not in seen]
+
+    async def mark_seen(self, message_ids):
+        async with self._lock:
+            seen = self._read()
+            seen.update(message_ids)
+            self._write(seen)
+
+    async def retain(self, current_message_ids):
+        async with self._lock:
+            seen = self._read()
+            self._write(seen.intersection(current_message_ids))
+
+
 def _hermes_home():
     from hermes_cli.config import get_hermes_home
 
@@ -176,6 +225,15 @@ def _cursor_store():
             _hermes_home() / "transcript-sync-cursors.json"
         )
     return _DEFAULT_CURSOR_STORE
+
+
+def _delivery_store():
+    global _DEFAULT_DELIVERY_STORE
+    if _DEFAULT_DELIVERY_STORE is None:
+        _DEFAULT_DELIVERY_STORE = SeenDeliveryStore(
+            _hermes_home() / "transcript-sync-deliveries.json"
+        )
+    return _DEFAULT_DELIVERY_STORE
 
 
 def _load_new_rows_blocking(session_id, after_id):
@@ -249,6 +307,145 @@ async def _post_batch(session_id, user_id, messages):
         user_id,
         messages,
     )
+
+
+def _load_sent_index_blocking():
+    path = _hermes_home() / "state" / "rich_sent_index.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+async def _load_sent_index():
+    return await asyncio.to_thread(_load_sent_index_blocking)
+
+
+def _to_delivery_message(key, value):
+    if not isinstance(key, str) or ":" not in key or not isinstance(value, dict):
+        return None
+    user_id, message_id = key.split(":", 1)
+    normalized_user_id = _normalize_user_id(user_id)
+    if (
+        normalized_user_id is None
+        or not WHATSAPP_MESSAGE_ID.fullmatch(message_id)
+    ):
+        return None
+    text = value.get("t")
+    if not isinstance(text, str):
+        return None
+    text = text.strip()
+    occurred_at = _iso_timestamp(value.get("ts"))
+    if (
+        not text
+        or len(text) > MAX_TEXT_LENGTH
+        or text.casefold() in SILENT_TOKENS
+        or occurred_at is None
+    ):
+        return None
+    return normalized_user_id, {
+        "messageId": message_id,
+        "text": text,
+        "occurredAt": occurred_at,
+    }
+
+
+def _post_delivery_batch_blocking(user_id, messages):
+    url = os.environ[URL_ENV].strip()
+    secret = os.environ[SECRET_ENV]
+    body = json.dumps(
+        {
+            "source": "whatsapp_delivery",
+            "whatsappUserId": user_id,
+            "messages": messages,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    timestamp = str(int(datetime.now(tz=timezone.utc).timestamp() * 1000))
+    request_id = uuid.uuid4().hex
+    request = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "content-type": "application/json",
+            "x-hermes-timestamp": timestamp,
+            "x-hermes-request-id": request_id,
+            "x-hermes-signature": sign_body(
+                body,
+                timestamp,
+                request_id,
+                secret,
+            ),
+        },
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        result = json.loads(response.read(16_384).decode("utf-8"))
+    expected = [message["messageId"] for message in messages]
+    if (
+        not isinstance(result, dict)
+        or result.get("ok") is not True
+        or result.get("acknowledgedMessageIds") != expected
+    ):
+        raise RuntimeError("invalid delivery sync acknowledgement")
+    return expected
+
+
+async def _post_delivery_batch(user_id, messages):
+    return await asyncio.to_thread(
+        _post_delivery_batch_blocking,
+        user_id,
+        messages,
+    )
+
+
+async def sync_sent_deliveries(
+    *,
+    store=None,
+    load_index=None,
+    post_batch=None,
+):
+    """Incrementally sync exact Meta-visible outbound messages."""
+    store = store or _delivery_store()
+    load_index = load_index or _load_sent_index
+    post_batch = post_batch or _post_delivery_batch
+
+    async with _DELIVERY_LOCK:
+        raw_index = await load_index()
+        projected = [
+            delivery
+            for key, value in raw_index.items()
+            if (delivery := _to_delivery_message(key, value)) is not None
+        ]
+        projected.sort(
+            key=lambda item: (
+                item[1]["occurredAt"],
+                item[1]["messageId"],
+            )
+        )
+        current_ids = {
+            message["messageId"] for _, message in projected
+        }
+        await store.retain(current_ids)
+        unseen_ids = set(await store.unseen(current_ids))
+        grouped = {}
+        for user_id, message in projected:
+            if message["messageId"] in unseen_ids:
+                grouped.setdefault(user_id, []).append(message)
+
+        sent = 0
+        for user_id, messages in grouped.items():
+            for start in range(0, len(messages), MAX_BATCH_SIZE):
+                batch = messages[start : start + MAX_BATCH_SIZE]
+                acknowledged = await post_batch(user_id, batch)
+                expected = [message["messageId"] for message in batch]
+                if acknowledged != expected:
+                    raise RuntimeError("invalid delivery sync acknowledgement")
+                await store.mark_seen(acknowledged)
+                sent += len(batch)
+        return sent
 
 
 async def sync_session(
@@ -344,11 +541,22 @@ async def _sync_all_sessions():
                 f"{type(error).__name__}",
                 flush=True,
             )
+    try:
+        await sync_sent_deliveries()
+    except Exception as error:
+        print(
+            "[insight-transcript-sync] startup delivery sync failed: "
+            f"{type(error).__name__}",
+            flush=True,
+        )
 
 
 async def _delayed_sync(session_id, user_id):
     await asyncio.sleep(0.25)
-    await sync_session(session_id, user_id)
+    try:
+        await sync_session(session_id, user_id)
+    finally:
+        await sync_sent_deliveries()
 
 
 def _task_done(task):

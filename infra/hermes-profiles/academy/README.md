@@ -1,5 +1,10 @@
 # Academy profile deployment
 
+Apply `config.override.yaml` as the Academy-only managed overlay. It keeps this
+profile on DeepSeek even when Swati's default profile is centrally pinned to a
+Codex model, resets conversations after four idle hours (or at 4 AM), and keeps
+all reset/compression lifecycle notices in the background.
+
 Create the profile from the current Hermes configuration, then restrict the WhatsApp-facing toolsets:
 
 ```yaml
@@ -52,7 +57,7 @@ Copy `hooks/academy-help` to the profile's `hooks/academy-help` directory. This 
 
 ## Admin transcript synchronization
 
-Copy `hooks/insight-transcript-sync` to the profile's `hooks/insight-transcript-sync` directory. It reads `state.db` through Hermes `SessionDB(read_only=True)`, retains only visible WhatsApp contact and final Kitty text, and sends small HMAC-signed batches to Insight. System/developer prompts, reasoning, tool calls/results, model metadata, tokens, raw session JSON, media paths, and credentials never enter the request.
+Copy `hooks/insight-transcript-sync` to the profile's `hooks/insight-transcript-sync` directory. It reads `state.db` through Hermes `SessionDB(read_only=True)` and incrementally reads Hermes's exact Meta sent-message index. Insight uses its existing inbound webhook ledger plus those exact sent deliveries, with final Kitty session text only as a historical fallback. System/developer prompts, reasoning, tool calls/results, model metadata, tokens, raw session JSON, media paths, and credentials never enter the request.
 
 Configure the Academy profile with the existing tool secret and keep the new switch off:
 
@@ -62,7 +67,7 @@ INSIGHT_HERMES_TRANSCRIPT_SYNC_ENABLED=false
 INSIGHT_HERMES_TRANSCRIPT_URL=https://<insight-host>/api/hermes/transcripts
 ```
 
-The `agent:end` handler schedules background work and returns immediately, so Insight or network failure cannot delay a WhatsApp reply. A successful batch atomically advances `transcript-sync-cursors.json`; a failed batch leaves the cursor unchanged and retries on the next turn. The `gateway:startup` hook performs startup catch-up for every Academy WhatsApp session. Stable Hermes message IDs and Insight's unique constraint make retries idempotent.
+The `agent:end` handler schedules background work and returns immediately, so Insight or network failure cannot delay a WhatsApp reply. Successful batches atomically advance the session and exact-delivery cursors; failed batches remain eligible for the next turn. The `gateway:startup` hook performs startup catch-up for every Academy WhatsApp session and every retained Meta sent delivery. Stable Hermes and Meta message IDs plus Insight's unique constraints make retries idempotent.
 
 Deploy and activate in this order:
 

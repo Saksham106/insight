@@ -26,13 +26,18 @@ test("transcript route is signed, replay-protected, minimized, and idempotent", 
   assert.match(source, /\.eq\("whatsapp_e164", `\+\$\{payload\.whatsappUserId\}`\)/);
   assert.match(source, /\.eq\("is_active", true\)/);
   assert.match(source, /\.is\("deleted_at", null\)/);
-  assert.match(source, /\.from\("hermes_transcript_messages"\)\.upsert/);
+  assert.match(
+    source,
+    /\.from\("hermes_transcript_messages"\)\s*\.upsert/,
+  );
+  assert.match(source, /\.from\("hermes_messages"\)\s*\.upsert/);
   assert.match(
     source,
     /onConflict:\s*"hermes_session_id,hermes_message_id"/,
   );
   assert.match(source, /ignoreDuplicates:\s*true/);
   assert.match(source, /highestMessageId/);
+  assert.match(source, /acknowledgedMessageIds/);
   assert.doesNotMatch(source, /console\.(?:log|error)\([^)]*(?:rawBody|payload)/);
 });
 

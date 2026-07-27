@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { verifyServiceRequest } from "@/lib/hermes/auth";
 import {
   buildTranscriptRows,
+  buildWhatsAppDeliveryRows,
   parseTranscriptSyncRequest,
 } from "@/lib/hermes/transcripts";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -44,7 +45,8 @@ export async function POST(request: Request) {
         entity_type: "transcript_session",
         request_id: auth.requestId,
         metadata: {
-          sessionId: payload.sessionId,
+          source:
+            "source" in payload ? payload.source : "session",
           whatsappUserId: payload.whatsappUserId,
           messageCount: payload.messages.length,
         },
@@ -71,15 +73,36 @@ export async function POST(request: Request) {
       return failure("Contact not found", 404);
     }
 
+    if ("source" in payload) {
+      const rows = buildWhatsAppDeliveryRows(payload, contact.id);
+      const { error: upsertError } = await supabase
+        .from("hermes_messages")
+        .upsert(rows, {
+          onConflict: "meta_message_id",
+          ignoreDuplicates: true,
+        });
+      if (upsertError) {
+        return failure("Transcript sync failed", 500);
+      }
+      return NextResponse.json({
+        ok: true,
+        acknowledgedMessageIds: payload.messages.map(
+          (message) => message.messageId,
+        ),
+        accepted: payload.messages.length,
+      });
+    }
+
     const rows = buildTranscriptRows(payload, contact.id);
-    const { error: upsertError } = await supabase.from("hermes_transcript_messages").upsert(rows, {
-      onConflict: "hermes_session_id,hermes_message_id",
-      ignoreDuplicates: true,
-    });
+    const { error: upsertError } = await supabase
+      .from("hermes_transcript_messages")
+      .upsert(rows, {
+        onConflict: "hermes_session_id,hermes_message_id",
+        ignoreDuplicates: true,
+      });
     if (upsertError) {
       return failure("Transcript sync failed", 500);
     }
-
     const highestMessageId =
       payload.messages[payload.messages.length - 1].messageId;
     return NextResponse.json({

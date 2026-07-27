@@ -1,0 +1,14 @@
+model:
+  provider: openrouter
+  default: deepseek/deepseek-v4-pro
+  base_url: https://openrouter.ai/api/v1
+  api_mode: chat_completions
+
+compression:
+  codex_gpt55_autoraise_notice: false
+
+session_reset:
+  mode: both
+  idle_minutes: 240
+  at_hour: 4
+  notify: false

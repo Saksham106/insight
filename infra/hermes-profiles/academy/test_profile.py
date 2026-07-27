@@ -7,6 +7,14 @@ PROFILE_DIR = Path(__file__).parent
 
 
 class AcademyProfileTests(unittest.TestCase):
+    def test_academy_model_and_lifecycle_are_profile_scoped_and_quiet(self):
+        config = (PROFILE_DIR / "config.override.yaml").read_text()
+        self.assertIn("deepseek/deepseek-v4-pro", config)
+        self.assertIn("codex_gpt55_autoraise_notice: false", config)
+        self.assertIn("idle_minutes: 240", config)
+        self.assertIn("at_hour: 4", config)
+        self.assertIn("notify: false", config)
+
     def test_deployment_disables_generic_profile_onboarding(self):
         readme = (PROFILE_DIR / "README.md").read_text()
         self.assertIn('profile_build: "off"', readme)
