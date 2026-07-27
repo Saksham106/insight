@@ -50,6 +50,34 @@ The onboarding setting disables Hermes's generic first-contact request to build 
 
 Copy `hooks/academy-help` to the profile's `hooks/academy-help` directory. This supported Hermes gateway hook replaces `/help` and `/whoami` output for non-admin WhatsApp contacts with the small Academy help message while leaving Swati's operator help intact.
 
+## Admin transcript synchronization
+
+Copy `hooks/insight-transcript-sync` to the profile's `hooks/insight-transcript-sync` directory. It reads `state.db` through Hermes `SessionDB(read_only=True)`, retains only visible WhatsApp contact and final Kitty text, and sends small HMAC-signed batches to Insight. System/developer prompts, reasoning, tool calls/results, model metadata, tokens, raw session JSON, media paths, and credentials never enter the request.
+
+Configure the Academy profile with the existing tool secret and keep the new switch off:
+
+```dotenv
+HERMES_TOOL_SHARED_SECRET=<same server-only value configured on Insight>
+INSIGHT_HERMES_TRANSCRIPT_SYNC_ENABLED=false
+INSIGHT_HERMES_TRANSCRIPT_URL=https://<insight-host>/api/hermes/transcripts
+```
+
+The `agent:end` handler schedules background work and returns immediately, so Insight or network failure cannot delay a WhatsApp reply. A successful batch atomically advances `transcript-sync-cursors.json`; a failed batch leaves the cursor unchanged and retries on the next turn. The `gateway:startup` hook performs startup catch-up for every Academy WhatsApp session. Stable Hermes message IDs and Insight's unique constraint make retries idempotent.
+
+Deploy and activate in this order:
+
+1. Apply `20260727114418_add_hermes_transcript_messages.sql`.
+2. Deploy Insight with `/api/hermes/transcripts` and the admin UI.
+3. Install the hook with `INSIGHT_HERMES_TRANSCRIPT_SYNC_ENABLED=false`, then restart the Academy gateway and confirm the hook loads.
+4. Set the full transcript URL and confirm the existing shared secret matches Insight.
+5. Enable the flag and restart the gateway.
+6. Send one inbound staging message and one Kitty outbound text, then confirm each appears once under the correct contact in `/admin/hermes`.
+7. Restart the gateway again and confirm startup catch-up creates no duplicates.
+
+Safe hook logs contain only status categories and exception classes. Never log a transcript body, HMAC signature, or shared secret. If synchronization fails, verify the URL, secret, feature flag, hook discovery, and safe error category. Do not inspect or paste customer message text into deployment logs.
+
+Rollback is immediate and does not require a database or Fly resource change: set `INSIGHT_HERMES_TRANSCRIPT_SYNC_ENABLED=false` and restart the Academy gateway. Leave the transcript table and cursor in place so re-enabling can resume safely. Do not delete transcript rows during incident response.
+
 ## Inbound authorization boundary
 
 Insight is the single contact-authorization gate. Set this in the Academy profile `.env`:

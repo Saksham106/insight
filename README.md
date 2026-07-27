@@ -75,6 +75,8 @@ npm run dev
 | WHATSAPP_CLOUD_API_VERSION | No | Pinned Graph API version. |
 | HERMES_FORWARD_URL | For WhatsApp | Existing Hermes Cloud API webhook URL used after Insight policy checks. |
 | HERMES_TOOL_SHARED_SECRET | For WhatsApp | Random HMAC secret shared only by Insight and Hermes. |
+| INSIGHT_HERMES_TRANSCRIPT_SYNC_ENABLED | No | Academy Hermes profile feature flag for incremental visible-message sync. Keep `false` until migration, deploy, hook install, and staging canary are complete. |
+| INSIGHT_HERMES_TRANSCRIPT_URL | For transcript sync | Full Insight endpoint URL, normally `https://<insight-host>/api/hermes/transcripts`. Configure only on the Academy Hermes profile. |
 | HERMES_ADMIN_WHATSAPP_E164 | For WhatsApp | Swati's verified WhatsApp number in E.164 format; this is the only scheduling administrator. |
 | HERMES_WHATSAPP_APPROVALS_ENABLED | No | Feature flag for code-bound WhatsApp approval notifications and replies. Keep `false` until staging verification. |
 | HERMES_SETTLEMENTS_ENABLED | No | Independent feature flag for monthly tutor-report, invoice, and payout bookkeeping. Keep `false` until staging verification. |
@@ -136,6 +138,14 @@ The `/admin/hermes` area is a separate academy contact directory inside the exis
 
 Imported contacts default to direct communication after that attestation and can message Kitty immediately; no second Fly allowlist update is required. Insight is the single inbound authorization gate and forwards only imported, active, consent-attested, classified contacts whose communication policy is `direct`. Use an individual contact's policy to require approval, contact a guardian only, pause messages, or opt out. An inbound `STOP` also opts the contact out immediately.
 
+### Admin WhatsApp transcripts
+
+Mindsight Academy administrators can select a contact in `/admin/hermes` and read the text exchanged with Kitty. The page remains admin-only and server-rendered. It shows contact/Kitty text and timestamps; it does not expose Hermes system prompts, reasoning, tool calls or results, model details, tokens, session JSON, credentials, or operational diagnostics.
+
+The Academy hook sends only unseen visible message rows in batches of at most 100. It stores a durable local cursor after Insight acknowledges each batch and performs startup catch-up after a gateway restart. Insight also includes successful proactive text sends already present in the WhatsApp delivery ledger. This adds no Fly app, Machine, CPU, public Hermes port, cron, or dashboard polling loop.
+
+Keep `INSIGHT_HERMES_TRANSCRIPT_SYNC_ENABLED=false` until `20260727114418_add_hermes_transcript_messages.sql` and the matching Insight deployment are live. Then copy `infra/hermes-profiles/academy/hooks/insight-transcript-sync` into the Academy profile, set `INSIGHT_HERMES_TRANSCRIPT_URL` to the full `/api/hermes/transcripts` URL, reuse the existing `HERMES_TOOL_SHARED_SECRET`, restart the gateway, and complete the staging canary in the Academy deployment guide before enabling the flag.
+
 ### Meta templates
 
 Create fixed-purpose Utility templates in WhatsApp Manager for availability requests, proposed times, confirmations, rescheduling, reminders, and human-attention notices. Put only approved template names in the matching environment variables. Do not let Hermes generate template names or categories. A recipient outside their own 24-hour service window can receive only one of these approved templates.
@@ -161,13 +171,13 @@ Keep profile memories isolated. In particular, do not set `memory.mnemosyne.prof
 1. Apply `supabase/migrations/20260716131103_add_hermes_assistant.sql` and run Supabase security/performance advisors.
 2. Deploy Insight with all server secrets, while leaving Meta's current callback unchanged.
 3. Create the `academy` profile from the current model/WhatsApp configuration, copy `infra/hermes-plugins/insight-scheduling` into that profile's `plugins` directory, and enable it with `--no-allow-tool-override`.
-4. Configure `platform_toolsets.whatsapp_cloud` for the business-facing profile. Disable terminal, code execution, image generation, computer control, delegation, and TTS. Retain the pilot-useful web/browser, file, vision, skills, todo, memory, session-search, clarification, cron, and `insight_scheduling` toolsets. Copy `infra/hermes-profiles/academy/SOUL.md` to the profile root and `AGENTS.md` to its working directory.
+4. Configure `platform_toolsets.whatsapp_cloud` for the business-facing profile. Disable terminal, code execution, image generation, computer control, delegation, and TTS. Retain the pilot-useful web/browser, file, vision, skills, todo, memory, session-search, clarification, cron, and `insight_scheduling` toolsets. Copy `infra/hermes-profiles/academy/SOUL.md` to the profile root, `AGENTS.md` to its working directory, and both Academy hook directories to the profile's `hooks` directory.
 5. Keep Meta's callback on Insight and set `WHATSAPP_CLOUD_ALLOW_ALL_USERS=true` only in the Academy profile. Insight verifies Meta signatures and filters contacts before re-signing eligible payloads for Hermes. Keep the old explicit allowlist value for rollback.
 6. Run `hermes -p academy config check` and `hermes -p academy tools list --platform whatsapp_cloud`. Confirm that the six disallowed toolsets are disabled and `insight_scheduling` is enabled before activating the profile.
 7. Verify the Insight webhook GET challenge, signed tool calls, admin import, approval controls, and a test Meta send.
 8. Change Meta's callback last to `https://<insight-host>/api/whatsapp/webhook` and subscribe to `messages`.
 
-Useful endpoints are `/api/whatsapp/webhook` (Meta callback), `/api/whatsapp/send` (signed internal sender), `/api/hermes/tools` (signed Hermes actions), and `/admin/hermes` (human operations). Do not call either signed API from a browser or expose its shared secret.
+Useful endpoints are `/api/whatsapp/webhook` (Meta callback), `/api/whatsapp/send` (signed internal sender), `/api/hermes/tools` (signed Hermes actions), `/api/hermes/transcripts` (signed visible-message sync), and `/admin/hermes` (human operations). Do not call a signed API from a browser or expose its shared secret.
 
 ### Rollback
 

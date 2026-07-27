@@ -223,3 +223,34 @@ test("projects only approved transcript database columns", () => {
     "speaker",
   ]);
 });
+
+test("transcript sync configuration is disabled by default and documented", () => {
+  const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+  const rootReadme = fs.readFileSync(
+    path.join(process.cwd(), "README.md"),
+    "utf8",
+  );
+  const academyReadme = fs.readFileSync(
+    path.join(
+      process.cwd(),
+      "infra/hermes-profiles/academy/README.md",
+    ),
+    "utf8",
+  );
+  const academyAgents = fs.readFileSync(
+    path.join(
+      process.cwd(),
+      "infra/hermes-profiles/academy/AGENTS.md",
+    ),
+    "utf8",
+  );
+
+  assert.match(env, /INSIGHT_HERMES_TRANSCRIPT_SYNC_ENABLED=false/);
+  assert.match(env, /INSIGHT_HERMES_TRANSCRIPT_URL=/);
+  assert.match(rootReadme, /INSIGHT_HERMES_TRANSCRIPT_SYNC_ENABLED/);
+  assert.match(academyReadme, /hooks\/insight-transcript-sync/);
+  assert.match(academyReadme, /startup catch-up/i);
+  assert.match(academyReadme, /rollback/i);
+  assert.match(academyAgents, /Never log transcript bodies/i);
+  assert.match(academyAgents, /system prompts, reasoning, or tool/i);
+});
