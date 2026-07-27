@@ -181,6 +181,24 @@ test("transcript migration is service-role-only and idempotent", () => {
     /grant select, insert, update on public\.hermes_transcript_messages to service_role/,
   );
   assert.doesNotMatch(sql, /create policy/);
+  assert.match(
+    sql,
+    /create view public\.hermes_admin_conversation_messages[\s\S]*security_invoker\s*=\s*true/,
+  );
+  assert.match(
+    sql,
+    /create view public\.hermes_admin_conversation_summaries[\s\S]*security_invoker\s*=\s*true/,
+  );
+  assert.match(
+    sql,
+    /grant select on public\.hermes_admin_conversation_messages to service_role/,
+  );
+  assert.match(
+    sql,
+    /grant select on public\.hermes_admin_conversation_summaries to service_role/,
+  );
+  assert.match(sql, /direction = 'outbound'/);
+  assert.match(sql, /status in \('accepted', 'sent', 'delivered', 'read'\)/);
 });
 
 test("projects only approved transcript database columns", () => {
