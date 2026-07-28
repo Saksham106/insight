@@ -54,7 +54,7 @@ export function buildLessonReportRequestContent(periodStart: unknown, recipientN
   const period = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(date);
   const matter = `details of all classes you taught in ${period}, including each student's name, lesson date, and duration, so invoices can be prepared for the respective student or parent`;
   return {
-    body: `Hello ${tutorName}, Swati from MyInsightAcademy is requesting the following information: ${matter}. Please reply here when convenient.`,
+    body: `Hello ${tutorName}, Swati from MyInsightAcademy needs your input about ${matter}. Please reply here when convenient.`,
     bodyParameters: [tutorName, matter],
   };
 }
