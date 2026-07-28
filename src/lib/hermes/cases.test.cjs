@@ -113,6 +113,27 @@ test("gives Swati broad scheduling scope and contacts only self or case-member s
   }
 });
 
+test("gives tutors only their own lesson-ledger report scope", () => {
+  for (const action of ["get_lesson_cycle", "submit_lesson_report", "confirm_lesson_report"]) {
+    assert.equal(toolActorScope(action, "contact"), "self_ledger");
+    assert.equal(toolActorScope(action, "admin"), "admin");
+  }
+  for (const action of [
+    "set_contact_relationship",
+    "list_contact_relationships",
+    "start_lesson_cycle",
+    "request_lesson_report",
+    "import_swati_lessons",
+    "resolve_lesson_student",
+    "get_student_lessons",
+    "confirm_lesson_cycle",
+    "reopen_lesson_cycle",
+  ]) {
+    assert.equal(toolActorScope(action, "contact"), "denied");
+    assert.equal(toolActorScope(action, "admin"), "admin");
+  }
+});
+
 test("Academy information is a small verified public knowledge surface", () => {
   const about = academyInformation("about");
   assert.match(about.answer, /tutoring/i);
