@@ -52,7 +52,7 @@ export function buildLessonReportRequestContent(periodStart: unknown, recipientN
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== periodStart) throw new Error("invalid_lesson_month");
   const tutorName = requiredTemplateField({ recipientName }, "recipientName");
   const period = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(date);
-  const matter = `details of all classes you taught in ${period}, including each student's name, lesson date, and duration, so invoices can be prepared for the respective student or parent`;
+  const matter = `details of all classes you taught in ${period} so invoices can be prepared for the respective students or parents`;
   return {
     body: `Hello ${tutorName}, Swati from MyInsightAcademy needs your input about ${matter}. Please reply here when convenient.`,
     bodyParameters: [tutorName, matter],
