@@ -500,6 +500,8 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) return failure(typeof result?.error === "string" ? result.error : "Lesson report request failed", response.status);
+        const messageStatus = typeof result?.message?.status === "string" ? result.message.status : "";
+        if (!["accepted", "sent", "delivered", "read"].includes(messageStatus)) return failure("Lesson report request was not accepted", 409);
         const requestedAt = new Date().toISOString();
         const { error: updateError } = await supabase.from("academy_teacher_collections")
           .update({ status: "requested", requested_at: requestedAt })

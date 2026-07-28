@@ -318,21 +318,26 @@ set search_path = public, pg_temp
 as $$
 declare
   v_lesson public.academy_lessons;
-  v_cycle_id uuid;
+  v_cycle public.academy_lesson_cycles;
 begin
   if not exists (select 1 from public.hermes_contacts where id = p_student_contact_id and role = 'student' and is_active = true and deleted_at is null)
   then raise exception 'student_contact_unavailable'; end if;
-  update public.academy_lessons set student_contact_id = p_student_contact_id where id = p_lesson_id returning * into v_lesson;
+  select * into v_lesson from public.academy_lessons where id = p_lesson_id for update;
   if v_lesson.id is null then raise exception 'lesson_not_found'; end if;
-  select c.lesson_cycle_id into v_cycle_id
+  select cy.* into v_cycle
     from public.academy_lesson_report_revisions r
     join public.academy_teacher_collections c on c.id = r.teacher_collection_id
-    where r.id = v_lesson.report_revision_id and r.status = 'confirmed' and c.confirmed_report_revision_id = r.id;
-  if v_cycle_id is not null and not exists (
+    join public.academy_lesson_cycles cy on cy.id = c.lesson_cycle_id
+    where r.id = v_lesson.report_revision_id and r.status = 'confirmed' and c.confirmed_report_revision_id = r.id
+    for update of cy;
+  if v_cycle.id is null then raise exception 'active_confirmed_lesson_required'; end if;
+  if v_cycle.status = 'confirmed' then raise exception 'lesson_cycle_confirmed'; end if;
+  update public.academy_lessons set student_contact_id = p_student_contact_id where id = p_lesson_id returning * into v_lesson;
+  if not exists (
     select 1 from public.academy_teacher_collections c
     left join public.academy_lessons l on l.report_revision_id = c.confirmed_report_revision_id and l.student_contact_id is null
-    where c.lesson_cycle_id = v_cycle_id and (c.status <> 'confirmed' or l.id is not null)
-  ) then update public.academy_lesson_cycles set status = 'ready_for_swati', updated_at = now() where id = v_cycle_id; end if;
+    where c.lesson_cycle_id = v_cycle.id and (c.status <> 'confirmed' or l.id is not null)
+  ) then update public.academy_lesson_cycles set status = 'ready_for_swati', updated_at = now() where id = v_cycle.id; end if;
   insert into public.hermes_audit_events(actor_type, event_type, entity_type, entity_id, metadata)
     values ('admin', 'lesson_student_resolved', 'lesson', v_lesson.id, '{}'::jsonb);
   return v_lesson;

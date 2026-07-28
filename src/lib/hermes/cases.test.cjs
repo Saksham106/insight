@@ -256,6 +256,8 @@ test("lesson ledger tools are structured, independently gated, and session-bound
   assert.match(route, /resolve_academy_lesson_student/);
   assert.match(route, /confirm_academy_lesson_cycle/);
   assert.match(route, /reopen_academy_lesson_cycle/);
+  assert.match(route, /\["accepted", "sent", "delivered", "read"\]\.includes\(messageStatus\)/);
+  assert.match(route, /Lesson report request was not accepted/);
   assert.match(route, /actorKind === "contact" \? actorContact!\.id/);
   assert.doesNotMatch(route, /actorPhone|actorE164|payload\.actor/);
   for (const table of ["academy_lesson_cycles", "academy_lesson_report_revisions", "academy_teacher_collections", "academy_lessons"]) {

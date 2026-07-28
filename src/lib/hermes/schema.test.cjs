@@ -285,6 +285,12 @@ test("lesson ledger mutations are transactional, audited, and service-role only"
   assert.match(sql, /status = 'superseded'/);
   assert.match(sql, /confirmed_report_revision_id/);
   assert.match(sql, /status <> 'confirmed'/);
+  const resolveSql = sql.slice(
+    sql.indexOf("create function public.resolve_academy_lesson_student"),
+    sql.indexOf("create function public.confirm_academy_lesson_cycle"),
+  );
+  assert.match(resolveSql, /c\.confirmed_report_revision_id = r\.id/);
+  assert.match(resolveSql, /v_cycle\.status = 'confirmed'[\s\S]+lesson_cycle_confirmed/);
   assert.match(sql, /hermes_audit_events/);
   assert.doesNotMatch(sql, /metadata[^;]+reported_student_name/);
 });
