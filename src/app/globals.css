@@ -144,6 +144,50 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
 }
 
+/* Kitty conversations — master/detail.
+   Desktop shows the contact list and the transcript side by side, each scrolling
+   in its own box. On mobile that becomes a 560px scroll trap stacked on top of a
+   transcript nobody can see, so below the breakpoint we show exactly one pane:
+   the list until a contact is picked, then the transcript. Which one is showing
+   is driven by the `?contact=` URL state via data-selected, so the panel stays a
+   server component with no client JS. */
+.kitty-convo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.kitty-convo-list,
+.kitty-convo-detail {
+  max-height: 560px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  /* Grid children default to min-width:auto, which lets long unbroken message
+     previews push the column wider than its track and defeat the ellipsis. */
+  min-width: 0;
+}
+
+.kitty-convo-detail {
+  min-height: 320px;
+  background: var(--color-surface);
+  padding: 16px;
+}
+
+.kitty-convo-back {
+  display: none;
+}
+
+/* Horizontal strip beats a three-row wrap on a phone. */
+.kitty-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 10px;
+}
+
 .hover-lift {
   transition: transform var(--dur-short) var(--ease-out), box-shadow var(--dur-short) var(--ease-out);
 }
@@ -170,6 +214,44 @@ h1, h2, h3, h4, h5, h6 {
   .diptych {
     grid-template-columns: 1fr;
     gap: var(--space-lg);
+  }
+
+  .kitty-convo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* One pane at a time. Both keep their DOM position in the grid, so the
+     surviving pane lands where the other one was and the scroll position
+     stays put across the swap. */
+  .kitty-convo-grid[data-selected="true"] .kitty-convo-list,
+  .kitty-convo-grid[data-selected="false"] .kitty-convo-detail {
+    display: none;
+  }
+
+  /* Let the page scroll instead of two nested boxes fighting it. */
+  .kitty-convo-list,
+  .kitty-convo-detail {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .kitty-convo-detail {
+    min-height: 0;
+  }
+
+  .kitty-convo-back {
+    display: inline-flex;
+  }
+
+  .kitty-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    /* Momentum scrolling shouldn't clip the focus ring on the first chip. */
+    scroll-padding-inline: 4px;
+  }
+
+  .kitty-tabs > * {
+    flex-shrink: 0;
   }
 }
 
