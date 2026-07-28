@@ -2,7 +2,7 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
-import { archiveGroup, renameGroup, updateGroupMembers } from "@/lib/chat/data";
+import { archiveConversation, renameConversation, updateConversationMembers } from "@/lib/chat/data";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -25,16 +25,16 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   const memberIds: unknown = body?.memberIds;
 
   if (typeof title === "string" || title === null) {
-    const res = await renameGroup(id, (title as string | null) ?? null);
+    const res = await renameConversation(id, (title as string | null) ?? null);
     if (res.error) return NextResponse.json({ error: res.error }, { status: 500 });
   }
 
   if (Array.isArray(memberIds)) {
-    if (memberIds.some((m) => typeof m !== "string") || memberIds.length === 0) {
-      return NextResponse.json({ error: "A group needs at least one person." }, { status: 400 });
+    if (memberIds.some((m) => typeof m !== "string")) {
+      return NextResponse.json({ error: "A conversation needs at least two people." }, { status: 400 });
     }
-    const res = await updateGroupMembers(id, memberIds as string[]);
-    if (res.error) return NextResponse.json({ error: res.error }, { status: 500 });
+    const res = await updateConversationMembers(id, memberIds as string[]);
+    if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
   }
 
   revalidate();
@@ -48,7 +48,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   }
 
   const { id } = await params;
-  const res = await archiveGroup(id);
+  const res = await archiveConversation(id);
   if (res.error) return NextResponse.json({ error: res.error }, { status: 500 });
 
   revalidate();
