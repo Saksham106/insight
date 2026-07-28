@@ -307,6 +307,58 @@ test("exact-message migration uses the webhook ledger and outbound-only session 
   assert.match(sql, /security_invoker\s*=\s*true/);
 });
 
+test("template transcript migration recovers legacy bodies and shows only successful templates", () => {
+  const migrationsDir = path.join(process.cwd(), "supabase/migrations");
+  const filename = fs
+    .readdirSync(migrationsDir)
+    .find((entry) => entry.endsWith("_include_successful_whatsapp_templates.sql"));
+  assert.ok(filename, "successful WhatsApp template migration must exist");
+  const sql = fs
+    .readFileSync(path.join(migrationsDir, filename), "utf8")
+    .toLowerCase();
+
+  assert.match(
+    sql,
+    /lock table public\.hermes_messages in share row exclusive mode/,
+  );
+  assert.match(sql, /if missing_target_count = 0 then/);
+  assert.match(sql, /if recovery_count <> 1 then/);
+  assert.match(sql, /update public\.hermes_messages target/);
+  assert.match(sql, /get diagnostics updated_count = row_count/);
+  assert.match(sql, /if updated_count <> 1 then/);
+  assert.match(sql, /lag\(attempt\.id\) over/);
+  assert.match(sql, /source\.id = ranked\.previous_attempt_id/);
+  assert.match(sql, /target\.intent = 'class_reminder'/);
+  assert.match(sql, /target\.case_id is not null/);
+  assert.match(sql, /source\.status = 'failed'/);
+  assert.match(
+    sql,
+    /source\.created_at >= target\.created_at - interval '30 minutes'/,
+  );
+  assert.match(
+    sql,
+    /delivery\.message_kind in \('text', 'template'\)/,
+  );
+  assert.match(
+    sql,
+    /delivery\.status in \('accepted', 'sent', 'delivered', 'read'\)/,
+  );
+  assert.match(sql, /end as speaker,\s+delivery\.body as body,/);
+  assert.match(
+    sql,
+    /delivery\.intent <> 'gateway_transcript'\s+then delivery\.created_at/,
+  );
+  assert.match(
+    sql,
+    /from visible_deliveries delivery[\s\S]*delivery\.message_kind in \('text', 'template'\)/,
+  );
+  assert.doesNotMatch(
+    sql,
+    /delivery\.status in \([^)]*'failed'/,
+  );
+  assert.match(sql, /security_invoker\s*=\s*true/);
+});
+
 test("transcript sync configuration is disabled by default and documented", () => {
   const env = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
   const rootReadme = fs.readFileSync(
