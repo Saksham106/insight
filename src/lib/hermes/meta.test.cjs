@@ -66,6 +66,12 @@ test("maps every settlement template and fails closed without one", () => {
   assert.deepEqual(selectWhatsAppDelivery(contact({ serviceWindowExpiresAt: null }), "family_invoice", new Date(), {}), { kind: "blocked", reason: "template_unavailable" });
 });
 
+test("maps an existing approved template for lesson reports and fails closed without it", () => {
+  const mapped = templateMapFromEnv({ WHATSAPP_TEMPLATE_LESSON_REPORT_REQUEST: "class_human_attention" });
+  assert.deepEqual(mapped.lesson_report_request, { name: "class_human_attention", locale: "en_US" });
+  assert.deepEqual(selectWhatsAppDelivery(contact({ serviceWindowExpiresAt: null }), "lesson_report_request", new Date(), {}), { kind: "blocked", reason: "template_unavailable" });
+});
+
 test("builds exact semantic parameters for approved scheduling templates", () => {
   assert.deepEqual(buildSchedulingMessageContent({ intent: "permission_request", recipientName: "Little", templateData: {} }).bodyParameters, []);
   assert.deepEqual(buildSchedulingMessageContent({ intent: "availability_request", recipientName: "Little", templateData: { classDescription: "mathematics class" } }).bodyParameters, ["Little", "mathematics class"]);
@@ -140,4 +146,9 @@ test("sender route is internal-authenticated and idempotent", () => {
   assert.match(source, /display_name/);
   assert.match(source, /admin_reschedule_alert/);
   assert.match(source, /HERMES_ADMIN_WHATSAPP_E164/);
+  assert.match(source, /lesson_report_request/);
+  assert.match(source, /lessonCycleId/);
+  assert.match(source, /academy_teacher_collections/);
+  assert.match(source, /buildLessonReportRequestContent/);
+  assert.match(source, /lesson_cycle_id/);
 });

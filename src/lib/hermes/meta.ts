@@ -7,6 +7,7 @@ export type WhatsAppIntent =
   | "class_confirmation"
   | "reschedule_request"
   | "class_reminder"
+  | "lesson_report_request"
   | "tutor_report_request"
   | "family_invoice"
   | "payment_reminder"
@@ -14,7 +15,7 @@ export type WhatsAppIntent =
   | "human_attention"
   | "admin_reschedule_alert";
 
-export type SchedulingWhatsAppIntent = Exclude<WhatsAppIntent, "tutor_report_request" | "family_invoice" | "payment_reminder" | "payment_received">;
+export type SchedulingWhatsAppIntent = Exclude<WhatsAppIntent, "lesson_report_request" | "tutor_report_request" | "family_invoice" | "payment_reminder" | "payment_received">;
 
 export interface TemplateConfig {
   name: string;
@@ -153,6 +154,7 @@ export function templateMapFromEnv(env: NodeJS.ProcessEnv): TemplateMap {
     ["class_confirmation", env.WHATSAPP_TEMPLATE_CLASS_CONFIRMATION],
     ["reschedule_request", env.WHATSAPP_TEMPLATE_RESCHEDULE_REQUEST],
     ["class_reminder", env.WHATSAPP_TEMPLATE_CLASS_REMINDER],
+    ["lesson_report_request", env.WHATSAPP_TEMPLATE_LESSON_REPORT_REQUEST],
     ["tutor_report_request", env.WHATSAPP_TEMPLATE_TUTOR_REPORT_REQUEST],
     ["family_invoice", env.WHATSAPP_TEMPLATE_FAMILY_INVOICE],
     ["payment_reminder", env.WHATSAPP_TEMPLATE_PAYMENT_REMINDER],

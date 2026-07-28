@@ -73,6 +73,20 @@ class AcademyProfileTests(unittest.TestCase):
         self.assertIn("submit_tutor_report", agents)
         self.assertIn("never infer", agents)
 
+    def test_lesson_ledger_requires_structured_teacher_confirmation_and_no_money(self):
+        readme = (PROFILE_DIR / "README.md").read_text().lower()
+        agents = (PROFILE_DIR / "AGENTS.md").read_text().lower()
+        for required in (
+            "natural lesson list", "normalized summary", "confirm", "exact pending revision",
+            "corrections create a new revision", "own collection", "server-side session identity",
+        ):
+            self.assertIn(required, agents)
+        for required in (
+            "hermes_lesson_ledger_enabled=false", "whatsapp_template_lesson_report_request",
+            "does not calculate invoices", "does not move money",
+        ):
+            self.assertIn(required, readme)
+
     def test_academy_help_hook_is_registered_for_help_and_whoami(self):
         hook_dir = PROFILE_DIR / "hooks" / "academy-help"
         manifest = (hook_dir / "HOOK.yaml").read_text()

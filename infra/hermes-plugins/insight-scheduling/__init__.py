@@ -14,6 +14,12 @@ def register(ctx):
                 "Use the MyInsightAcademy scheduling service. The service automatically identifies the current "
                 "WhatsApp sender and rejects actions or records they are not allowed to access. Use canonical "
                 "camelCase fields. request_reschedule={caseId,reason} and escalate_to_swati={caseId,reason}. "
+                "Lesson reports use submit_lesson_report={cycleId,lessons:[{reportedStudentName,"
+                "studentContactId?,lessonDate,durationMinutes,subject?,note?}]} and "
+                "confirm_lesson_report={reportId}. The server-side session identity decides permission: an "
+                "external tutor can read, submit, and confirm only their own collection, while relationship, "
+                "cycle, resolution, import, and request actions remain Swati-only. Never supply an actor, role, "
+                "phone number, or channel in payload. "
                 "The response includes notification status. Do not claim Swati was notified unless it reports "
                 "accepted, sent, delivered, read, or duplicate of one of those states."
             ),

@@ -240,3 +240,57 @@ test("security-definer approval functions can resolve the Supabase crypto extens
     "finalize_academy_settlement(uuid)",
   ]) assert.ok(sql.includes(`alter function public.${signature} set search_path = public, extensions, pg_temp`));
 });
+
+test("flexible lesson ledger is server-scoped, revisioned, and contains no money fields", () => {
+  const sql = readMigration("_add_flexible_lesson_ledger.sql");
+  for (const table of [
+    "academy_lesson_cycles",
+    "academy_teacher_collections",
+    "academy_lesson_report_revisions",
+    "academy_lessons",
+  ]) {
+    assert.match(sql, new RegExp(`create table public\\.${table}`));
+    assert.match(sql, new RegExp(`alter table public\\.${table} enable row level security`));
+    assert.match(sql, new RegExp(`revoke all on table public\\.${table} from anon, authenticated`));
+    assert.match(sql, new RegExp(`grant all on table public\\.${table} to service_role`));
+  }
+  for (const column of ["is_active", "effective_start", "effective_end", "source_channel", "last_editor_profile_id", "updated_at"]) {
+    assert.match(sql, new RegExp(`alter table public\\.hermes_contact_relationships[\\s\\S]+add column if not exists ${column}`));
+  }
+  assert.match(sql, /duration_minutes integer not null/);
+  assert.match(sql, /lesson_date date not null/);
+  assert.match(sql, /add column lesson_cycle_id uuid/);
+  assert.match(sql, /academy_lessons_unresolved_idx/);
+  assert.match(sql, /academy_lessons_student_date_idx/);
+  assert.doesNotMatch(sql, /family_charge|claimed_payout|amount_minor|currency text/);
+});
+
+test("lesson ledger mutations are transactional, audited, and service-role only", () => {
+  const sql = readMigration("_add_flexible_lesson_ledger.sql");
+  for (const fn of [
+    "upsert_academy_contact_relationship",
+    "start_academy_lesson_cycle",
+    "submit_academy_lesson_report",
+    "confirm_academy_lesson_report",
+    "resolve_academy_lesson_student",
+    "confirm_academy_lesson_cycle",
+    "reopen_academy_lesson_cycle",
+  ]) {
+    assert.match(sql, new RegExp(`create function public\\.${fn}`));
+    assert.match(sql, new RegExp(`revoke execute on function public\\.${fn}`));
+    assert.match(sql, new RegExp(`grant execute on function public\\.${fn}[^;]+to service_role`));
+  }
+  assert.match(sql, /p_relationship_type not in \('teacher', 'parent_guardian'\)/);
+  assert.match(sql, /jsonb_array_length\(p_lessons\) between 0 and 500/);
+  assert.match(sql, /status = 'superseded'/);
+  assert.match(sql, /confirmed_report_revision_id/);
+  assert.match(sql, /status <> 'confirmed'/);
+  const resolveSql = sql.slice(
+    sql.indexOf("create function public.resolve_academy_lesson_student"),
+    sql.indexOf("create function public.confirm_academy_lesson_cycle"),
+  );
+  assert.match(resolveSql, /c\.confirmed_report_revision_id = r\.id/);
+  assert.match(resolveSql, /v_cycle\.status = 'confirmed'[\s\S]+lesson_cycle_confirmed/);
+  assert.match(sql, /hermes_audit_events/);
+  assert.doesNotMatch(sql, /metadata[^;]+reported_student_name/);
+});

@@ -9,6 +9,16 @@ PAYLOAD_GUIDANCE = (
     "search_contacts={query}; get_contact={contactId}; "
     "create_case={title,tutorKind,timezone,participants:[{contactId,participantRole}]}; "
     "get_case={caseId}; list_cases={status?,contactId?,limit?}; "
+    "set_contact_relationship={sourceContactId,targetContactId,relationshipType:"
+    "teacher|parent_guardian,active}; list_contact_relationships={contactId}; "
+    "start_lesson_cycle={periodStart,tutorContactIds,includeSwati?}; "
+    "get_lesson_cycle={cycleId}; request_lesson_report={cycleId,tutorContactId}; "
+    "submit_lesson_report={cycleId,tutorContactId,lessons:[{reportedStudentName,"
+    "studentContactId?,lessonDate,durationMinutes,subject?,note?}]}; "
+    "import_swati_lessons uses the same fields without tutorContactId; "
+    "confirm_lesson_report={reportId}; resolve_lesson_student={lessonId,studentContactId}; "
+    "get_student_lessons={cycleId,studentContactId}; "
+    "confirm_lesson_cycle={cycleId}; reopen_lesson_cycle={cycleId}; "
     "send_message={contactId,caseId,intent,text?,templateData?,bodyParameters?,"
     "idempotencyKey,approvalId?}. Scheduling messages require a case and the recipient must be "
     "a participant. send_message sends synchronously from Insight to the WhatsApp Cloud API; it "
@@ -23,7 +33,7 @@ def register(ctx):
     ctx.register_tool(
         name="insight_admin",
         toolset="insight_admin",
-        description="Manage MyInsightAcademy scheduling from Swati's verified iMessage session.",
+        description="Manage MyInsightAcademy scheduling and the lesson ledger from Swati's verified iMessage session.",
         schema={
             "name": "insight_admin",
             "description": (

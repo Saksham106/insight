@@ -113,6 +113,27 @@ test("gives Swati broad scheduling scope and contacts only self or case-member s
   }
 });
 
+test("gives tutors only their own lesson-ledger report scope", () => {
+  for (const action of ["get_lesson_cycle", "submit_lesson_report", "confirm_lesson_report"]) {
+    assert.equal(toolActorScope(action, "contact"), "self_ledger");
+    assert.equal(toolActorScope(action, "admin"), "admin");
+  }
+  for (const action of [
+    "set_contact_relationship",
+    "list_contact_relationships",
+    "start_lesson_cycle",
+    "request_lesson_report",
+    "import_swati_lessons",
+    "resolve_lesson_student",
+    "get_student_lessons",
+    "confirm_lesson_cycle",
+    "reopen_lesson_cycle",
+  ]) {
+    assert.equal(toolActorScope(action, "contact"), "denied");
+    assert.equal(toolActorScope(action, "admin"), "admin");
+  }
+});
+
 test("Academy information is a small verified public knowledge surface", () => {
   const about = academyInformation("about");
   assert.match(about.answer, /tutoring/i);
@@ -214,6 +235,34 @@ test("settlement tools are structured, independently gated, and never use sessio
   assert.match(route, /p_channel: "imessage"/);
   assert.doesNotMatch(route, /submit_tutor_report[\s\S]{0,3000}\.from\("sessions"\)/);
   assert.match(env, /HERMES_SETTLEMENTS_ENABLED=false/);
+});
+
+test("lesson ledger tools are structured, independently gated, and session-bound", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  for (const action of [
+    "set_contact_relationship", "list_contact_relationships", "start_lesson_cycle",
+    "get_lesson_cycle", "request_lesson_report", "submit_lesson_report",
+    "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student",
+    "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle",
+  ]) assert.match(route, new RegExp(action));
+  assert.match(route, /HERMES_LESSON_LEDGER_ENABLED/);
+  assert.match(route, /sanitizeLessonReport/);
+  assert.match(route, /sanitizeTutorContactIds/);
+  assert.match(route, /projectLessonCycle/);
+  assert.match(route, /upsert_academy_contact_relationship/);
+  assert.match(route, /start_academy_lesson_cycle/);
+  assert.match(route, /submit_academy_lesson_report/);
+  assert.match(route, /confirm_academy_lesson_report/);
+  assert.match(route, /resolve_academy_lesson_student/);
+  assert.match(route, /confirm_academy_lesson_cycle/);
+  assert.match(route, /reopen_academy_lesson_cycle/);
+  assert.match(route, /\["accepted", "sent", "delivered", "read"\]\.includes\(messageStatus\)/);
+  assert.match(route, /Lesson report request was not accepted/);
+  assert.match(route, /actorKind === "contact" \? actorContact!\.id/);
+  assert.doesNotMatch(route, /actorPhone|actorE164|payload\.actor/);
+  for (const table of ["academy_lesson_cycles", "academy_lesson_report_revisions", "academy_teacher_collections", "academy_lessons"]) {
+    assert.doesNotMatch(route, new RegExp(`${table}[\\s\\S]{0,300}select\\(\"\\*\"\\)`));
+  }
 });
 
 test("Hermes skill identifies automation, honors STOP, forbids transcript sharing, and escalates", () => {

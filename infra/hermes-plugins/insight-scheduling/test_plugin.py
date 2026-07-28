@@ -65,6 +65,20 @@ class PluginTests(unittest.TestCase):
         for action in ("start_settlement_cycle", "set_family_charges", "request_settlement_approval", "record_family_payment", "record_tutor_payout"):
             self.assertNotIn(action, self.tools.ACTIONS)
 
+    def test_exposes_ledger_actions_but_leaves_permission_to_session_identity(self):
+        for action in (
+            "set_contact_relationship", "list_contact_relationships", "start_lesson_cycle",
+            "get_lesson_cycle", "request_lesson_report", "submit_lesson_report",
+            "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student",
+            "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle",
+        ):
+            self.assertIn(action, self.tools.ACTIONS)
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+        self.assertIn("server-side session identity", source)
+        self.assertIn("own collection", source)
+        self.assertIn("reportedStudentName", source)
+        self.assertIn("durationMinutes", source)
+
     def test_schema_documents_canonical_reschedule_contract(self):
         source = (PLUGIN_DIR / "__init__.py").read_text()
 

@@ -123,6 +123,23 @@ Before production activation, test all of these in staging:
 
 Enable `HERMES_WHATSAPP_APPROVALS_ENABLED=true` only after those probes pass. The current release does not send automatic class reminders.
 
+## Flexible lesson ledger (Phase 1)
+
+The lesson ledger is an evidence workflow separate from settlements and Calendar. Apply `20260728010000_add_flexible_lesson_ledger.sql`, reuse the approved `class_human_attention` Utility template, and keep it disabled until synthetic staging verification is complete:
+
+```dotenv
+HERMES_LESSON_LEDGER_ENABLED=false
+WHATSAPP_TEMPLATE_LESSON_REPORT_REQUEST=class_human_attention
+```
+
+Swati explicitly selects the tutors Kitty should contact for a month and may include herself as a teacher. The request template contains only the month. Each selected tutor replies with a natural lesson list; Kitty stores normalized individual lesson rows, shows a normalized summary, and requires confirmation of the exact pending revision. Corrections create a new revision and require confirmation again. Server-side session identity limits an external tutor to their own collection and report, regardless of any actor or tutor identifier in model-generated input.
+
+Swati can edit teacher–student and guardian–student relationships, import her own normalized Sheet rows, resolve an unexpected or ambiguous student, inspect consolidation across teachers, and perform final cycle confirmation. The ledger remains authoritative after import; Google Sheets and Calendar are inputs, not evidence that silently creates lessons.
+
+Phase 1 stores dates, whole-minute durations, subjects, teacher/student links, revisions, and confirmation state. It does not calculate invoices, family charges, tutor payouts, taxes, exchange rates, or currency conversion, and Kitty does not move money. VND, INR, or other financial fields belong to a later reviewed billing layer.
+
+Rollback is to set `HERMES_LESSON_LEDGER_ENABLED=false`. Leave relationships, lesson reports, revisions, and audit records intact. Disabling this flag does not disable scheduling or the older settlement feature.
+
 ## Monthly tutor settlements
 
 Enable the settlement tools independently and only after applying `20260717022438_add_academy_settlements.sql` and completing staging probes:

@@ -5,15 +5,17 @@ import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
 import { academyInformation, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
+import { projectLessonCycle, sanitizeLessonReport, sanitizeTutorContactIds } from "@/lib/hermes/lesson-ledger";
 import { parseCurrency, parseSettlementMonth, sanitizeFamilyCharges, sanitizeTutorReport } from "@/lib/hermes/settlements";
 import { normalizeToolPayload } from "@/lib/hermes/tool-contracts";
 import { parseCalendarEventResult, parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } from "@/lib/hermes/workspace-jobs";
 import { buildApprovalTemplateMessage, generateApprovalCode } from "@/lib/hermes/whatsapp-approvals";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "list_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job", "start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"] as const;
+const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "list_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job", "start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle", "set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"] as const;
 type Action = (typeof ACTIONS)[number];
 const SETTLEMENT_ACTIONS = new Set<Action>(["start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"]);
+const LESSON_LEDGER_ACTIONS = new Set<Action>(["set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"]);
 type ToolMode = "whatsapp" | "imessage_admin";
 type JsonObject = Record<string, unknown>;
 const CONTACT_FIELDS = "id, display_name, role, timezone, communication_policy, consent_status, is_active";
@@ -57,6 +59,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
   const action = parsed.action;
   if (typeof action !== "string" || !ACTIONS.includes(action as Action)) return rejectRequest("Unsupported action", 400, "unsupported_action");
   if (SETTLEMENT_ACTIONS.has(action as Action) && process.env.HERMES_SETTLEMENTS_ENABLED !== "true") return rejectRequest("Not found", 404, "settlements_disabled");
+  if (LESSON_LEDGER_ACTIONS.has(action as Action) && process.env.HERMES_LESSON_LEDGER_ENABLED !== "true") return rejectRequest("Not found", 404, "lesson_ledger_disabled");
   let payload: JsonObject;
   try { payload = normalizeToolPayload(action, objectValue(parsed.payload ?? {})); } catch { return rejectRequest("Invalid payload", 400, "invalid_payload"); }
 
@@ -411,6 +414,160 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
             updatedAt: job.updated_at,
           },
         });
+      }
+      case "set_contact_relationship": {
+        const sourceContactId = stringValue(payload, "sourceContactId", 80);
+        const targetContactId = stringValue(payload, "targetContactId", 80);
+        const relationshipType = stringValue(payload, "relationshipType", 40);
+        if (!["teacher", "parent_guardian"].includes(relationshipType) || typeof payload.active !== "boolean") return failure("Invalid contact relationship");
+        const { data: relationship, error } = await supabase.rpc("upsert_academy_contact_relationship", {
+          p_source_contact_id: sourceContactId,
+          p_target_contact_id: targetContactId,
+          p_relationship_type: relationshipType,
+          p_is_active: payload.active,
+          p_source_channel: mode === "imessage_admin" ? "imessage_admin" : "whatsapp",
+        });
+        if (error || !relationship) throw error ?? new Error("relationship_update_failed");
+        await audit("contact_relationship_updated", "contact_relationship", relationship.id, { relationshipType, active: payload.active });
+        return NextResponse.json({ relationship: { id: relationship.id, sourceContactId: relationship.source_contact_id, targetContactId: relationship.target_contact_id, relationshipType: relationship.relationship_type, active: relationship.is_active } });
+      }
+      case "list_contact_relationships": {
+        const contactId = stringValue(payload, "contactId", 80);
+        const { data, error } = await supabase.from("hermes_contact_relationships")
+          .select("id, source_contact_id, target_contact_id, relationship_type, is_active, effective_start, effective_end, source:hermes_contacts!hermes_contact_relationships_source_contact_id_fkey(id, display_name, role, timezone, communication_policy, consent_status, is_active), target:hermes_contacts!hermes_contact_relationships_target_contact_id_fkey(id, display_name, role, timezone, communication_policy, consent_status, is_active)")
+          .or(`source_contact_id.eq.${contactId},target_contact_id.eq.${contactId}`)
+          .in("relationship_type", ["teacher", "parent_guardian"]);
+        if (error) throw error;
+        return NextResponse.json({ relationships: (data ?? []).map((item) => ({ id: item.id, relationshipType: item.relationship_type, active: item.is_active, effectiveStart: item.effective_start, effectiveEnd: item.effective_end, source: item.source, target: item.target })) });
+      }
+      case "start_lesson_cycle": {
+        const periodStart = parseSettlementMonth(payload.periodStart);
+        const tutorContactIds = sanitizeTutorContactIds(payload.tutorContactIds);
+        if (payload.includeSwati === true) {
+          if (!adminE164) return failure("Swati's teacher contact is not configured", 409);
+          const { data: swatiContact } = await supabase.from("hermes_contacts").select("id").eq("whatsapp_e164", adminE164).eq("role", "teacher").eq("is_active", true).is("deleted_at", null).maybeSingle();
+          if (!swatiContact) return failure("Swati must have an active teacher contact", 409);
+          if (!tutorContactIds.includes(swatiContact.id)) tutorContactIds.push(swatiContact.id);
+          tutorContactIds.sort();
+        }
+        const { data: cycle, error } = await supabase.rpc("start_academy_lesson_cycle", { p_period_start: periodStart, p_tutor_contact_ids: tutorContactIds });
+        if (error || !cycle) throw error ?? new Error("lesson_cycle_start_failed");
+        await audit("lesson_cycle_started", "lesson_cycle", cycle.id, { tutorCount: tutorContactIds.length, includeSwati: payload.includeSwati === true });
+        return NextResponse.json({ cycle: { id: cycle.id, periodStart: cycle.period_start, status: cycle.status, version: cycle.version } }, { status: 201 });
+      }
+      case "get_lesson_cycle": {
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const collectionQuery = supabase.from("academy_teacher_collections").select("id, lesson_cycle_id, tutor_contact_id, status, requested_at, confirmed_report_revision_id").eq("lesson_cycle_id", cycleId);
+        if (actorKind === "contact") collectionQuery.eq("tutor_contact_id", actorContact!.id);
+        const [{ data: cycle, error: cycleError }, collectionsResult] = await Promise.all([
+          supabase.from("academy_lesson_cycles").select("id, period_start, status, version, confirmed_at").eq("id", cycleId).maybeSingle(),
+          collectionQuery,
+        ]);
+        if (cycleError || collectionsResult.error) throw cycleError ?? collectionsResult.error;
+        if (!cycle) return failure("Lesson cycle not found", 404);
+        const collections = collectionsResult.data ?? [];
+        if (actorKind === "contact" && collections.length === 0) return rejectRequest("Tutor is not selected for this lesson cycle", 403, "lesson_collection_denied");
+        const collectionIds = collections.map((item) => item.id);
+        const { data: reports, error: reportError } = collectionIds.length
+          ? await supabase.from("academy_lesson_report_revisions").select("id, teacher_collection_id, revision, source_channel, status, submitted_at, confirmed_at").in("teacher_collection_id", collectionIds)
+          : { data: [], error: null };
+        if (reportError) throw reportError;
+        const reportIds = (reports ?? []).map((item) => item.id);
+        const { data: lessons, error: lessonError } = reportIds.length
+          ? await supabase.from("academy_lessons").select("id, report_revision_id, reported_student_name, student_contact_id, lesson_date, duration_minutes, subject").in("report_revision_id", reportIds)
+          : { data: [], error: null };
+        if (lessonError) throw lessonError;
+        return NextResponse.json({ cycle: projectLessonCycle({ cycle, collections, reports: reports ?? [], lessons: lessons ?? [] }) });
+      }
+      case "request_lesson_report": {
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const tutorContactId = stringValue(payload, "tutorContactId", 80);
+        const { data: collection, error: collectionError } = await supabase.from("academy_teacher_collections")
+          .select("id, status, tutor_contact_id, lesson_cycle_id")
+          .eq("lesson_cycle_id", cycleId).eq("tutor_contact_id", tutorContactId).maybeSingle();
+        if (collectionError) throw collectionError;
+        if (!collection) return failure("Tutor is not selected for this lesson cycle", 404);
+        if (!["not_requested", "requested", "awaiting_reply", "needs_attention"].includes(collection.status)) return failure("Tutor is not awaiting a lesson report", 409);
+        const senderSecret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
+        if (!senderSecret) return failure("WhatsApp sender is unavailable", 503);
+        const senderBody = JSON.stringify({ contactId: tutorContactId, lessonCycleId: cycleId, intent: "lesson_report_request", idempotencyKey: `lesson-report-request:${cycleId}:${tutorContactId}` });
+        const timestamp = Date.now().toString();
+        const senderRequestId = `${auth.requestId}-lesson-report`;
+        const response = await fetch(new URL("/api/whatsapp/send", request.url), {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-hermes-timestamp": timestamp, "x-hermes-request-id": senderRequestId, "x-hermes-signature": signServiceRequest(senderBody, timestamp, senderRequestId, senderSecret) },
+          body: senderBody,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) return failure(typeof result?.error === "string" ? result.error : "Lesson report request failed", response.status);
+        const messageStatus = typeof result?.message?.status === "string" ? result.message.status : "";
+        if (!["accepted", "sent", "delivered", "read"].includes(messageStatus)) return failure("Lesson report request was not accepted", 409);
+        const requestedAt = new Date().toISOString();
+        const { error: updateError } = await supabase.from("academy_teacher_collections")
+          .update({ status: "requested", requested_at: requestedAt })
+          .eq("id", collection.id).in("status", ["not_requested", "requested", "awaiting_reply", "needs_attention"]);
+        if (updateError) throw updateError;
+        await audit("lesson_report_requested", "teacher_collection", collection.id, { cycleId, tutorContactId, duplicate: result?.duplicate === true });
+        return NextResponse.json({ collection: { id: collection.id, status: "requested", requestedAt }, message: result?.message ?? null, duplicate: result?.duplicate === true });
+      }
+      case "submit_lesson_report":
+      case "import_swati_lessons": {
+        if (action === "import_swati_lessons" && actorKind !== "admin") return rejectRequest("Only Swati can import lesson rows", 403, "admin_required");
+        if (actorKind === "contact" && actorContact?.role !== "teacher") return rejectRequest("Only a selected tutor can submit lessons", 403, "teacher_required");
+        const cycleId = stringValue(payload, "cycleId", 80);
+        let tutorContactId = actorKind === "contact" ? actorContact!.id : typeof payload.tutorContactId === "string" ? payload.tutorContactId : "";
+        if (action === "import_swati_lessons") {
+          const { data: swatiContact } = await supabase.from("hermes_contacts").select("id").eq("whatsapp_e164", adminE164 ?? "").eq("role", "teacher").eq("is_active", true).is("deleted_at", null).maybeSingle();
+          if (!swatiContact) return failure("Swati must have an active teacher contact", 409);
+          tutorContactId = swatiContact.id;
+        }
+        if (!tutorContactId) return failure("Tutor contact is required");
+        const report = sanitizeLessonReport({ lessons: payload.lessons });
+        const source = action === "import_swati_lessons" ? "google_sheets" : actorKind === "contact" ? "whatsapp" : mode === "imessage_admin" ? "imessage_admin" : "admin";
+        const { data: created, error } = await supabase.rpc("submit_academy_lesson_report", { p_cycle_id: cycleId, p_tutor_contact_id: tutorContactId, p_source_channel: source, p_lessons: report.lessons });
+        if (error || !created) throw error ?? new Error("lesson_report_submit_failed");
+        await audit("lesson_report_submitted", "lesson_report", created.id, { cycleId, revision: created.revision, lessonCount: report.lessons.length, source });
+        return NextResponse.json({ report: { id: created.id, revision: created.revision, status: created.status, lessons: report.lessons } }, { status: 201 });
+      }
+      case "confirm_lesson_report": {
+        const reportId = stringValue(payload, "reportId", 80);
+        const { data: report, error } = await supabase.rpc("confirm_academy_lesson_report", { p_report_id: reportId, p_actor_contact_id: actorKind === "contact" ? actorContact!.id : null });
+        if (error || !report) throw error ?? new Error("lesson_report_confirm_failed");
+        await audit("lesson_report_confirmed", "lesson_report", report.id, { revision: report.revision });
+        return NextResponse.json({ report: { id: report.id, revision: report.revision, status: report.status, confirmedAt: report.confirmed_at } });
+      }
+      case "resolve_lesson_student": {
+        const lessonId = stringValue(payload, "lessonId", 80);
+        const studentContactId = stringValue(payload, "studentContactId", 80);
+        const { data: lesson, error } = await supabase.rpc("resolve_academy_lesson_student", { p_lesson_id: lessonId, p_student_contact_id: studentContactId });
+        if (error || !lesson) throw error ?? new Error("lesson_student_resolve_failed");
+        await audit("lesson_student_resolved", "lesson", lesson.id);
+        return NextResponse.json({ lesson: { id: lesson.id, studentContactId: lesson.student_contact_id } });
+      }
+      case "get_student_lessons": {
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const studentContactId = stringValue(payload, "studentContactId", 80);
+        const { data, error } = await supabase.from("academy_lessons")
+          .select("id, lesson_date, duration_minutes, subject, report:academy_lesson_report_revisions!inner(id, revision, status, collection:academy_teacher_collections!inner(lesson_cycle_id, tutor_contact_id, confirmed_report_revision_id))")
+          .eq("student_contact_id", studentContactId).eq("report.status", "confirmed").eq("report.collection.lesson_cycle_id", cycleId)
+          .order("lesson_date");
+        if (error) throw error;
+        const lessons = (data ?? []).flatMap((item) => {
+          const report = Array.isArray(item.report) ? item.report[0] : item.report;
+          const collection = report && (Array.isArray(report.collection) ? report.collection[0] : report.collection);
+          if (!report || !collection || collection.confirmed_report_revision_id !== report.id) return [];
+          return [{ id: item.id, lessonDate: item.lesson_date, durationMinutes: item.duration_minutes, subject: item.subject, teacherContactId: collection.tutor_contact_id, reportRevision: report.revision }];
+        });
+        return NextResponse.json({ lessons });
+      }
+      case "confirm_lesson_cycle":
+      case "reopen_lesson_cycle": {
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const functionName = action === "confirm_lesson_cycle" ? "confirm_academy_lesson_cycle" : "reopen_academy_lesson_cycle";
+        const { data: cycle, error } = await supabase.rpc(functionName, { p_cycle_id: cycleId });
+        if (error || !cycle) throw error ?? new Error("lesson_cycle_update_failed");
+        await audit(action === "confirm_lesson_cycle" ? "lesson_cycle_confirmed" : "lesson_cycle_reopened", "lesson_cycle", cycle.id, { version: cycle.version });
+        return NextResponse.json({ cycle: { id: cycle.id, status: cycle.status, version: cycle.version, confirmedAt: cycle.confirmed_at } });
       }
       case "start_settlement_cycle": {
         const periodStart = parseSettlementMonth(payload.periodStart);

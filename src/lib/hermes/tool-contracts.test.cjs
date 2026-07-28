@@ -52,3 +52,50 @@ test("normalizes declared participant objects without touching unknown fields", 
     participants: [{ contactId: "contact-1", participantRole: "student", note: "unchanged" }],
   });
 });
+
+test("normalizes declared lesson-ledger fields and lesson rows", () => {
+  assert.deepEqual(normalizeToolPayload("set_contact_relationship", {
+    source_contact_id: "teacher-1",
+    target_contact_id: "student-1",
+    relationship_type: "teacher",
+  }), {
+    sourceContactId: "teacher-1",
+    targetContactId: "student-1",
+    relationshipType: "teacher",
+  });
+  assert.deepEqual(normalizeToolPayload("submit_lesson_report", {
+    cycle_id: "cycle-1",
+    tutor_contact_id: "teacher-1",
+    lessons: [{
+      reported_student_name: "Maya",
+      student_contact_id: "student-1",
+      lesson_date: "2026-07-03",
+      duration_minutes: 60,
+      nested: { student_contact_id: "keep" },
+    }],
+  }), {
+    cycleId: "cycle-1",
+    tutorContactId: "teacher-1",
+    lessons: [{
+      reportedStudentName: "Maya",
+      studentContactId: "student-1",
+      lessonDate: "2026-07-03",
+      durationMinutes: 60,
+      nested: { student_contact_id: "keep" },
+    }],
+  });
+});
+
+test("normalizes selected tutors and report identifiers", () => {
+  assert.deepEqual(normalizeToolPayload("start_lesson_cycle", {
+    tutor_contact_ids: ["teacher-1"],
+    period_start: "2026-07-01",
+  }), {
+    tutorContactIds: ["teacher-1"],
+    periodStart: "2026-07-01",
+  });
+  assert.deepEqual(normalizeToolPayload("confirm_lesson_report", { cycle_id: "cycle-1", report_id: "report-1" }), {
+    cycleId: "cycle-1",
+    reportId: "report-1",
+  });
+});
