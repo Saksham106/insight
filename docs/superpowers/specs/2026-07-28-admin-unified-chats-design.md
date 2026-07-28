@@ -65,8 +65,9 @@ Consequences, all intended:
 
 - The conversation keeps its `assignment_id`, so the teacher's and student's dashboard chat
   links (`dashboard-data.ts`) continue to resolve and now open the three-person thread.
-- `findOrCreateDm` will no longer match that conversation, so if the teacher later wants a
-  private 1:1 with the student they get a fresh, empty DM. The prior history stays in the group.
+- `findExistingDirectConversation` will no longer match that conversation, so if the teacher
+  later wants a private 1:1 with the student they get a fresh, empty DM. The prior history stays
+  in the group.
 
 ### D3 — `is_group` becomes a rendering detail, derived from roster size
 
@@ -123,14 +124,18 @@ nobody to talk to. Both create and member-update require at least 2.
 | `hydrateSummaries` reads `c.is_group` | derives `members.length > 2` | D3 |
 | `getAllGroupsForAdmin` | *deleted* | superseded by `getAllConversationsForAdmin` |
 | `getAllConversationsForAdmin` | unchanged | the single admin list |
-| `findOrCreateDm` keys on `is_group = false` + 2 members | keys on exactly 2 members **and** `title is null` | D3 |
+| `findExistingDirectConversation` keys on `is_group = false` + 2 members | keys on exactly 2 members **and** `title is null` | D3 |
+| `createConversation` dedupes only when `!isGroup && length === 2` | dedupes when 2 members **and** no title | D3 |
 | `createAdminGroup` | `createAdminConversation` | rename; min roster 2 (D5) |
 | `renameGroup` | `renameConversation` | rename |
 | `archiveGroup` | `archiveConversation` | rename |
 | `updateGroupMembers` | `updateConversationMembers` | rename; min roster 2 (D5) |
 
-The `title is null` half of the `findOrCreateDm` key matters: without it, a deliberately-named
-two-person conversation would be silently reused as those two people's DM.
+The `title is null` half of the key matters: without it, a deliberately-named two-person
+conversation would be silently reused as those two people's DM. `findExistingDirectConversation`
+is a private helper called from `createConversation`, which serves the teacher/student/parent
+`ChatsPanel` via `POST /api/chat/conversations`. That route already derives
+`isGroup = requested.length > 1`, which agrees with the new derivation, so no caller changes.
 
 `updateConversationMembers` keeps its existing add/remove diff and its `ensureAssignments` call
 unchanged, so adding a teacher or student to any thread still derives the `teacher_student_assignments`
@@ -192,8 +197,8 @@ then reconcile against the server).
 pure logic only:
 
 - `isGroup` derivation across the 2/3-member boundary.
-- The `findOrCreateDm` key: two members and no title matches; two members with a title does not;
-  three members does not.
+- The DM-dedupe key: two members and no title matches; two members with a title does not; three
+  members does not.
 - The roster-minimum guard rejects 0 and 1, accepts 2.
 
 Manual verification of the motivating path, since it spans RLS and realtime: open an existing
@@ -203,8 +208,9 @@ still resolves to it.
 
 ## Risks
 
-- **`findOrCreateDm` re-key.** The riskiest edit — it decides whether "message this person"
-  reuses a thread or creates a duplicate. Covered by unit tests on the key.
+- **The DM-dedupe re-key.** The riskiest edit — it decides whether "message this person" reuses a
+  thread or creates a duplicate, and it is on the teacher/student/parent path, not just the
+  admin's. Covered by unit tests on the key.
 - **Full history to added members** (D4) is deliberate and irreversible per-thread once someone
   is added. Accepted above.
 - Route deletion is safe (internal consumers only, all updated in the same change).
