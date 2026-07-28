@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { buildGraphMessageRequest, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters } = require(path.join(__dirname, "meta.ts"));
+const { buildGraphMessageRequest, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters } = require(path.join(__dirname, "meta.ts"));
 
 const templates = {
   availability_request: { name: "class_availability_request", locale: "en_US" },
@@ -70,6 +70,16 @@ test("maps an existing approved template for lesson reports and fails closed wit
   const mapped = templateMapFromEnv({ WHATSAPP_TEMPLATE_LESSON_REPORT_REQUEST: "class_human_attention" });
   assert.deepEqual(mapped.lesson_report_request, { name: "class_human_attention", locale: "en_US" });
   assert.deepEqual(selectWhatsAppDelivery(contact({ serviceWindowExpiresAt: null }), "lesson_report_request", new Date(), {}), { kind: "blocked", reason: "template_unavailable" });
+});
+
+test("builds the detailed lesson-report request for the edited human-attention template", () => {
+  assert.deepEqual(buildLessonReportRequestContent("2026-07-01", "Teacher A"), {
+    body: "Hello Teacher A, Swati from MyInsightAcademy is requesting the following information: details of all classes you taught in July 2026, including each student's name, lesson date, and duration, so invoices can be prepared for the respective student or parent. Please reply here when convenient.",
+    bodyParameters: [
+      "Teacher A",
+      "details of all classes you taught in July 2026, including each student's name, lesson date, and duration, so invoices can be prepared for the respective student or parent",
+    ],
+  });
 });
 
 test("builds exact semantic parameters for approved scheduling templates", () => {

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { verifyServiceRequest } from "@/lib/hermes/auth";
-import { buildLessonReportRequestContent } from "@/lib/hermes/lesson-ledger";
-import { buildGraphMessageRequest, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters, type WhatsAppIntent } from "@/lib/hermes/meta";
+import { buildGraphMessageRequest, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters, type WhatsAppIntent } from "@/lib/hermes/meta";
 import { buildSettlementMessageContent } from "@/lib/hermes/settlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 

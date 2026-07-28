@@ -46,6 +46,19 @@ function requiredTemplateField(input: Record<string, unknown>, key: string) {
   return value.trim();
 }
 
+export function buildLessonReportRequestContent(periodStart: unknown, recipientName: unknown): { body: string; bodyParameters: string[] } {
+  if (typeof periodStart !== "string" || !/^\d{4}-\d{2}-01$/.test(periodStart)) throw new Error("invalid_lesson_month");
+  const date = new Date(`${periodStart}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== periodStart) throw new Error("invalid_lesson_month");
+  const tutorName = requiredTemplateField({ recipientName }, "recipientName");
+  const period = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(date);
+  const matter = `details of all classes you taught in ${period}, including each student's name, lesson date, and duration, so invoices can be prepared for the respective student or parent`;
+  return {
+    body: `Hello ${tutorName}, Swati from MyInsightAcademy is requesting the following information: ${matter}. Please reply here when convenient.`,
+    bodyParameters: [tutorName, matter],
+  };
+}
+
 export function buildSchedulingMessageContent(input: {
   intent: WhatsAppIntent;
   recipientName: string;
