@@ -22,7 +22,7 @@ export function ConversationMembersModal({
   onChanged: () => void | Promise<void>;
   onArchived: (id: string) => void;
 }) {
-  const [name, setName] = useState(conversation.isGroup ? conversation.title : "");
+  const [name, setName] = useState(conversation.customTitle ?? "");
   const [selected, setSelected] = useState<Set<string>>(new Set(conversation.members.map((m) => m.id)));
   const [saving, setSaving] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);

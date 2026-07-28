@@ -5,22 +5,12 @@ import {
   hasMinimumRoster,
   isDirectConversationKey,
   isGroupConversation,
+  resolveConversationTitle,
 } from "@/lib/chat/conversation-shape";
 
 interface Profile {
   id: string;
   role: string;
-}
-
-function otherMembersTitle(members: ChatMember[], selfId: string): string {
-  const others = members.filter((m) => m.id !== selfId);
-  if (others.length === 0) return "You";
-  return others.map((m) => m.full_name).join(", ");
-}
-
-function allMembersTitle(members: ChatMember[]): string {
-  if (members.length === 0) return "Group";
-  return members.map((m) => m.full_name).join(", ");
 }
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -85,16 +75,18 @@ async function hydrateSummaries(
     // Derived, not read from the column: a conversation is a group once it has
     // a third member. Keeps the flag from ever disagreeing with the roster.
     const isGroup = isGroupConversation(members.length);
-    const groupName = (c.title as string | null)?.trim();
-    const title =
-      viewerId === null
-        ? groupName || allMembersTitle(members)
-        : groupName || otherMembersTitle(members, viewerId) || "Group";
+    // The stored title, normalised the same way the resolved title's fallback
+    // check is (trim, blank -> null). This is what clients should seed an
+    // editable name field from — never the resolved `title` below, which may
+    // be a synthesized roster string that was never actually stored.
+    const customTitle = (c.title as string | null)?.trim() || null;
+    const title = resolveConversationTitle(members, customTitle, viewerId);
     const lastMessage = lastByConvo.get(c.id as string) ?? null;
     return {
       id: c.id as string,
       isGroup,
       title,
+      customTitle,
       members,
       lastMessage,
       updatedAt: lastMessage?.createdAt ?? (c.updated_at as string) ?? (c.created_at as string),
@@ -269,11 +261,15 @@ async function findExistingDirectConversation(a: string, b: string): Promise<str
 
   // A direct thread is any conversation with exactly these two people and no
   // deliberate name. A named pair is a real conversation in its own right and
-  // must not be silently reused as someone's DM.
+  // must not be silently reused as someone's DM. Archived threads are excluded
+  // too: otherwise archiving a DM permanently blocks that pair from ever
+  // messaging again, since every later "message this person" would dedupe
+  // into the archived (and now unreachable) conversation id.
   const { data: convos } = await admin
     .from("conversations")
     .select("id, title")
-    .in("id", sharedIds);
+    .in("id", sharedIds)
+    .is("archived_at", null);
 
   for (const c of convos ?? []) {
     const { count } = await admin
@@ -333,6 +329,14 @@ export async function createAdminConversation(params: {
   }
 
   const cleanTitle = params.title?.trim() ? params.title.trim().slice(0, 80) : null;
+
+  // Reuse an existing direct thread between exactly these two people so the
+  // admin's "New chat" can't spawn a second, duplicate DM for a pair that
+  // already has one — mirroring the dedupe createConversation already does.
+  if (isDirectConversationKey(uniqueMembers.length, cleanTitle)) {
+    const existing = await findExistingDirectConversation(uniqueMembers[0], uniqueMembers[1]);
+    if (existing) return { conversationId: existing };
+  }
 
   const { data: convo, error: convoError } = await admin
     .from("conversations")
