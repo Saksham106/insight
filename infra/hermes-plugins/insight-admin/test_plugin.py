@@ -71,6 +71,15 @@ class PluginTests(unittest.TestCase):
         ):
             self.assertIn(action, self.tools.ACTIONS)
 
+    def test_exposes_every_flexible_lesson_ledger_action(self):
+        for action in (
+            "set_contact_relationship", "list_contact_relationships", "start_lesson_cycle",
+            "get_lesson_cycle", "request_lesson_report", "submit_lesson_report",
+            "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student",
+            "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle",
+        ):
+            self.assertIn(action, self.tools.ACTIONS)
+
     def test_tool_schema_documents_direct_whatsapp_send_contract(self):
         source = (PLUGIN_DIR / "__init__.py").read_text()
 
@@ -83,6 +92,10 @@ class PluginTests(unittest.TestCase):
         self.assertIn("classDescription", source)
         self.assertIn("scheduledDateTime", source)
         self.assertIn("list_cases", source)
+        self.assertIn("tutorContactIds", source)
+        self.assertIn("reportedStudentName", source)
+        self.assertIn("durationMinutes", source)
+        self.assertNotIn("actorId", source)
 
     def test_request_uses_admin_url_secret_and_session_actor(self):
         with patch.dict(os.environ, {

@@ -27,6 +27,18 @@ ACTIONS = (
     "request_swati_freebusy",
     "get_workspace_job",
     "submit_tutor_report",
+    "set_contact_relationship",
+    "list_contact_relationships",
+    "start_lesson_cycle",
+    "get_lesson_cycle",
+    "request_lesson_report",
+    "submit_lesson_report",
+    "import_swati_lessons",
+    "confirm_lesson_report",
+    "resolve_lesson_student",
+    "get_student_lessons",
+    "confirm_lesson_cycle",
+    "reopen_lesson_cycle",
 )
 
 

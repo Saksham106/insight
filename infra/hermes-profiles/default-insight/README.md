@@ -120,6 +120,12 @@ An event on Swati's Google Calendar does not automatically create an Insight cas
 
 Monthly settlements are separate as well: the tutor report, including Swati's own report when she is the tutor, is the financial source of truth. Calendar events are not treated as evidence for class counts, hours, family charges, or tutor payout amounts.
 
+## Flexible lesson-ledger activation
+
+The default Kitty profile can manage the same Phase 1 lesson ledger from Swati's verified direct iMessage session. Apply `20260728010000_add_flexible_lesson_ledger.sql`, deploy with `HERMES_LESSON_LEDGER_ENABLED=false`, install the updated `insight-admin` plugin and `AGENTS.md`, then run the focused plugin/profile tests. Enable in staging only after synthetic relationship edits, selected tutors, a zero-lesson report, a corrected revision, normalized Sheet rows, ambiguity resolution, student consolidation, and final cycle confirmation all succeed.
+
+This workflow is independent of Calendar and settlement bookkeeping. Corrections create revisions; Google Sheet rows are normalized input rather than the authority. It performs no pricing or currency conversion, does not calculate invoices, and does not move money. Roll back by disabling `HERMES_LESSON_LEDGER_ENABLED` while leaving evidence and audit history intact.
+
 ## Rollback
 
 1. Set `HERMES_IMESSAGE_INTAKE_ENABLED=false` on Insight first.

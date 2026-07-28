@@ -70,6 +70,18 @@ class DefaultInsightProfileTests(unittest.TestCase):
         self.assertIn("separate approved workflow", source)
         self.assertIn("tutor report", source)
 
+    def test_docs_cover_swatis_editable_lesson_ledger_workflow(self):
+        source = "\n".join([
+            (PROFILE_DIR / "AGENTS.md").read_text(),
+            (PROFILE_DIR / "README.md").read_text(),
+        ]).lower()
+        for required in (
+            "relationship edits", "teacher–student", "guardian–student", "selected tutors",
+            "normalized sheet rows", "ambiguity", "consolidation", "final cycle confirmation",
+            "corrections create revisions", "no currency conversion", "does not move money",
+        ):
+            self.assertIn(required, source)
+
 
 if __name__ == "__main__":
     unittest.main()
