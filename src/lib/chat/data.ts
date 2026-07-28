@@ -28,7 +28,9 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 // Hydrate a set of conversation ids into list-ready summaries: member roster,
 // last message, resolved display title, sorted by newest activity. When
 // viewerId is provided titles are resolved relative to that viewer ("You" is
-// hidden); when null (admin viewing everyone) the full roster is used.
+// hidden); when null (admin viewing everyone) the full roster is used. A
+// custom name always wins, group or not: a deliberately named pair is a real
+// conversation in its own right, not just a DM that happens to have a label.
 async function hydrateSummaries(
   admin: AdminClient,
   ids: string[],
@@ -87,9 +89,7 @@ async function hydrateSummaries(
     const title =
       viewerId === null
         ? groupName || allMembersTitle(members)
-        : isGroup
-          ? groupName || otherMembersTitle(members, viewerId) || "Group"
-          : otherMembersTitle(members, viewerId);
+        : groupName || otherMembersTitle(members, viewerId) || "Group";
     const lastMessage = lastByConvo.get(c.id as string) ?? null;
     return {
       id: c.id as string,
@@ -215,12 +215,18 @@ export async function createConversation(params: {
   const admin = createAdminClient();
 
   const uniqueMembers = [...new Set([params.creatorId, ...params.memberIds])];
-  if (uniqueMembers.length < 2) return { error: "A conversation needs at least one other person." };
+  if (!hasMinimumRoster(uniqueMembers.length)) {
+    return { error: "A conversation needs at least one other person." };
+  }
+
+  // The title that will actually be stored: non-group requests never persist a
+  // title, so the dedupe key below must see the same thing storage will.
+  const effectiveTitle = params.isGroup ? params.title : null;
 
   // Reuse an existing direct thread between exactly these two people so we never
   // create duplicate DMs. Keyed on the roster and the absence of a name, not on
   // the caller's isGroup hint.
-  if (isDirectConversationKey(uniqueMembers.length, params.title)) {
+  if (isDirectConversationKey(uniqueMembers.length, effectiveTitle)) {
     const existing = await findExistingDirectConversation(uniqueMembers[0], uniqueMembers[1]);
     if (existing) return { conversationId: existing };
   }
@@ -229,7 +235,7 @@ export async function createConversation(params: {
     .from("conversations")
     .insert({
       is_group: params.isGroup,
-      title: params.isGroup ? params.title : null,
+      title: effectiveTitle,
       created_by: params.creatorId,
     })
     .select("id")
