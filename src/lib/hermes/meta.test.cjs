@@ -66,9 +66,9 @@ test("maps every settlement template and fails closed without one", () => {
   assert.deepEqual(selectWhatsAppDelivery(contact({ serviceWindowExpiresAt: null }), "family_invoice", new Date(), {}), { kind: "blocked", reason: "template_unavailable" });
 });
 
-test("maps the month-only lesson report template and fails closed without it", () => {
-  const mapped = templateMapFromEnv({ WHATSAPP_TEMPLATE_LESSON_REPORT_REQUEST: "academy_lesson_report" });
-  assert.deepEqual(mapped.lesson_report_request, { name: "academy_lesson_report", locale: "en_US" });
+test("maps an existing approved template for lesson reports and fails closed without it", () => {
+  const mapped = templateMapFromEnv({ WHATSAPP_TEMPLATE_LESSON_REPORT_REQUEST: "class_human_attention" });
+  assert.deepEqual(mapped.lesson_report_request, { name: "class_human_attention", locale: "en_US" });
   assert.deepEqual(selectWhatsAppDelivery(contact({ serviceWindowExpiresAt: null }), "lesson_report_request", new Date(), {}), { kind: "blocked", reason: "template_unavailable" });
 });
 

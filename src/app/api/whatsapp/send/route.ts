@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     ]);
     if (!cycle || !["collecting", "needs_attention", "ready_for_swati"].includes(cycle.status)) return NextResponse.json({ error: "Lesson cycle is unavailable" }, { status: 409 });
     if (!collection || !["not_requested", "requested", "awaiting_reply", "needs_attention"].includes(collection.status)) return NextResponse.json({ error: "Tutor is not awaiting a lesson report" }, { status: 409 });
-    lessonContent = buildLessonReportRequestContent(cycle.period_start);
+    lessonContent = buildLessonReportRequestContent(cycle.period_start, contact.display_name);
   } else if (isFinancial) {
     if (process.env.HERMES_SETTLEMENTS_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (body.lessonCycleId) return NextResponse.json({ error: "Financial message cannot reference a lesson cycle" }, { status: 400 });

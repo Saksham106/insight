@@ -172,13 +172,15 @@ export function projectLessonCycle(input: ProjectionInput): LessonCycleProjectio
   };
 }
 
-export function buildLessonReportRequestContent(periodStart: unknown): { body: string; bodyParameters: string[] } {
+export function buildLessonReportRequestContent(periodStart: unknown, recipientName: unknown): { body: string; bodyParameters: string[] } {
   const date = isoDate(periodStart, "invalid_lesson_month");
   if (!date.endsWith("-01")) throw new Error("invalid_lesson_month");
+  const tutorName = normalizedText(recipientName, 1, 160, "invalid_recipient_name");
   const period = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
     .format(new Date(`${date}T00:00:00.000Z`));
+  const matter = `your lesson report for ${period}`;
   return {
-    body: `Please send your My Insight Academy lesson report for ${period}. For each student, include the lesson dates and duration of each lesson.`,
-    bodyParameters: [period],
+    body: `Hello ${tutorName}, Swati from MyInsightAcademy needs your input about ${matter}. Please reply here when convenient.`,
+    bodyParameters: [tutorName, matter],
   };
 }

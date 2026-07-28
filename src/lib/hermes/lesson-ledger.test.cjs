@@ -96,10 +96,10 @@ test("projects only active report revisions and their lessons", () => {
   assert.equal(JSON.stringify(projected).includes("Old"), false);
 });
 
-test("builds a month-only lesson report request", () => {
-  assert.deepEqual(buildLessonReportRequestContent("2026-07-01"), {
-    body: "Please send your My Insight Academy lesson report for July 2026. For each student, include the lesson dates and duration of each lesson.",
-    bodyParameters: ["July 2026"],
+test("reuses the approved human-attention template for lesson report requests", () => {
+  assert.deepEqual(buildLessonReportRequestContent("2026-07-01", "Teacher A"), {
+    body: "Hello Teacher A, Swati from MyInsightAcademy needs your input about your lesson report for July 2026. Please reply here when convenient.",
+    bodyParameters: ["Teacher A", "your lesson report for July 2026"],
   });
 });
 

@@ -125,11 +125,11 @@ Enable `HERMES_WHATSAPP_APPROVALS_ENABLED=true` only after those probes pass. Th
 
 ## Flexible lesson ledger (Phase 1)
 
-The lesson ledger is an evidence workflow separate from settlements and Calendar. Apply `20260728010000_add_flexible_lesson_ledger.sql`, obtain approval for the month-only Utility template, and keep it disabled until synthetic staging verification is complete:
+The lesson ledger is an evidence workflow separate from settlements and Calendar. Apply `20260728010000_add_flexible_lesson_ledger.sql`, reuse the approved `class_human_attention` Utility template, and keep it disabled until synthetic staging verification is complete:
 
 ```dotenv
 HERMES_LESSON_LEDGER_ENABLED=false
-WHATSAPP_TEMPLATE_LESSON_REPORT_REQUEST=<approved Utility template name>
+WHATSAPP_TEMPLATE_LESSON_REPORT_REQUEST=class_human_attention
 ```
 
 Swati explicitly selects the tutors Kitty should contact for a month and may include herself as a teacher. The request template contains only the month. Each selected tutor replies with a natural lesson list; Kitty stores normalized individual lesson rows, shows a normalized summary, and requires confirmation of the exact pending revision. Corrections create a new revision and require confirmation again. Server-side session identity limits an external tutor to their own collection and report, regardless of any actor or tutor identifier in model-generated input.
