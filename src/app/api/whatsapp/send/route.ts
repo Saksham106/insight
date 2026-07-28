@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { verifyServiceRequest } from "@/lib/hermes/auth";
+import { buildLessonReportRequestContent } from "@/lib/hermes/lesson-ledger";
 import { buildGraphMessageRequest, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters, type WhatsAppIntent } from "@/lib/hermes/meta";
 import { buildSettlementMessageContent } from "@/lib/hermes/settlements";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -11,7 +12,7 @@ export async function POST(request: Request) {
   const auth = secret ? verifyServiceRequest(request, rawBody, secret) : null;
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: { contactId?: string; caseId?: string; settlementCycleId?: string; familyInvoiceId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; templateData?: Record<string, unknown>; idempotencyKey?: string; approvalId?: string };
+  let body: { contactId?: string; caseId?: string; lessonCycleId?: string; settlementCycleId?: string; familyInvoiceId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; templateData?: Record<string, unknown>; idempotencyKey?: string; approvalId?: string };
   try { body = JSON.parse(rawBody); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.contactId || !body.intent || !body.idempotencyKey) return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
@@ -30,13 +31,26 @@ export async function POST(request: Request) {
   if (!contact) return NextResponse.json({ error: "Contact unavailable" }, { status: 404 });
 
   const financialIntents: WhatsAppIntent[] = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"];
+  const isLessonReportRequest = body.intent === "lesson_report_request";
   const isFinancial = financialIntents.includes(body.intent);
   let approved = false;
+  let lessonContent: { body: string; bodyParameters: string[] } | null = null;
   let financialContent: { body: string; bodyParameters: string[] } | null = null;
-  if (isFinancial) {
+  if (isLessonReportRequest) {
+    if (process.env.HERMES_LESSON_LEDGER_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!body.lessonCycleId || body.caseId || body.settlementCycleId || body.familyInvoiceId || contact.role !== "teacher") return NextResponse.json({ error: "Lesson report request requires one selected tutor and lesson cycle" }, { status: 403 });
+    const [{ data: cycle }, { data: collection }] = await Promise.all([
+      supabase.from("academy_lesson_cycles").select("id, status, period_start").eq("id", body.lessonCycleId).maybeSingle(),
+      supabase.from("academy_teacher_collections").select("id, status").eq("lesson_cycle_id", body.lessonCycleId).eq("tutor_contact_id", body.contactId).maybeSingle(),
+    ]);
+    if (!cycle || !["collecting", "needs_attention", "ready_for_swati"].includes(cycle.status)) return NextResponse.json({ error: "Lesson cycle is unavailable" }, { status: 409 });
+    if (!collection || !["not_requested", "requested", "awaiting_reply", "needs_attention"].includes(collection.status)) return NextResponse.json({ error: "Tutor is not awaiting a lesson report" }, { status: 409 });
+    lessonContent = buildLessonReportRequestContent(cycle.period_start);
+  } else if (isFinancial) {
     if (process.env.HERMES_SETTLEMENTS_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (body.lessonCycleId) return NextResponse.json({ error: "Financial message cannot reference a lesson cycle" }, { status: 400 });
     if (body.intent === "tutor_report_request") {
-      if (!body.settlementCycleId || body.familyInvoiceId || contact.role !== "teacher") return NextResponse.json({ error: "Tutor report request requires one tutor and settlement cycle" }, { status: 403 });
+      if (!body.settlementCycleId || body.caseId || body.familyInvoiceId || contact.role !== "teacher") return NextResponse.json({ error: "Tutor report request requires one tutor and settlement cycle" }, { status: 403 });
       const { data: cycle } = await supabase.from("academy_settlement_cycles").select("id, status, period_start, currency").eq("id", body.settlementCycleId).maybeSingle();
       if (!cycle || !["collecting", "needs_attention", "ready_for_approval"].includes(cycle.status)) return NextResponse.json({ error: "Settlement cycle is unavailable" }, { status: 409 });
       financialContent = buildSettlementMessageContent({ intent: body.intent, periodStart: cycle.period_start, currency: cycle.currency });
@@ -54,7 +68,7 @@ export async function POST(request: Request) {
       approved = true;
     }
   } else {
-    if (!body.caseId || body.settlementCycleId || body.familyInvoiceId) return NextResponse.json({ error: "Scheduling message requires one case" }, { status: 400 });
+    if (!body.caseId || body.lessonCycleId || body.settlementCycleId || body.familyInvoiceId) return NextResponse.json({ error: "Scheduling message requires one case" }, { status: 400 });
     const isAdminRescheduleAlert = body.intent === "admin_reschedule_alert";
     const [{ data: caseRecord }, { data: participant }] = await Promise.all([
       supabase.from("hermes_scheduling_cases").select("id, status, tutor_kind, workspace_state, human_takeover").eq("id", body.caseId).maybeSingle(),
@@ -83,6 +97,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error instanceof Error ? error.message : "invalid_templateData" }, { status: 400 });
     }
   }
+  if (lessonContent) {
+    body.text = lessonContent.body;
+    body.bodyParameters = lessonContent.bodyParameters;
+  }
   if (financialContent) {
     body.text = financialContent.body;
     body.bodyParameters = financialContent.bodyParameters;
@@ -104,6 +122,7 @@ export async function POST(request: Request) {
   const { data: pending, error: insertError } = await supabase.from("hermes_messages").insert({
     contact_id: contact.id,
     case_id: body.caseId ?? null,
+    lesson_cycle_id: body.lessonCycleId ?? null,
     settlement_cycle_id: body.settlementCycleId ?? null,
     family_invoice_id: body.familyInvoiceId ?? null,
     direction: "outbound",

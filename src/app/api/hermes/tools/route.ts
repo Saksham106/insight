@@ -479,8 +479,35 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         if (lessonError) throw lessonError;
         return NextResponse.json({ cycle: projectLessonCycle({ cycle, collections, reports: reports ?? [], lessons: lessons ?? [] }) });
       }
-      case "request_lesson_report":
-        return failure("Lesson report delivery is not configured yet", 503);
+      case "request_lesson_report": {
+        const cycleId = stringValue(payload, "cycleId", 80);
+        const tutorContactId = stringValue(payload, "tutorContactId", 80);
+        const { data: collection, error: collectionError } = await supabase.from("academy_teacher_collections")
+          .select("id, status, tutor_contact_id, lesson_cycle_id")
+          .eq("lesson_cycle_id", cycleId).eq("tutor_contact_id", tutorContactId).maybeSingle();
+        if (collectionError) throw collectionError;
+        if (!collection) return failure("Tutor is not selected for this lesson cycle", 404);
+        if (!["not_requested", "requested", "awaiting_reply", "needs_attention"].includes(collection.status)) return failure("Tutor is not awaiting a lesson report", 409);
+        const senderSecret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
+        if (!senderSecret) return failure("WhatsApp sender is unavailable", 503);
+        const senderBody = JSON.stringify({ contactId: tutorContactId, lessonCycleId: cycleId, intent: "lesson_report_request", idempotencyKey: `lesson-report-request:${cycleId}:${tutorContactId}` });
+        const timestamp = Date.now().toString();
+        const senderRequestId = `${auth.requestId}-lesson-report`;
+        const response = await fetch(new URL("/api/whatsapp/send", request.url), {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-hermes-timestamp": timestamp, "x-hermes-request-id": senderRequestId, "x-hermes-signature": signServiceRequest(senderBody, timestamp, senderRequestId, senderSecret) },
+          body: senderBody,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) return failure(typeof result?.error === "string" ? result.error : "Lesson report request failed", response.status);
+        const requestedAt = new Date().toISOString();
+        const { error: updateError } = await supabase.from("academy_teacher_collections")
+          .update({ status: "requested", requested_at: requestedAt })
+          .eq("id", collection.id).in("status", ["not_requested", "requested", "awaiting_reply", "needs_attention"]);
+        if (updateError) throw updateError;
+        await audit("lesson_report_requested", "teacher_collection", collection.id, { cycleId, tutorContactId, duplicate: result?.duplicate === true });
+        return NextResponse.json({ collection: { id: collection.id, status: "requested", requestedAt }, message: result?.message ?? null, duplicate: result?.duplicate === true });
+      }
       case "submit_lesson_report":
       case "import_swati_lessons": {
         if (action === "import_swati_lessons" && actorKind !== "admin") return rejectRequest("Only Swati can import lesson rows", 403, "admin_required");
