@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { Bot, CalendarDays, Link2, UserPlus } from "lucide-react";
+import { Bot, CalendarDays, MessagesSquare, UserPlus } from "lucide-react";
 
 import { AdminSessionsSection } from "@/components/admin/admin-sessions-section";
 import { AdminStats } from "@/components/admin/admin-stats";
-import { GroupsManager } from "@/components/admin/groups-manager";
 import { Suspense } from "react";
 
 import { ComposeEmailButton } from "@/components/admin/compose-email-button";
@@ -21,7 +20,7 @@ import type {
   TeacherRow,
 } from "@/lib/dashboard-data";
 
-export type AdminDashboardView = "overview" | "users" | "assignments" | "sessions" | "chats";
+export type AdminDashboardView = "overview" | "users" | "sessions" | "chats";
 
 interface AdminDashboardProps {
   view: AdminDashboardView;
@@ -44,17 +43,13 @@ const viewCopy: Record<AdminDashboardView, { title: string; description: string 
     title: "Users",
     description: "Invite teachers and students, and manage access.",
   },
-  assignments: {
-    title: "Groups",
-    description: "Create group chats for teachers, students, and parents.",
-  },
   sessions: {
     title: "Sessions",
     description: "View every scheduled, pending, and past session.",
   },
   chats: {
     title: "Chats",
-    description: "Read any conversation across the academy.",
+    description: "Read every conversation and manage who's in them.",
   },
 };
 
@@ -66,10 +61,10 @@ const overviewLinks = [
     description: "Invite teachers and students, and manage access.",
   },
   {
-    href: "/admin/assignments",
-    icon: Link2,
-    title: "Groups",
-    description: "Create group chats for teachers, students, and parents.",
+    href: "/admin/chats",
+    icon: MessagesSquare,
+    title: "Chats",
+    description: "Read every conversation and manage who's in them.",
   },
   {
     href: "/admin/sessions",
@@ -202,8 +197,6 @@ export function AdminDashboard({
           </section>
         </>
       )}
-
-      {view === "assignments" && <GroupsManager />}
 
       {view === "sessions" && <AdminSessionsSection sessions={sessions} assignments={assignments} />}
 

@@ -31,7 +31,6 @@ const roleNav: Record<DashboardHeaderProps["role"], { href: string; label: strin
   admin: [
     { href: "/admin", label: "Overview" },
     { href: "/admin/users", label: "Users" },
-    { href: "/admin/assignments", label: "Groups" },
     { href: "/admin/sessions", label: "Sessions" },
     { href: "/admin/chats", label: "Chats" },
   ],

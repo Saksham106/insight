@@ -1,21 +1,16 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ChatMember, ChattableContact, ConversationSummary } from "@/lib/chat-types";
 import { derivePairs, type MemberRole } from "@/lib/chat/group-derive";
+import {
+  hasMinimumRoster,
+  isDirectConversationKey,
+  isGroupConversation,
+  resolveConversationTitle,
+} from "@/lib/chat/conversation-shape";
 
 interface Profile {
   id: string;
   role: string;
-}
-
-function otherMembersTitle(members: ChatMember[], selfId: string): string {
-  const others = members.filter((m) => m.id !== selfId);
-  if (others.length === 0) return "You";
-  return others.map((m) => m.full_name).join(", ");
-}
-
-function allMembersTitle(members: ChatMember[]): string {
-  if (members.length === 0) return "Group";
-  return members.map((m) => m.full_name).join(", ");
 }
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -23,7 +18,9 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 // Hydrate a set of conversation ids into list-ready summaries: member roster,
 // last message, resolved display title, sorted by newest activity. When
 // viewerId is provided titles are resolved relative to that viewer ("You" is
-// hidden); when null (admin viewing everyone) the full roster is used.
+// hidden); when null (admin viewing everyone) the full roster is used. A
+// custom name always wins, group or not: a deliberately named pair is a real
+// conversation in its own right, not just a DM that happens to have a label.
 async function hydrateSummaries(
   admin: AdminClient,
   ids: string[],
@@ -75,19 +72,21 @@ async function hydrateSummaries(
 
   const summaries: ConversationSummary[] = (convos ?? []).map((c) => {
     const members = membersByConvo.get(c.id as string) ?? [];
-    const isGroup = Boolean(c.is_group);
-    const groupName = (c.title as string | null)?.trim();
-    const title =
-      viewerId === null
-        ? groupName || allMembersTitle(members)
-        : isGroup
-          ? groupName || otherMembersTitle(members, viewerId) || "Group"
-          : otherMembersTitle(members, viewerId);
+    // Derived, not read from the column: a conversation is a group once it has
+    // a third member. Keeps the flag from ever disagreeing with the roster.
+    const isGroup = isGroupConversation(members.length);
+    // The stored title, normalised the same way the resolved title's fallback
+    // check is (trim, blank -> null). This is what clients should seed an
+    // editable name field from — never the resolved `title` below, which may
+    // be a synthesized roster string that was never actually stored.
+    const customTitle = (c.title as string | null)?.trim() || null;
+    const title = resolveConversationTitle(members, customTitle, viewerId);
     const lastMessage = lastByConvo.get(c.id as string) ?? null;
     return {
       id: c.id as string,
       isGroup,
       title,
+      customTitle,
       members,
       lastMessage,
       updatedAt: lastMessage?.createdAt ?? (c.updated_at as string) ?? (c.created_at as string),
@@ -110,18 +109,6 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
 
   const ids = (myMemberships ?? []).map((r) => r.conversation_id as string);
   return hydrateSummaries(admin, ids, userId);
-}
-
-// Admin-only: every group (regardless of admin membership), for the Groups page.
-export async function getAllGroupsForAdmin(): Promise<ConversationSummary[]> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("conversations")
-    .select("id")
-    .eq("is_group", true)
-    .is("archived_at", null);
-  const ids = (data ?? []).map((r) => r.id as string);
-  return hydrateSummaries(admin, ids, null);
 }
 
 // Admin-only: every conversation (groups + DMs) for the read-only Chats viewer.
@@ -220,11 +207,18 @@ export async function createConversation(params: {
   const admin = createAdminClient();
 
   const uniqueMembers = [...new Set([params.creatorId, ...params.memberIds])];
-  if (uniqueMembers.length < 2) return { error: "A conversation needs at least one other person." };
+  if (!hasMinimumRoster(uniqueMembers.length)) {
+    return { error: "A conversation needs at least one other person." };
+  }
 
-  // For a 1:1, reuse any existing conversation between exactly these two people
-  // so we never create duplicate DM threads.
-  if (!params.isGroup && uniqueMembers.length === 2) {
+  // The title that will actually be stored: non-group requests never persist a
+  // title, so the dedupe key below must see the same thing storage will.
+  const effectiveTitle = params.isGroup ? params.title : null;
+
+  // Reuse an existing direct thread between exactly these two people so we never
+  // create duplicate DMs. Keyed on the roster and the absence of a name, not on
+  // the caller's isGroup hint.
+  if (isDirectConversationKey(uniqueMembers.length, effectiveTitle)) {
     const existing = await findExistingDirectConversation(uniqueMembers[0], uniqueMembers[1]);
     if (existing) return { conversationId: existing };
   }
@@ -233,7 +227,7 @@ export async function createConversation(params: {
     .from("conversations")
     .insert({
       is_group: params.isGroup,
-      title: params.isGroup ? params.title : null,
+      title: effectiveTitle,
       created_by: params.creatorId,
     })
     .select("id")
@@ -265,30 +259,38 @@ async function findExistingDirectConversation(a: string, b: string): Promise<str
   const sharedIds = (shared ?? []).map((r) => r.conversation_id as string);
   if (sharedIds.length === 0) return null;
 
-  // Of the shared conversations, find one that is a non-group with exactly 2 members.
+  // A direct thread is any conversation with exactly these two people and no
+  // deliberate name. A named pair is a real conversation in its own right and
+  // must not be silently reused as someone's DM. Archived threads are excluded
+  // too: otherwise archiving a DM permanently blocks that pair from ever
+  // messaging again, since every later "message this person" would dedupe
+  // into the archived (and now unreachable) conversation id.
   const { data: convos } = await admin
     .from("conversations")
-    .select("id, is_group")
+    .select("id, title")
     .in("id", sharedIds)
-    .eq("is_group", false);
+    .is("archived_at", null);
 
   for (const c of convos ?? []) {
     const { count } = await admin
       .from("conversation_participants")
       .select("*", { count: "exact", head: true })
       .eq("conversation_id", c.id as string);
-    if (count === 2) return c.id as string;
+    if (isDirectConversationKey(count ?? 0, (c.title as string | null) ?? null)) {
+      return c.id as string;
+    }
   }
   return null;
 }
 
 // ---------------------------------------------------------------------------
-// Admin group management. A group is the admin-facing unit; teaching
-// relationships (teacher_student_assignments) are DERIVED from membership so the
-// booking/availability engine keeps working. The admin is the group's creator
-// but is NOT added as a participant (they are not in the chat).
+// Admin conversation management. A conversation is N participants and an
+// optional name; whether it renders as a group or a DM is derived from roster
+// size (see conversation-shape.ts), not stored. The admin creates conversations
+// and manages their membership but is NOT added as a participant (they are not
+// in the chat). teacher_student_assignments are DERIVED from membership so the
+// booking/availability engine keeps working.
 // ---------------------------------------------------------------------------
-
 
 async function memberRoles(admin: AdminClient, memberIds: string[]): Promise<MemberRole[]> {
   if (memberIds.length === 0) return [];
@@ -316,23 +318,33 @@ async function ensureAssignments(admin: AdminClient, members: MemberRole[]): Pro
   }
 }
 
-export async function createAdminGroup(params: {
+export async function createAdminConversation(params: {
   creatorId: string;
   memberIds: string[];
   title: string | null;
 }): Promise<{ conversationId: string } | { error: string }> {
   const admin = createAdminClient();
   const uniqueMembers = [...new Set(params.memberIds)].filter((id) => id !== params.creatorId);
-  if (uniqueMembers.length < 1) return { error: "Add at least one person to the group." };
+  if (!hasMinimumRoster(uniqueMembers.length)) {
+    return { error: "A conversation needs at least two people." };
+  }
 
   const cleanTitle = params.title?.trim() ? params.title.trim().slice(0, 80) : null;
 
+  // Reuse an existing direct thread between exactly these two people so the
+  // admin's "New chat" can't spawn a second, duplicate DM for a pair that
+  // already has one — mirroring the dedupe createConversation already does.
+  if (isDirectConversationKey(uniqueMembers.length, cleanTitle)) {
+    const existing = await findExistingDirectConversation(uniqueMembers[0], uniqueMembers[1]);
+    if (existing) return { conversationId: existing };
+  }
+
   const { data: convo, error: convoError } = await admin
     .from("conversations")
-    .insert({ is_group: true, title: cleanTitle, created_by: params.creatorId })
+    .insert({ is_group: isGroupConversation(uniqueMembers.length), title: cleanTitle, created_by: params.creatorId })
     .select("id")
     .single();
-  if (convoError || !convo) return { error: convoError?.message ?? "Could not create group." };
+  if (convoError || !convo) return { error: convoError?.message ?? "Could not create conversation." };
 
   const rows = uniqueMembers.map((user_id) => ({ conversation_id: convo.id as string, user_id }));
   const { error: partError } = await admin.from("conversation_participants").insert(rows);
@@ -345,14 +357,14 @@ export async function createAdminGroup(params: {
   return { conversationId: convo.id as string };
 }
 
-export async function renameGroup(id: string, title: string | null): Promise<{ error?: string }> {
+export async function renameConversation(id: string, title: string | null): Promise<{ error?: string }> {
   const admin = createAdminClient();
   const cleanTitle = title?.trim() ? title.trim().slice(0, 80) : null;
   const { error } = await admin.from("conversations").update({ title: cleanTitle }).eq("id", id);
   return error ? { error: error.message } : {};
 }
 
-export async function archiveGroup(id: string): Promise<{ error?: string }> {
+export async function archiveConversation(id: string): Promise<{ error?: string }> {
   const admin = createAdminClient();
   const { error } = await admin
     .from("conversations")
@@ -361,16 +373,18 @@ export async function archiveGroup(id: string): Promise<{ error?: string }> {
   return error ? { error: error.message } : {};
 }
 
-// Replace a group's participants with the given set. Added teacher x student
-// pairs get derived assignment rows; removals leave assignments intact (a past
-// pairing may still own sessions/history).
-export async function updateGroupMembers(
+// Replace a conversation's participants with the given set. Added teacher x
+// student pairs get derived assignment rows; removals leave assignments intact
+// (a past pairing may still own sessions/history).
+export async function updateConversationMembers(
   id: string,
   memberIds: string[],
 ): Promise<{ error?: string }> {
   const admin = createAdminClient();
   const target = [...new Set(memberIds)];
-  if (target.length < 1) return { error: "A group needs at least one person." };
+  if (!hasMinimumRoster(target.length)) {
+    return { error: "A conversation needs at least two people." };
+  }
 
   const { data: current } = await admin
     .from("conversation_participants")

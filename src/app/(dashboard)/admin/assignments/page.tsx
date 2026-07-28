@@ -1,8 +1,7 @@
-import { AdminDashboard } from "@/components/admin/admin-dashboard";
-import { getAdminDashboardData } from "@/lib/dashboard-data";
+import { permanentRedirect } from "next/navigation";
 
-export default async function AdminAssignmentsPage() {
-  const data = await getAdminDashboardData();
-
-  return <AdminDashboard view="assignments" {...data} />;
+// The Groups tab merged into Chats — every conversation is now managed in one
+// place. Kept as a redirect so existing links and bookmarks still resolve.
+export default function AdminAssignmentsPage() {
+  permanentRedirect("/admin/chats");
 }

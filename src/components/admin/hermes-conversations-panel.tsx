@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { AlertCircle, Users } from "lucide-react";
+import { AlertCircle, ChevronLeft, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
   Empty,
   PanelCard,
   formatMessageTime,
+  hermesTabHref,
   type HermesAdminContact,
   type HermesContactIdentity,
   type HermesTranscriptMessage,
@@ -30,16 +31,10 @@ export function HermesConversationsPanel({
       title="WhatsApp conversations"
       description={`${contacts.length} contacts · Read-only message history`}
     >
-      <div className="form-grid-2" style={{ gap: "16px", alignItems: "stretch" }}>
-        <div
-          aria-label="WhatsApp contacts"
-          style={{
-            maxHeight: "560px",
-            overflowY: "auto",
-            border: "1px solid var(--color-border)",
-            borderRadius: "10px",
-          }}
-        >
+      {/* data-selected drives the mobile master/detail swap in globals.css —
+          the list shows until a contact is picked, then the transcript. */}
+      <div className="kitty-convo-grid" data-selected={selectedContact ? "true" : "false"}>
+        <div aria-label="WhatsApp contacts" className="kitty-convo-list">
           {contacts.length === 0 ? (
             <div style={{ padding: "16px" }}>
               <Empty>Add a contact from the Contacts tab to begin.</Empty>
@@ -49,7 +44,7 @@ export function HermesConversationsPanel({
             return (
               <Link
                 key={contact.id}
-                href={`/admin/hermes?contact=${contact.id}`}
+                href={hermesTabHref("conversations", contact.id)}
                 aria-current={isSelected ? "page" : undefined}
                 scroll={false}
                 style={{
@@ -99,18 +94,7 @@ export function HermesConversationsPanel({
           })}
         </div>
 
-        <div
-          aria-live="polite"
-          style={{
-            minHeight: "320px",
-            maxHeight: "560px",
-            overflowY: "auto",
-            border: "1px solid var(--color-border)",
-            borderRadius: "10px",
-            background: "var(--color-surface)",
-            padding: "16px",
-          }}
-        >
+        <div aria-live="polite" className="kitty-convo-detail">
           {transcriptError ? (
             <div style={{ display: "flex", gap: "8px", color: "var(--color-error)" }}>
               <AlertCircle size={18} aria-hidden />
@@ -125,6 +109,17 @@ export function HermesConversationsPanel({
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <div style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "12px" }}>
+                {/* Mobile-only: the list is hidden while a contact is open, so
+                    this is the way back to it. Hidden on desktop, where both
+                    panes are visible at once. */}
+                <Link
+                  href={hermesTabHref("conversations", null)}
+                  scroll={false}
+                  className="kitty-convo-back text-sm text-navy"
+                  style={{ alignItems: "center", gap: "4px", marginBottom: "8px", textDecoration: "none" }}
+                >
+                  <ChevronLeft size={16} aria-hidden /> All contacts
+                </Link>
                 <p className="text-base font-semibold text-navy">
                   Conversation with {selectedContact.display_name}
                 </p>
