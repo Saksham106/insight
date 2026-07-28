@@ -72,12 +72,12 @@ test("maps an existing approved template for lesson reports and fails closed wit
   assert.deepEqual(selectWhatsAppDelivery(contact({ serviceWindowExpiresAt: null }), "lesson_report_request", new Date(), {}), { kind: "blocked", reason: "template_unavailable" });
 });
 
-test("puts the detailed lesson request in the existing human-attention template variable", () => {
+test("puts the concise lesson request in the existing human-attention template variable", () => {
   assert.deepEqual(buildLessonReportRequestContent("2026-07-01", "Teacher A"), {
-    body: "Hello Teacher A, Swati from MyInsightAcademy needs your input about details of all classes you taught in July 2026, including each student's name, lesson date, and duration, so invoices can be prepared for the respective student or parent. Please reply here when convenient.",
+    body: "Hello Teacher A, Swati from MyInsightAcademy needs your input about details of all classes you taught in July 2026 so invoices can be prepared for the respective students or parents. Please reply here when convenient.",
     bodyParameters: [
       "Teacher A",
-      "details of all classes you taught in July 2026, including each student's name, lesson date, and duration, so invoices can be prepared for the respective student or parent",
+      "details of all classes you taught in July 2026 so invoices can be prepared for the respective students or parents",
     ],
   });
 });
