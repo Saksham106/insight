@@ -125,7 +125,7 @@ Enable `HERMES_WHATSAPP_APPROVALS_ENABLED=true` only after those probes pass. Th
 
 ## Flexible lesson ledger (Phase 1)
 
-The lesson ledger is an evidence workflow separate from settlements and Calendar. Apply `20260728010000_add_flexible_lesson_ledger.sql`, reuse the approved `class_human_attention` Utility template, and keep it disabled until synthetic staging verification is complete:
+The lesson ledger is an evidence workflow separate from settlements and Calendar. Apply `20260728120052_add_flexible_lesson_ledger.sql`, reuse the approved `class_human_attention` Utility template, and keep it disabled until synthetic staging verification is complete:
 
 ```dotenv
 HERMES_LESSON_LEDGER_ENABLED=false
