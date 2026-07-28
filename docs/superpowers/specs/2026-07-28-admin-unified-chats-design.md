@@ -96,6 +96,35 @@ message queries, and the realtime subscription simultaneously, and an error in t
 silent leak. Considered and accepted: this exposes a student's prior messages to a parent added
 later. The admin performing the add can already read every thread in the system.
 
+### D6 — Retire the assignment → conversation trigger
+
+*Added 2026-07-28 after the change was verified in the running app.*
+
+A database trigger, `create_conversation_after_assignment`, inserted a conversation for every
+new `teacher_student_assignments` row. It dates from when a conversation *was* a 1:1 mirror of an
+assignment. The group redesign inverted that: a conversation is primary, and assignments are
+derived from its membership by `ensureAssignments`.
+
+With the relationship inverted, the trigger duplicated work. Creating a two-person teacher+student
+chat produced **two** conversations — the admin's, plus one the trigger made from the assignment
+that was derived from the admin's. Because D3 derives group-vs-DM from roster size, both rendered
+identically in the unified list. Adding a student to a group spawned another per new
+teacher × student pair. Confirmed empirically: the duplicate carries `created_by: null` and a
+non-null `assignment_id`, which no application path produces.
+
+Only two paths insert assignments: `POST /api/admin/assign` (a deliberate pairing, which already
+created the conversation itself via its own `ensureConversation` helper) and `ensureAssignments`
+(derivation from a conversation that already exists). The trigger was redundant on the first and
+harmful on the second, so it is dropped. `ensureConversation` now also inserts the two
+participants — the one thing the trigger did that it didn't.
+
+Rejected: guarding the trigger so it skips pairs who already share a conversation. It would fix
+the two-person case but still spawn a phantom 1:1 whenever an admin created a group containing a
+teacher and a student, and it would leave conversation creation split across a trigger and
+application code.
+
+Existing trigger-created conversations are left as they are; this drops the automation, not data.
+
 ### D5 — Minimum roster of 2
 
 `createAdminGroup` currently accepts a single member. A conversation with one participant has

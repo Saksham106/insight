@@ -38,7 +38,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: reactivateError.message }, { status: 500 });
       }
 
-      const convError = await ensureConversation(supabase, existingAssignment.id);
+      const convError = await ensureConversation(supabase, existingAssignment.id, teacherId, studentId);
       if (convError) {
         return NextResponse.json({ error: convError.message }, { status: 500 });
       }
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const convError = await ensureConversation(supabase, data.id);
+  const convError = await ensureConversation(supabase, data.id, teacherId, studentId);
 
   if (convError) {
     return NextResponse.json({ error: convError.message }, { status: 500 });
@@ -80,7 +80,18 @@ export async function POST(request: Request) {
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
-async function ensureConversation(supabase: AdminClient, assignmentId: string) {
+// Give a deliberately-paired teacher and student their 1:1 conversation. This
+// used to be shared with a database trigger on teacher_student_assignments;
+// that trigger was dropped (20260728120000) because assignments are now DERIVED
+// from conversation membership, so it duplicated any conversation whose own
+// creation had derived the assignment. Creating the participants here is the one
+// thing the trigger did that this helper didn't.
+async function ensureConversation(
+  supabase: AdminClient,
+  assignmentId: string,
+  teacherId: string,
+  studentId: string,
+) {
   const { data: existingConversation, error: lookupError } = await supabase
     .from("conversations")
     .select("id")
@@ -90,11 +101,22 @@ async function ensureConversation(supabase: AdminClient, assignmentId: string) {
   if (lookupError) return lookupError;
   if (existingConversation) return null;
 
-  const { error } = await supabase
+  const { data: conversation, error } = await supabase
     .from("conversations")
-    .insert({ assignment_id: assignmentId });
+    .insert({ assignment_id: assignmentId })
+    .select("id")
+    .single();
 
-  return error;
+  if (error) return error;
+
+  const { error: participantsError } = await supabase
+    .from("conversation_participants")
+    .insert([
+      { conversation_id: conversation.id as string, user_id: teacherId },
+      { conversation_id: conversation.id as string, user_id: studentId },
+    ]);
+
+  return participantsError;
 }
 
 function revalidateDashboards() {
