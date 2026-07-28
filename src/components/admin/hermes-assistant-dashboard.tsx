@@ -83,16 +83,7 @@ export function HermesAssistantDashboard({
 
       {loadError ? <p className="text-sm text-error">{loadError}</p> : null}
 
-      <nav
-        aria-label="Kitty sections"
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "6px",
-          borderBottom: "1px solid var(--color-border)",
-          paddingBottom: "10px",
-        }}
-      >
+      <nav aria-label="Kitty sections" className="kitty-tabs">
         {tabs.map(({ id, label, icon, count }) => {
           const active = tab === id;
           return (
