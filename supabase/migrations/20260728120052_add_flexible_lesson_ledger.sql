@@ -1,3 +1,4 @@
+-- Production migration version: 20260728120052.
 alter table public.hermes_contact_relationships
   add column if not exists is_active boolean not null default true;
 alter table public.hermes_contact_relationships
