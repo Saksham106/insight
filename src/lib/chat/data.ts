@@ -284,12 +284,13 @@ async function findExistingDirectConversation(a: string, b: string): Promise<str
 }
 
 // ---------------------------------------------------------------------------
-// Admin group management. A group is the admin-facing unit; teaching
-// relationships (teacher_student_assignments) are DERIVED from membership so the
-// booking/availability engine keeps working. The admin is the group's creator
-// but is NOT added as a participant (they are not in the chat).
+// Admin conversation management. A conversation is N participants and an
+// optional name; whether it renders as a group or a DM is derived from roster
+// size (see conversation-shape.ts), not stored. The admin creates conversations
+// and manages their membership but is NOT added as a participant (they are not
+// in the chat). teacher_student_assignments are DERIVED from membership so the
+// booking/availability engine keeps working.
 // ---------------------------------------------------------------------------
-
 
 async function memberRoles(admin: AdminClient, memberIds: string[]): Promise<MemberRole[]> {
   if (memberIds.length === 0) return [];

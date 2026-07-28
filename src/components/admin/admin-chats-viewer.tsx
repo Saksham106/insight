@@ -41,14 +41,18 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
   const [showMembers, setShowMembers] = useState(false);
 
   const load = useCallback(async () => {
-    const [c, k] = await Promise.all([
-      fetch(`/api/admin/conversations?t=${Date.now()}`, { cache: "no-store" })
-        .then((r) => r.json())
-        .catch(() => ({})),
-      fetch("/api/chat/contacts", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+    const [convRes, contactsRes] = await Promise.all([
+      fetch(`/api/admin/conversations?t=${Date.now()}`, { cache: "no-store" }),
+      fetch("/api/chat/contacts", { cache: "no-store" }),
     ]);
-    setConversations((c.conversations as ConversationSummary[]) ?? []);
-    setContacts((k.contacts as ChattableContact[]) ?? []);
+    const [c, k] = await Promise.all([
+      convRes.json().catch(() => ({})),
+      contactsRes.json().catch(() => ({})),
+    ]);
+    // A transient 500 or expired session should leave the last-good list on
+    // screen rather than blanking it — there's no refresh affordance here.
+    if (convRes.ok) setConversations((c.conversations as ConversationSummary[]) ?? []);
+    if (contactsRes.ok) setContacts((k.contacts as ChattableContact[]) ?? []);
     setLoading(false);
   }, []);
 
@@ -56,7 +60,7 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
     void load();
   }, [load]);
 
-  // Deep link from the Groups page: /admin/chats?c=<id> opens that thread.
+  // Deep link support: a `?c=<id>` query param opens that conversation directly.
   useEffect(() => {
     const c = searchParams.get("c");
     if (c) setActiveId(c);
