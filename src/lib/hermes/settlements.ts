@@ -23,6 +23,13 @@ function normalizedName(input: unknown): string {
   return value;
 }
 
+function boundedText(input: unknown, error: string): string {
+  if (typeof input !== "string") throw new Error(error);
+  const value = input.trim().replace(/\s+/g, " ");
+  if (value.length < 1 || value.length > 160) throw new Error(error);
+  return value;
+}
+
 function isoDate(input: unknown): string {
   if (typeof input !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input)) throw new Error("invalid_lesson_date");
   const value = new Date(`${input}T00:00:00.000Z`);
@@ -68,6 +75,8 @@ export function buildSettlementMessageContent(input: {
   currency: unknown;
   totalMinor?: unknown;
   itemSnapshot?: unknown;
+  recipientName?: unknown;
+  invoiceReference?: unknown;
 }): { body: string; bodyParameters: string[] } {
   const period = settlementPeriodLabel(input.periodStart);
   const currency = parseCurrency(input.currency);
@@ -86,13 +95,29 @@ export function buildSettlementMessageContent(input: {
     };
   }, { classes: 0, minutes: 0 });
   const amount = formatMinorCurrency(input.totalMinor, currency);
+  const recipientName = boundedText(input.recipientName, "invalid_recipient_name");
+  const invoiceReference = boundedText(
+    input.invoiceReference,
+    "invalid_invoice_reference",
+  );
   const detail = `${totals.classes} ${totals.classes === 1 ? "class" : "classes"} (${totals.minutes} minutes)`;
   const body = input.intent === "family_invoice"
     ? `Your MyInsightAcademy statement for ${period} includes ${detail}. Amount due: ${amount}. Reply if anything looks incorrect.`
     : input.intent === "payment_reminder"
       ? `Reminder: ${amount} is due for ${detail} with MyInsightAcademy in ${period}. Reply if anything looks incorrect.`
       : `We recorded your payment of ${amount} for ${detail} with MyInsightAcademy in ${period}. Thank you.`;
-  return { body, bodyParameters: [period, String(totals.classes), String(totals.minutes), amount] };
+  return {
+    body,
+    bodyParameters:
+      input.intent === "payment_received"
+        ? [recipientName, amount, invoiceReference]
+        : [
+            recipientName,
+            invoiceReference,
+            amount,
+            "the date agreed with Swati",
+          ],
+  };
 }
 
 export interface TutorReportLineInput {

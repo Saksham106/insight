@@ -63,7 +63,18 @@ export async function POST(request: Request) {
       body.settlementCycleId = invoice.settlement_cycle_id;
       const { data: cycle } = await supabase.from("academy_settlement_cycles").select("period_start").eq("id", invoice.settlement_cycle_id).maybeSingle();
       if (!cycle) return NextResponse.json({ error: "Settlement cycle is unavailable" }, { status: 409 });
-      financialContent = buildSettlementMessageContent({ intent: body.intent as "family_invoice" | "payment_reminder" | "payment_received", periodStart: cycle.period_start, currency: invoice.currency, totalMinor: invoice.total_minor, itemSnapshot: invoice.item_snapshot });
+      financialContent = buildSettlementMessageContent({
+        intent: body.intent as
+          | "family_invoice"
+          | "payment_reminder"
+          | "payment_received",
+        periodStart: cycle.period_start,
+        currency: invoice.currency,
+        totalMinor: invoice.total_minor,
+        itemSnapshot: invoice.item_snapshot,
+        recipientName: contact.display_name,
+        invoiceReference: `MIA-${invoice.id.slice(0, 8).toUpperCase()}`,
+      });
       approved = true;
     }
   } else {

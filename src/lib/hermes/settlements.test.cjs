@@ -127,15 +127,35 @@ test("derives family financial messages only from the approved invoice snapshot"
     periodStart: "2026-06-01",
     currency: "USD",
     totalMinor: 12345,
+    recipientName: "Parent A",
+    invoiceReference: "MIA-1234ABCD",
     itemSnapshot: [
       { classCount: 2, totalMinutes: 120 },
       { classCount: 1, totalMinutes: 45 },
     ],
   });
-  assert.deepEqual(content.bodyParameters, ["June 2026", "3", "165", "$123.45"]);
+  assert.deepEqual(content.bodyParameters, [
+    "Parent A",
+    "MIA-1234ABCD",
+    "$123.45",
+    "the date agreed with Swati",
+  ]);
   assert.match(content.body, /3 classes \(165 minutes\)/);
   assert.match(content.body, /\$123\.45/);
+  assert.deepEqual(
+    buildSettlementMessageContent({
+      intent: "payment_received",
+      periodStart: "2026-06-01",
+      currency: "USD",
+      totalMinor: 12345,
+      recipientName: "Parent A",
+      invoiceReference: "MIA-1234ABCD",
+      itemSnapshot: [{ classCount: 3, totalMinutes: 165 }],
+    }).bodyParameters,
+    ["Parent A", "$123.45", "MIA-1234ABCD"],
+  );
   assert.throws(() => buildSettlementMessageContent({ intent: "family_invoice", periodStart: "2026-06-01", currency: "USD", totalMinor: 1, itemSnapshot: [{ classCount: -1, totalMinutes: 60 }] }), /invalid_invoice_snapshot/);
+  assert.throws(() => buildSettlementMessageContent({ intent: "family_invoice", periodStart: "2026-06-01", currency: "USD", totalMinor: 1, recipientName: "", invoiceReference: "MIA-1234ABCD", itemSnapshot: [{ classCount: 1, totalMinutes: 60 }] }), /invalid_recipient_name/);
 });
 
 test("derives tutor-report requests from the settlement month and currency", () => {
