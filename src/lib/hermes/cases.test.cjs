@@ -150,6 +150,7 @@ test("open objectives are contact-only, identity-bound, bounded, and minimized",
   assert.match(block, /actorContact\.id/);
   assert.match(block, /tutor_contact_id/);
   assert.match(block, /billed_contact_id/);
+  assert.match(block, /\.eq\("reports\.status", "awaiting_teacher_confirmation"\)/);
   assert.match(block, /\.limit\(20\)/);
   assert.match(block, /projectOpenObjectives/);
   assert.doesNotMatch(block, /payload\.(?:contactId|actor|phone|role)/);
