@@ -149,7 +149,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const [collectionsResult, invoicesResult] = await Promise.all([
           supabase
             .from("academy_teacher_collections")
-            .select("id, lesson_cycle_id, status, cycle:academy_lesson_cycles!inner(period_start, status), reports:academy_lesson_report_revisions(id, revision, status, submitted_at)")
+            .select("id, lesson_cycle_id, status, cycle:academy_lesson_cycles!inner(period_start, status), reports:academy_lesson_report_revisions!academy_lesson_report_revisions_teacher_collection_id_fkey(id, revision, status, submitted_at)")
             .eq("tutor_contact_id", actorContact.id)
             .in("status", ["requested", "awaiting_reply", "awaiting_teacher_confirmation", "needs_attention"])
             .eq("reports.status", "awaiting_teacher_confirmation")
