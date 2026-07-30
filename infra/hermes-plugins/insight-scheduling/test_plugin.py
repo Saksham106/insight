@@ -60,6 +60,12 @@ class PluginTests(unittest.TestCase):
         self.assertIn("request_swati_freebusy", self.tools.ACTIONS)
         self.assertIn("get_workspace_job", self.tools.ACTIONS)
 
+    def test_exposes_self_scoped_open_objective_lookup(self):
+        self.assertIn("get_my_open_objectives", self.tools.ACTIONS)
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+        self.assertIn("returned cycleId", source)
+        self.assertIn("submit_lesson_report", source)
+
     def test_exposes_only_the_tutor_owned_financial_action(self):
         self.assertIn("submit_tutor_report", self.tools.ACTIONS)
         for action in ("start_settlement_cycle", "set_family_charges", "request_settlement_approval", "record_family_payment", "record_tutor_payout"):

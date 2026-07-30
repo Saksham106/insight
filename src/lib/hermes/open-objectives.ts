@@ -3,6 +3,7 @@ const MONTH_PATTERN = /^\d{4}-\d{2}-01$/;
 
 export interface LessonObjectiveRecord {
   id: string;
+  cycleId: string;
   status: string;
   periodStart: string;
   cycleStatus: string;
@@ -24,6 +25,7 @@ export type OpenObjective =
   | {
       kind: "lesson_report";
       entityId: string;
+      cycleId: string;
       periodStart: string;
       stage: "awaiting_report" | "awaiting_confirmation";
     }
@@ -64,13 +66,15 @@ function isoTimestamp(input: unknown): string | null {
 function lessonObjective(input: unknown): OpenObjective | null {
   if (!isRecord(input)) return null;
   const collectionId = uuid(input.id);
+  const cycleId = uuid(input.cycleId);
   const periodStart = monthStart(input.periodStart);
-  if (!collectionId || !periodStart || input.cycleStatus === "confirmed") return null;
+  if (!collectionId || !cycleId || !periodStart || input.cycleStatus === "confirmed") return null;
 
   if (input.status === "requested" || input.status === "awaiting_reply" || input.status === "needs_attention") {
     return {
       kind: "lesson_report",
       entityId: collectionId,
+      cycleId,
       periodStart,
       stage: "awaiting_report",
     };
@@ -90,6 +94,7 @@ function lessonObjective(input: unknown): OpenObjective | null {
   return {
     kind: "lesson_report",
     entityId: report.id,
+    cycleId,
     periodStart,
     stage: "awaiting_confirmation",
   };

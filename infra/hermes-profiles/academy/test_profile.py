@@ -79,6 +79,8 @@ class AcademyProfileTests(unittest.TestCase):
         for required in (
             "natural lesson list", "normalized summary", "confirm", "exact pending revision",
             "corrections create a new revision", "own collection", "server-side session identity",
+            "cycleid", "submit_lesson_report", "do not call `request_lesson_report`",
+            "do not use `submit_tutor_report`",
         ):
             self.assertIn(required, agents)
         for required in (
@@ -110,6 +112,11 @@ class AcademyProfileTests(unittest.TestCase):
             ):
                 self.assertIn(required, document)
         self.assertIn("available actions", skill)
+        for required in (
+            "cycleid", "submit_lesson_report", "confirm_lesson_report",
+            "do not call `request_lesson_report`", "do not use `submit_tutor_report`",
+        ):
+            self.assertIn(required, skill)
 
     def test_academy_help_hook_is_registered_for_help_and_whoami(self):
         hook_dir = PROFILE_DIR / "hooks" / "academy-help"

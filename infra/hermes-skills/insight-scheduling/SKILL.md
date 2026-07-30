@@ -29,11 +29,23 @@ python3 ~/.hermes/skills/insight-scheduling/scripts/insight_tools.py get_my_open
 
 Answer the immediate legitimate message first. If `primaryObjective` remains open and was not already mentioned in the visible recent exchange, add at most one short, friendly reminder:
 
-- `awaiting_report`: ask for the named month's complete lesson list.
+- `awaiting_report`: ask for the named month's complete lesson list. The objective includes the exact `cycleId` required for submission.
 - `awaiting_confirmation`: ask the tutor to confirm or correct the exact pending summary.
 - `awaiting_payment`: gently mention the outstanding invoice reference.
 
 Do not remind when the message supplies or corrects the requested information, the contact says STOP or withdraws consent, the contact asks for Swati, or a safety-sensitive issue requires escalation. If the lookup fails, do not guess an objective. Tool state, not conversation memory, decides completion. This per-contact reminder rule does not apply to Swati's administrator conversation.
+
+### Tutor lesson-ledger submission
+
+When a tutor supplies the lesson list for an `awaiting_report` objective:
+
+1. Use the exact `cycleId` returned by `get_my_open_objectives`.
+2. Normalize every lesson to `reportedStudentName`, `lessonDate`, whole `durationMinutes`, and optional `subject` or `note`.
+3. Call `submit_lesson_report={cycleId,lessons:[...]}`.
+4. Show the returned normalized summary and revision, then ask the tutor to confirm or correct it.
+5. Call `confirm_lesson_report={reportId}` only after clear confirmation of that exact revision.
+
+Do not call `request_lesson_report`, `list_my_cases`, or `get_lesson_cycle` to discover a tutor's cycle. Do not use `submit_tutor_report` for the lesson ledger; that action belongs to the separate financial settlement claim. If submission fails despite an open objective, report a technical submission problem and notify Swati. Never claim the cycle is closed, missing, or unavailable unless the tool explicitly says so.
 
 ## Workflow
 
@@ -54,6 +66,6 @@ Run:
 python3 ~/.hermes/skills/insight-scheduling/scripts/insight_tools.py ACTION '{"field":"value"}'
 ```
 
-Available actions are `get_my_open_objectives`, `search_contacts`, `get_contact`, `create_case`, `get_case`, `record_availability`, `propose_times`, `request_approval`, `confirm_class`, `send_message`, and `escalate_to_swati`.
+Available actions are `get_my_open_objectives`, `search_contacts`, `get_contact`, `create_case`, `get_case`, `record_availability`, `propose_times`, `request_approval`, `confirm_class`, `submit_lesson_report`, `confirm_lesson_report`, `send_message`, and `escalate_to_swati`.
 
 Use a stable, unique `idempotencyKey` for every logical outbound message, such as `case:<case-id>:availability:<contact-id>:v1`. Reuse it when retrying the same message; create a new version only when the content or purpose changes.

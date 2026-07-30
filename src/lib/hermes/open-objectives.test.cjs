@@ -19,6 +19,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 
 const { projectOpenObjectives } = require(path.join(__dirname, "open-objectives.ts"));
 
+const CYCLE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const COLLECTION_ID = "11111111-1111-4111-8111-111111111111";
 const SECOND_COLLECTION_ID = "22222222-2222-4222-8222-222222222222";
 const REPORT_ID = "33333333-3333-4333-8333-333333333333";
@@ -28,6 +29,7 @@ test("projects requested tutor work as awaiting_report", () => {
   const result = projectOpenObjectives({
     lessonCollections: [{
       id: COLLECTION_ID,
+      cycleId: CYCLE_ID,
       status: "requested",
       periodStart: "2026-07-01",
       cycleStatus: "collecting",
@@ -40,12 +42,14 @@ test("projects requested tutor work as awaiting_report", () => {
     primaryObjective: {
       kind: "lesson_report",
       entityId: COLLECTION_ID,
+      cycleId: CYCLE_ID,
       periodStart: "2026-07-01",
       stage: "awaiting_report",
     },
     objectives: [{
       kind: "lesson_report",
       entityId: COLLECTION_ID,
+      cycleId: CYCLE_ID,
       periodStart: "2026-07-01",
       stage: "awaiting_report",
     }],
@@ -56,6 +60,7 @@ test("projects the active pending report as awaiting_confirmation", () => {
   const result = projectOpenObjectives({
     lessonCollections: [{
       id: COLLECTION_ID,
+      cycleId: CYCLE_ID,
       status: "awaiting_teacher_confirmation",
       periodStart: "2026-07-01",
       cycleStatus: "collecting",
@@ -80,6 +85,7 @@ test("projects the active pending report as awaiting_confirmation", () => {
   assert.deepEqual(result.primaryObjective, {
     kind: "lesson_report",
     entityId: REPORT_ID,
+    cycleId: CYCLE_ID,
     periodStart: "2026-07-01",
     stage: "awaiting_confirmation",
   });
@@ -139,10 +145,11 @@ test("projects only sent family invoices with a safe invoice reference", () => {
 test("prioritizes confirmation, then reports, then payment and sorts older periods first", () => {
   const result = projectOpenObjectives({
     lessonCollections: [
-      { id: COLLECTION_ID, status: "requested", periodStart: "2026-07-01", cycleStatus: "collecting", reports: [] },
-      { id: SECOND_COLLECTION_ID, status: "requested", periodStart: "2026-06-01", cycleStatus: "collecting", reports: [] },
+      { id: COLLECTION_ID, cycleId: CYCLE_ID, status: "requested", periodStart: "2026-07-01", cycleStatus: "collecting", reports: [] },
+      { id: SECOND_COLLECTION_ID, cycleId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", status: "requested", periodStart: "2026-06-01", cycleStatus: "collecting", reports: [] },
       {
         id: "66666666-6666-4666-8666-666666666666",
+        cycleId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
         status: "awaiting_teacher_confirmation",
         periodStart: "2026-08-01",
         cycleStatus: "collecting",
@@ -165,6 +172,7 @@ test("caps output at three and discards raw or unknown fields", () => {
     const digit = String(index + 1);
     return {
       id: digit.repeat(8) + "-" + digit.repeat(4) + "-4" + digit.repeat(3) + "-8" + digit.repeat(3) + "-" + digit.repeat(12),
+      cycleId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       status: "requested",
       periodStart: `2026-0${index + 1}-01`,
       cycleStatus: "collecting",
@@ -183,9 +191,10 @@ test("caps output at three and discards raw or unknown fields", () => {
 test("ignores malformed records instead of creating conversational claims", () => {
   const result = projectOpenObjectives({
     lessonCollections: [
-      { id: "not-a-uuid", status: "requested", periodStart: "2026-07-01", cycleStatus: "collecting", reports: [] },
-      { id: COLLECTION_ID, status: "requested", periodStart: "2026-07-02", cycleStatus: "collecting", reports: [] },
-      { id: SECOND_COLLECTION_ID, status: "unknown", periodStart: "2026-07-01", cycleStatus: "collecting", reports: [] },
+      { id: "not-a-uuid", cycleId: CYCLE_ID, status: "requested", periodStart: "2026-07-01", cycleStatus: "collecting", reports: [] },
+      { id: COLLECTION_ID, cycleId: CYCLE_ID, status: "requested", periodStart: "2026-07-02", cycleStatus: "collecting", reports: [] },
+      { id: SECOND_COLLECTION_ID, cycleId: CYCLE_ID, status: "unknown", periodStart: "2026-07-01", cycleStatus: "collecting", reports: [] },
+      { id: COLLECTION_ID, cycleId: "not-a-uuid", status: "requested", periodStart: "2026-07-01", cycleStatus: "collecting", reports: [] },
     ],
     familyInvoices: [
       { id: INVOICE_ID, status: "sent", periodStart: "not-a-month" },
