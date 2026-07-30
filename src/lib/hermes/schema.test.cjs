@@ -294,3 +294,11 @@ test("lesson ledger mutations are transactional, audited, and service-role only"
   assert.match(sql, /hermes_audit_events/);
   assert.doesNotMatch(sql, /metadata[^;]+reported_student_name/);
 });
+
+test("restarting an open lesson cycle adds tutors without removing earlier selections", () => {
+  const sql = readMigration("_make_lesson_cycle_tutors_additive.sql");
+  assert.match(sql, /create or replace function public\.start_academy_lesson_cycle/);
+  assert.match(sql, /on conflict \(lesson_cycle_id, tutor_contact_id\) do nothing/);
+  assert.doesNotMatch(sql, /delete from public\.academy_teacher_collections/);
+  assert.doesNotMatch(sql, /selected_tutor_has_report/);
+});

@@ -11,7 +11,7 @@ PAYLOAD_GUIDANCE = (
     "get_case={caseId}; list_cases={status?,contactId?,limit?}; "
     "set_contact_relationship={sourceContactId,targetContactId,relationshipType:"
     "teacher|parent_guardian,active}; list_contact_relationships={contactId}; "
-    "start_lesson_cycle={periodStart,tutorContactIds,includeSwati?}; "
+    "start_lesson_cycle={periodStart,tutorContactIds,includeSwati?} is additive for an open month; "
     "get_lesson_cycle={cycleId}; request_lesson_report={cycleId,tutorContactId}; "
     "submit_lesson_report={cycleId,tutorContactId,lessons:[{reportedStudentName,"
     "studentContactId?,lessonDate,durationMinutes,subject?,note?}]}; "
