@@ -43,11 +43,12 @@ export function parseIMessageAdminActor(
 }
 
 export type HermesToolActorKind = "admin" | "contact" | "unknown";
-export type HermesToolActorScope = "admin" | "self" | "case_member" | "self_case_member" | "self_financial" | "self_ledger" | "denied";
+export type HermesToolActorScope = "admin" | "self" | "case_member" | "self_case_member" | "self_financial" | "self_ledger" | "self_objectives" | "denied";
 
 export function toolActorScope(action: string, actorKind: HermesToolActorKind): HermesToolActorScope {
   if (actorKind === "admin") return "admin";
   if (actorKind !== "contact") return "denied";
+  if (action === "get_my_open_objectives") return "self_objectives";
   if (action === "get_academy_info" || action === "get_contact" || action === "list_my_cases") return "self";
   if (action === "get_case" || action === "request_reschedule" || action === "escalate_to_swati") return "case_member";
   if (action === "record_availability") return "self_case_member";

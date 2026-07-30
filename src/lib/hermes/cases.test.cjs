@@ -134,6 +134,28 @@ test("gives tutors only their own lesson-ledger report scope", () => {
   }
 });
 
+test("gives contacts a self-only open-objective scope", () => {
+  assert.equal(toolActorScope("get_my_open_objectives", "contact"), "self_objectives");
+  assert.equal(toolActorScope("get_my_open_objectives", "unknown"), "denied");
+  assert.equal(toolActorScope("get_my_open_objectives", "admin"), "admin");
+});
+
+test("open objectives are contact-only, identity-bound, bounded, and minimized", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"), "utf8");
+  assert.match(route, /"get_my_open_objectives"/);
+  const match = route.match(/case "get_my_open_objectives": \{([\s\S]*?)\n\s+case "/);
+  assert.ok(match, "get_my_open_objectives route block must exist");
+  const block = match[1];
+  assert.match(block, /actorKind !== "contact"/);
+  assert.match(block, /actorContact\.id/);
+  assert.match(block, /tutor_contact_id/);
+  assert.match(block, /billed_contact_id/);
+  assert.match(block, /\.limit\(20\)/);
+  assert.match(block, /projectOpenObjectives/);
+  assert.doesNotMatch(block, /payload\.(?:contactId|actor|phone|role)/);
+  assert.doesNotMatch(block, /item_snapshot|total_minor|whatsapp_e164|display_name/);
+});
+
 test("Academy information is a small verified public knowledge surface", () => {
   const about = academyInformation("about");
   assert.match(about.answer, /tutoring/i);

@@ -6,13 +6,14 @@ import { academyInformation, communicationDecision, parseIMessageAdminActor, par
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
 import { projectLessonCycle, sanitizeLessonReport, sanitizeTutorContactIds } from "@/lib/hermes/lesson-ledger";
+import { projectOpenObjectives, type LessonObjectiveRecord, type PaymentObjectiveRecord } from "@/lib/hermes/open-objectives";
 import { parseCurrency, parseSettlementMonth, sanitizeFamilyCharges, sanitizeTutorReport } from "@/lib/hermes/settlements";
 import { normalizeToolPayload } from "@/lib/hermes/tool-contracts";
 import { parseCalendarEventResult, parseFreeBusyPayload, parseFreeBusyResult, workspaceJobIdempotencyKey } from "@/lib/hermes/workspace-jobs";
 import { buildApprovalTemplateMessage, generateApprovalCode } from "@/lib/hermes/whatsapp-approvals";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ACTIONS = ["get_academy_info", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "list_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job", "start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle", "set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"] as const;
+const ACTIONS = ["get_academy_info", "get_my_open_objectives", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "list_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job", "start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle", "set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"] as const;
 type Action = (typeof ACTIONS)[number];
 const SETTLEMENT_ACTIONS = new Set<Action>(["start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"]);
 const LESSON_LEDGER_ACTIONS = new Set<Action>(["set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"]);
@@ -142,6 +143,53 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const topic = stringValue(payload, "topic", 40) as AcademyInformationTopic;
         if (!["about", "scheduling", "privacy", "ai_assistant", "subjects", "contact"].includes(topic)) return failure("Invalid Academy information topic");
         return NextResponse.json(academyInformation(topic));
+      }
+      case "get_my_open_objectives": {
+        if (actorKind !== "contact" || !actorContact) return rejectRequest("This action is only available to an academy contact", 403, "contact_required");
+        const [collectionsResult, invoicesResult] = await Promise.all([
+          supabase
+            .from("academy_teacher_collections")
+            .select("id, status, cycle:academy_lesson_cycles!inner(period_start, status), reports:academy_lesson_report_revisions(id, revision, status, submitted_at)")
+            .eq("tutor_contact_id", actorContact.id)
+            .in("status", ["requested", "awaiting_reply", "awaiting_teacher_confirmation", "needs_attention"])
+            .limit(20),
+          supabase
+            .from("academy_family_invoices")
+            .select("id, status, cycle:academy_settlement_cycles!inner(period_start)")
+            .eq("billed_contact_id", actorContact.id)
+            .eq("status", "sent")
+            .limit(20),
+        ]);
+        if (collectionsResult.error || invoicesResult.error) throw collectionsResult.error ?? invoicesResult.error;
+
+        const lessonCollections: LessonObjectiveRecord[] = (collectionsResult.data ?? []).flatMap((collection) => {
+          const cycle = Array.isArray(collection.cycle) ? collection.cycle[0] : collection.cycle;
+          if (!cycle) return [];
+          const reports = Array.isArray(collection.reports) ? collection.reports : [];
+          return [{
+            id: collection.id,
+            status: collection.status,
+            periodStart: cycle.period_start,
+            cycleStatus: cycle.status,
+            reports: reports.map((report) => ({
+              id: report.id,
+              revision: report.revision,
+              status: report.status,
+              submittedAt: report.submitted_at,
+            })),
+          }];
+        });
+        const familyInvoices: PaymentObjectiveRecord[] = (invoicesResult.data ?? []).flatMap((invoice) => {
+          const cycle = Array.isArray(invoice.cycle) ? invoice.cycle[0] : invoice.cycle;
+          return cycle ? [{
+            id: invoice.id,
+            status: invoice.status,
+            periodStart: cycle.period_start,
+          }] : [];
+        });
+        const projection = projectOpenObjectives({ lessonCollections, familyInvoices });
+        await audit("open_objectives_read", "contact", actorContact.id, { objectiveCount: projection.objectives.length });
+        return NextResponse.json(projection);
       }
       case "search_contacts": {
         const query = stringValue(payload, "query", 100);
