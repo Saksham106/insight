@@ -1,6 +1,7 @@
 import { HermesAssistantDashboard } from "@/components/admin/hermes-assistant-dashboard";
 import { parseHermesTab } from "@/components/admin/hermes-dashboard-shared";
 import { requireRole } from "@/lib/auth/require-role";
+import { loadAdminLessonCycles } from "@/lib/hermes/lesson-ledger-admin";
 import {
   attachAndSortConversationSummaries,
   loadConversationSummaries,
@@ -26,7 +27,15 @@ export default async function HermesAdminPage({
   const requestedContactId = parseSelectedContactId(query.contact);
   const tab = parseHermesTab(query.tab);
   const supabase = createAdminClient();
-  const [contacts, cases, approvals, messages, settlements, summaryResult] =
+  const [
+    contacts,
+    cases,
+    approvals,
+    messages,
+    settlements,
+    summaryResult,
+    lessonResult,
+  ] =
     await Promise.all([
       supabase
         .from("hermes_contacts")
@@ -57,6 +66,9 @@ export default async function HermesAdminPage({
         .order("period_start", { ascending: false })
         .limit(12),
       loadConversationSummaries(supabase)
+        .then((data) => ({ data, error: false }))
+        .catch(() => ({ data: [], error: true })),
+      loadAdminLessonCycles(supabase)
         .then((data) => ({ data, error: false }))
         .catch(() => ({ data: [], error: true })),
     ]);
@@ -90,6 +102,10 @@ export default async function HermesAdminPage({
       cases={cases.data ?? []}
       approvals={approvals.data ?? []}
       messages={messages.data ?? []}
+      lessonCycles={lessonResult.data}
+      lessonLedgerError={
+        lessonResult.error ? "Lesson ledger temporarily unavailable." : null
+      }
       settlements={settlements.data ?? []}
       loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error ? "Some Kitty information could not be loaded." : null}
     />
