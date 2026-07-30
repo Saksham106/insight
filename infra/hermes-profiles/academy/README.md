@@ -140,6 +140,16 @@ Phase 1 stores dates, whole-minute durations, subjects, teacher/student links, r
 
 Rollback is to set `HERMES_LESSON_LEDGER_ENABLED=false`. Leave relationships, lesson reports, revisions, and audit records intact. Disabling this flag does not disable scheduling or the older settlement feature.
 
+## Contact open-objective continuity
+
+The signed `get_my_open_objectives` action derives a contact's unfinished lesson-report or sent family-invoice objective from existing Mindset Academy records. It adds no table, migration, cron job, environment variable, or new outbound sender. The Academy profile checks it on every eligible external inbound WhatsApp turn, answers the immediate message first, and may add at most one friendly reminder when the objective was not already mentioned in the visible recent exchange. Database state, not conversation memory, decides completion.
+
+Deploy Insight before replacing the Academy profile's `AGENTS.md` and `insight-scheduling` skill. Back up both live files, copy the verified versions into the Academy profile only, and restart only the Academy gateway. Do not change the default profile or either profile's approvals configuration.
+
+Verify with a consent-attested synthetic contact: requested ledger work returns `awaiting_report`, a submitted revision returns `awaiting_confirmation`, confirmation removes the objective, a sent family invoice returns `awaiting_payment`, and recorded payment removes it. Confirm another contact sees none of those details. Do not send unsolicited production reminders during the probe.
+
+Rollback by restoring the backed-up Academy files and restarting only the Academy gateway. The action is read-only and existing ledger, invoice, contact, and message records remain unchanged.
+
 ## Monthly tutor settlements
 
 Enable the settlement tools independently and only after applying `20260717022438_add_academy_settlements.sql` and completing staging probes:

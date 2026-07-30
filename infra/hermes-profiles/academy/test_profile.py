@@ -87,6 +87,30 @@ class AcademyProfileTests(unittest.TestCase):
         ):
             self.assertIn(required, readme)
 
+    def test_external_turns_check_and_gently_redirect_to_open_objectives(self):
+        agents = (PROFILE_DIR / "AGENTS.md").read_text().lower()
+        skill = (
+            PROFILE_DIR.parents[1]
+            / "hermes-skills"
+            / "insight-scheduling"
+            / "SKILL.md"
+        ).read_text().lower()
+        for document in (agents, skill):
+            for required in (
+                "get_my_open_objectives",
+                "every eligible external inbound whatsapp turn",
+                "answer the immediate",
+                "at most one",
+                "visible recent",
+                "awaiting_report",
+                "awaiting_confirmation",
+                "awaiting_payment",
+                "do not guess",
+                "stop",
+            ):
+                self.assertIn(required, document)
+        self.assertIn("available actions", skill)
+
     def test_academy_help_hook_is_registered_for_help_and_whoami(self):
         hook_dir = PROFILE_DIR / "hooks" / "academy-help"
         manifest = (hook_dir / "HOOK.yaml").read_text()
