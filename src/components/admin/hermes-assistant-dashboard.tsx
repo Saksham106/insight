@@ -18,6 +18,7 @@ import {
 } from "@/components/admin/hermes-dashboard-shared";
 import { HermesSchedulingPanel } from "@/components/admin/hermes-scheduling-panel";
 import { HermesSettlementsPanel } from "@/components/admin/hermes-settlements-panel";
+import type { AdminLessonCycle } from "@/lib/hermes/lesson-ledger-admin";
 
 interface HermesAssistantDashboardProps {
   tab: HermesTab;
@@ -28,6 +29,8 @@ interface HermesAssistantDashboardProps {
   cases: HermesCase[];
   approvals: HermesApproval[];
   messages: HermesMessage[];
+  lessonCycles: AdminLessonCycle[];
+  lessonLedgerError: string | null;
   settlements: HermesSettlementCycle[];
   loadError: string | null;
 }
@@ -49,6 +52,8 @@ export function HermesAssistantDashboard({
   cases,
   approvals,
   messages,
+  lessonCycles,
+  lessonLedgerError,
   settlements,
   loadError,
 }: HermesAssistantDashboardProps) {
@@ -61,7 +66,7 @@ export function HermesAssistantDashboard({
     { id: "conversations", label: "Conversations", icon: <Users size={16} />, count: contacts.length },
     { id: "attention", label: "Needs attention", icon: <AlertCircle size={16} />, count: attentionCount },
     { id: "scheduling", label: "Scheduling", icon: <Clock3 size={16} />, count: cases.length },
-    { id: "settlements", label: "Settlements", icon: <Banknote size={16} />, count: settlements.length },
+    { id: "ledger", label: "Ledger", icon: <Banknote size={16} />, count: lessonCycles.length + settlements.length },
     { id: "contacts", label: "Contacts", icon: <Contact size={16} /> },
   ];
 
@@ -149,7 +154,13 @@ export function HermesAssistantDashboard({
 
       {tab === "scheduling" ? <HermesSchedulingPanel cases={cases} /> : null}
 
-      {tab === "settlements" ? <HermesSettlementsPanel settlements={settlements} /> : null}
+      {tab === "ledger" ? (
+        <HermesSettlementsPanel
+          lessonCycles={lessonCycles}
+          lessonLedgerError={lessonLedgerError}
+          settlements={settlements}
+        />
+      ) : null}
 
       {tab === "contacts" ? <HermesContactsPanel contacts={contacts} /> : null}
     </div>

@@ -15,7 +15,7 @@ test("admin overview links to Kitty without exposing the internal Hermes name", 
   assert.doesNotMatch(source, /title: "Hermes Assistant"/);
 });
 
-test("Kitty admin page exposes scheduling, settlement, and audit sections", () => {
+test("Kitty admin page exposes scheduling, ledger, and audit sections", () => {
   const shell = read("src/components/admin/hermes-assistant-dashboard.tsx");
   assert.match(shell, /> Kitty/);
   assert.doesNotMatch(shell, /> Hermes Assistant/);
@@ -29,7 +29,7 @@ test("Kitty admin page exposes scheduling, settlement, and audit sections", () =
     .map(read)
     .join("\n");
 
-  for (const label of ["WhatsApp conversations", "Needs attention", "Active scheduling", "Monthly settlements", "Recent activity"]) {
+  for (const label of ["WhatsApp conversations", "Needs attention", "Active scheduling", "Lesson collection", "Financial settlements", "Recent activity"]) {
     assert.ok(panels.includes(label), `missing ${label}`);
   }
   for (const label of ["Tutor reports", "Family invoices", "Tutor payouts"]) {
@@ -43,7 +43,7 @@ test("every section stays reachable from the tab bar", () => {
 
   // Conversations is the landing view when no tab is requested.
   assert.match(shared, /DEFAULT_HERMES_TAB: HermesTab = "conversations"/);
-  for (const id of ["conversations", "attention", "scheduling", "settlements", "contacts"]) {
+  for (const id of ["conversations", "attention", "scheduling", "ledger", "contacts"]) {
     assert.ok(shared.includes(`"${id}"`), `missing tab id ${id}`);
     assert.ok(shell.includes(`tab === "${id}"`), `tab ${id} renders no panel`);
   }
@@ -60,7 +60,7 @@ test("admins can select every contact and read a privacy-minimized transcript", 
   const source = read("src/components/admin/hermes-conversations-panel.tsx");
   assert.match(source, /import Link from "next\/link"/);
   assert.doesNotMatch(source, /contacts\.slice\(0,\s*12\)/);
-  assert.match(source, /href=\{`\/admin\/hermes\?contact=\$\{contact\.id\}`\}/);
+  assert.match(source, /href=\{hermesTabHref\("conversations", contact\.id\)\}/);
   assert.match(source, /aria-current=\{isSelected \? "page" : undefined\}/);
   assert.match(source, /No WhatsApp messages yet/);
   assert.match(source, /Select a contact to view their WhatsApp conversation/);
@@ -79,6 +79,59 @@ test("admins can select every contact and read a privacy-minimized transcript", 
   ]) {
     assert.doesNotMatch(source, new RegExp(forbidden, "i"));
   }
+});
+
+test("admin page loads lesson cycles after authorization and wires the combined Ledger tab", () => {
+  const page = read("src/app/(dashboard)/admin/hermes/page.tsx");
+  const shared = read("src/components/admin/hermes-dashboard-shared.tsx");
+  const shell = read("src/components/admin/hermes-assistant-dashboard.tsx");
+
+  assert.match(page, /loadAdminLessonCycles/);
+  assert.match(page, /lessonCycles=/);
+  assert.match(page, /lessonLedgerError=/);
+  assert.ok(
+    page.indexOf('requireRole(["admin"])') < page.indexOf("createAdminClient()"),
+  );
+  assert.match(page, /\.from\("academy_settlement_cycles"\)/);
+  assert.ok(shared.includes('"ledger"'));
+  assert.doesNotMatch(shared, /"settlements"/);
+  assert.match(shell, /label: "Ledger"/);
+  assert.match(shell, /tab === "ledger"/);
+  assert.match(shell, /lessonCycles\.length \+ settlements\.length/);
+});
+
+test("combined Ledger shows lesson evidence before financial settlement tracking", () => {
+  const panel = read("src/components/admin/hermes-settlements-panel.tsx");
+  for (const label of [
+    "Lesson collection",
+    "Financial settlements",
+    "Tutors confirmed",
+    "Lessons recorded",
+    "Students unresolved",
+    "Tutor unavailable",
+    "Awaiting lesson report",
+    "Confirmed with no lessons",
+    "Reported as",
+    "Delivery failed",
+    "Corrections remain available in audit history",
+  ]) {
+    assert.ok(panel.includes(label), `missing ${label}`);
+  }
+  assert.ok(
+    panel.indexOf("Lesson collection") < panel.indexOf("Financial settlements"),
+    "lesson collection must appear before financial settlements",
+  );
+  for (const collection of [
+    "lessonCycles.map",
+    "cycle.collections.map",
+    "report.lessons.map",
+  ]) {
+    assert.ok(panel.includes(collection), `missing iteration ${collection}`);
+  }
+  assert.match(panel, /readyReports/);
+  assert.match(panel, /paidInvoices/);
+  assert.match(panel, /paidPayouts/);
+  assert.doesNotMatch(panel, /"use client"/);
 });
 
 test("contact import supports the required classifications and consent", () => {

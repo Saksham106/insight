@@ -72,7 +72,7 @@ export const HERMES_TABS = [
   "conversations",
   "attention",
   "scheduling",
-  "settlements",
+  "ledger",
   "contacts",
 ] as const;
 
