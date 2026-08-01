@@ -19,7 +19,7 @@ const SETTLEMENT_ACTIONS = new Set<Action>(["start_settlement_cycle", "get_settl
 const LESSON_LEDGER_ACTIONS = new Set<Action>(["set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"]);
 type ToolMode = "whatsapp" | "imessage_admin";
 type JsonObject = Record<string, unknown>;
-const CONTACT_FIELDS = "id, display_name, role, timezone, communication_policy, consent_status, is_active";
+const CONTACT_FIELDS = "id, display_name, preferred_name, role, timezone, communication_policy, consent_status, is_active";
 
 function failure(error: string, status = 400) { return NextResponse.json({ error }, { status }); }
 function objectValue(value: unknown): JsonObject {

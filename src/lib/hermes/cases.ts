@@ -1,5 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
+import { messagingName } from "./contact-name";
+
 export type HermesCaseStatus = "draft" | "collecting_availability" | "proposing" | "awaiting_approval" | "confirmed" | "cancelled" | "needs_attention";
 
 const TRANSITIONS: Record<HermesCaseStatus, readonly HermesCaseStatus[]> = {
@@ -88,6 +90,7 @@ export function communicationDecision(contact: CommunicationContact): { allowed:
 interface ContactRecord {
   id: string;
   display_name: string;
+  preferred_name?: string | null;
   role: string;
   timezone: string | null;
   communication_policy: string;
@@ -99,6 +102,7 @@ export function projectContact(contact: ContactRecord) {
   return {
     id: contact.id,
     displayName: contact.display_name,
+    messagingName: messagingName(contact),
     role: contact.role,
     timezone: contact.timezone,
     communicationPolicy: contact.communication_policy,
