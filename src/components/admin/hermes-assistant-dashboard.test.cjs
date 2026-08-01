@@ -218,3 +218,13 @@ test("the phone tab bar wraps into a grid instead of scrolling sideways", () => 
   assert.doesNotMatch(tabRules, /flex-wrap:\s*nowrap/);
   assert.match(tabRules, /flex:\s*1 1 calc\(50% - 3px\)/);
 });
+
+test("each tutor in the lesson ledger collapses to a summary row", () => {
+  const panel = read("src/components/admin/hermes-settlements-panel.tsx");
+  assert.match(panel, /unresolvedCount/, "summary must count unresolved students");
+  assert.match(panel, /awaiting report/, "a tutor with no report says so on the row");
+  assert.match(panel, /delivery failed/, "a failed request is visible while collapsed");
+  const collectionBlock = panel.slice(panel.indexOf("cycle.collections.map"));
+  assert.match(collectionBlock.slice(0, 800), /<details/, "collections render as <details>");
+  assert.doesNotMatch(collectionBlock, /<section/, "no collection is left permanently expanded");
+});
