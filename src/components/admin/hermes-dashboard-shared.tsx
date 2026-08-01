@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export interface HermesContactIdentity {
   id: string;
   display_name: string;
+  /** Null means "derive it" — see `messagingName` in `@/lib/hermes/contact-name`. */
+  preferred_name: string | null;
   whatsapp_e164: string;
   role: string;
   profile_id: string | null;

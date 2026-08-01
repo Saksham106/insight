@@ -19,6 +19,19 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     if (!name) return NextResponse.json({ error: "Name cannot be empty." }, { status: 400 });
     update.display_name = name;
   }
+  if (body.preferredName !== undefined) {
+    if (body.preferredName === null) {
+      update.preferred_name = null;
+    } else if (typeof body.preferredName === "string") {
+      const preferred = body.preferredName.trim();
+      if (!preferred || preferred.length > 100) {
+        return NextResponse.json({ error: "Messaging name must be 1-100 characters." }, { status: 400 });
+      }
+      update.preferred_name = preferred;
+    } else {
+      return NextResponse.json({ error: "Invalid messaging name." }, { status: 400 });
+    }
+  }
   if (body.role !== undefined) {
     if (!ROLES.has(body.role)) return NextResponse.json({ error: "Invalid role." }, { status: 400 });
     update.role = body.role;
@@ -43,7 +56,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   if (Object.keys(update).length === 0) return NextResponse.json({ error: "No supported changes were supplied." }, { status: 400 });
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase.from("hermes_contacts").update(update).eq("id", id).is("deleted_at", null).select("id, display_name, role, profile_id, communication_policy").maybeSingle();
+  const { data, error } = await supabase.from("hermes_contacts").update(update).eq("id", id).is("deleted_at", null).select("id, display_name, preferred_name, role, profile_id, communication_policy").maybeSingle();
   if (error || !data) return NextResponse.json({ error: "Could not update the contact." }, { status: 500 });
   await supabase.from("hermes_audit_events").insert({ actor_type: "admin", actor_profile_id: profile.id, event_type: "contact_updated", entity_type: "hermes_contact", entity_id: id, metadata: { fields: Object.keys(update) } });
   return NextResponse.json({ contact: data });
