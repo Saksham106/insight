@@ -243,15 +243,11 @@ h1, h2, h3, h4, h5, h6 {
     display: inline-flex;
   }
 
-  .kitty-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    /* Momentum scrolling shouldn't clip the focus ring on the first chip. */
-    scroll-padding-inline: 4px;
-  }
-
+  /* Two columns beat a sideways-scrolling strip on a phone: every section
+     stays visible and one tap away. 3px is half the 6px flex gap. */
   .kitty-tabs > * {
-    flex-shrink: 0;
+    flex: 1 1 calc(50% - 3px);
+    justify-content: center;
   }
 }
 

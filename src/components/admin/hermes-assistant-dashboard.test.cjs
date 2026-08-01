@@ -209,3 +209,12 @@ test("tab bar leads with the sections Swati opens most", () => {
   const rendered = [...shell.matchAll(/\{ id: "([a-z]+)", label:/g)].map((match) => match[1]);
   assert.deepEqual(rendered, order, "rendered tab order must match HERMES_TABS");
 });
+
+test("the phone tab bar wraps into a grid instead of scrolling sideways", () => {
+  const css = read("src/app/globals.css");
+  const mobile = css.slice(css.indexOf("@media (max-width: 768px)"));
+  const tabRules = mobile.slice(mobile.indexOf(".kitty-tabs"));
+  assert.doesNotMatch(tabRules, /overflow-x:\s*auto/);
+  assert.doesNotMatch(tabRules, /flex-wrap:\s*nowrap/);
+  assert.match(tabRules, /flex:\s*1 1 calc\(50% - 3px\)/);
+});
