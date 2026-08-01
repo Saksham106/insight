@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export interface HermesContactIdentity {
   id: string;
   display_name: string;
+  /** Null means the messaging name is unconfirmed and outbound greetings stay neutral. */
+  preferred_name: string | null;
   whatsapp_e164: string;
   role: string;
   profile_id: string | null;
@@ -70,10 +72,10 @@ export interface HermesSettlementCycle {
 
 export const HERMES_TABS = [
   "conversations",
-  "attention",
-  "scheduling",
   "ledger",
   "contacts",
+  "scheduling",
+  "attention",
 ] as const;
 
 export type HermesTab = (typeof HERMES_TABS)[number];

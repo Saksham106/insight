@@ -151,7 +151,7 @@ test("sender route is internal-authenticated and idempotent", () => {
   assert.match(source, /buildSettlementMessageContent/);
   assert.match(source, /body\.text = financialContent\.body/);
   assert.match(source, /body\.bodyParameters = financialContent\.bodyParameters/);
-  assert.match(source, /recipientName: contact\.display_name/);
+  assert.match(source, /const recipientName = messagingName\(contact\)/);
   assert.match(source, /invoiceReference: `MIA-/);
   assert.match(source, /buildSchedulingMessageContent/);
   assert.match(source, /validateSchedulingBodyParameters/);

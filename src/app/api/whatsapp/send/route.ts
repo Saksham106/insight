@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { verifyServiceRequest } from "@/lib/hermes/auth";
+import { messagingName } from "@/lib/hermes/contact-name";
 import { buildGraphMessageRequest, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters, type WhatsAppIntent } from "@/lib/hermes/meta";
 import { buildSettlementMessageContent } from "@/lib/hermes/settlements";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -23,11 +24,13 @@ export async function POST(request: Request) {
 
   const [{ data: contact }, { count: recentCount }] = await Promise.all([
     supabase.from("hermes_contacts")
-      .select("id, display_name, role, whatsapp_e164, communication_policy, consent_status, service_window_expires_at")
+      .select("id, display_name, preferred_name, role, whatsapp_e164, communication_policy, consent_status, service_window_expires_at")
       .eq("id", body.contactId).eq("is_active", true).is("deleted_at", null).maybeSingle(),
     supabase.from("hermes_messages").select("id", { count: "exact", head: true }).eq("direction", "outbound").gte("created_at", new Date(Date.now() - 60_000).toISOString()),
   ]);
   if (!contact) return NextResponse.json({ error: "Contact unavailable" }, { status: 404 });
+  // Never greet someone by the name Swati filed them under — see contact-name.ts.
+  const recipientName = messagingName(contact);
 
   const financialIntents: WhatsAppIntent[] = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"];
   const isLessonReportRequest = body.intent === "lesson_report_request";
@@ -44,7 +47,7 @@ export async function POST(request: Request) {
     ]);
     if (!cycle || !["collecting", "needs_attention", "ready_for_swati"].includes(cycle.status)) return NextResponse.json({ error: "Lesson cycle is unavailable" }, { status: 409 });
     if (!collection || !["not_requested", "requested", "awaiting_reply", "needs_attention"].includes(collection.status)) return NextResponse.json({ error: "Tutor is not awaiting a lesson report" }, { status: 409 });
-    lessonContent = buildLessonReportRequestContent(cycle.period_start, contact.display_name);
+    lessonContent = buildLessonReportRequestContent(cycle.period_start, recipientName);
   } else if (isFinancial) {
     if (process.env.HERMES_SETTLEMENTS_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (body.lessonCycleId) return NextResponse.json({ error: "Financial message cannot reference a lesson cycle" }, { status: 400 });
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
         currency: invoice.currency,
         totalMinor: invoice.total_minor,
         itemSnapshot: invoice.item_snapshot,
-        recipientName: contact.display_name,
+        recipientName,
         invoiceReference: `MIA-${invoice.id.slice(0, 8).toUpperCase()}`,
       });
       approved = true;
@@ -96,11 +99,11 @@ export async function POST(request: Request) {
     if (body.intent === "class_confirmation" && caseRecord.tutor_kind === "swati" && caseRecord.workspace_state !== "ready") return NextResponse.json({ error: "Swati's Calendar event is not ready" }, { status: 409 });
     try {
       if (body.templateData && typeof body.templateData === "object" && !Array.isArray(body.templateData)) {
-        const content = buildSchedulingMessageContent({ intent: body.intent, recipientName: contact.display_name, templateData: body.templateData });
+        const content = buildSchedulingMessageContent({ intent: body.intent, recipientName, templateData: body.templateData });
         body.text = content.body;
         body.bodyParameters = content.bodyParameters;
       } else {
-        body.bodyParameters = validateSchedulingBodyParameters(body.intent, contact.display_name, body.bodyParameters ?? []);
+        body.bodyParameters = validateSchedulingBodyParameters(body.intent, recipientName, body.bodyParameters ?? []);
         if (!body.text?.trim()) return NextResponse.json({ error: "Scheduling message requires templateData or text" }, { status: 400 });
       }
     } catch (error) {

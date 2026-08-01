@@ -39,7 +39,7 @@ export default async function HermesAdminPage({
     await Promise.all([
       supabase
         .from("hermes_contacts")
-        .select("id, display_name, whatsapp_e164, role, profile_id, profile_link_status, communication_policy, consent_status, timezone, updated_at")
+        .select("id, display_name, preferred_name, whatsapp_e164, role, profile_id, profile_link_status, communication_policy, consent_status, timezone, updated_at")
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("display_name"),

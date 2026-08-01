@@ -127,8 +127,14 @@ export function HermesSettlementsPanel({
                   >
                     {cycle.collections.map((collection) => {
                       const report = collection.report;
+                      const lessons = report?.lessons ?? [];
+                      const unresolvedCount = lessons.filter(
+                        (lesson) => lesson.studentName === null,
+                      ).length;
+                      const deliveryFailed =
+                        collection.requestDeliveryStatus === "failed";
                       return (
-                        <section
+                        <details
                           key={collection.id}
                           className="border border-border"
                           style={{
@@ -137,20 +143,50 @@ export function HermesSettlementsPanel({
                             background: "var(--color-background)",
                           }}
                         >
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: "8px",
-                            }}
-                          >
-                            <h3 className="text-sm font-semibold text-navy">
-                              {collection.tutorName || "Tutor unavailable"}
-                            </h3>
-                            <Badge>{humanize(collection.status)}</Badge>
-                          </div>
+                          <summary style={{ cursor: "pointer" }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                width: "calc(100% - 24px)",
+                                flexWrap: "wrap",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: "8px",
+                                verticalAlign: "middle",
+                              }}
+                            >
+                              <span className="text-sm font-semibold text-navy">
+                                {collection.tutorName || "Tutor unavailable"}
+                              </span>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  flexWrap: "wrap",
+                                  gap: "8px",
+                                }}
+                              >
+                                <span className="text-xs text-muted">
+                                  {report === null
+                                    ? "awaiting report"
+                                    : `${lessons.length} ${lessons.length === 1 ? "lesson" : "lessons"}`}
+                                </span>
+                                {unresolvedCount > 0 ? (
+                                  <span className="text-xs text-error">
+                                    {unresolvedCount} unresolved
+                                  </span>
+                                ) : null}
+                                {deliveryFailed ? (
+                                  <span className="text-xs text-error">
+                                    delivery failed
+                                  </span>
+                                ) : null}
+                                <Badge>{humanize(collection.status)}</Badge>
+                              </span>
+                            </span>
+                          </summary>
+
+                          <div style={{ marginTop: "12px" }}>
                           <p
                             className="text-xs text-muted"
                             style={{ marginTop: "6px" }}
@@ -247,7 +283,8 @@ export function HermesSettlementsPanel({
                               )}
                             </div>
                           )}
-                        </section>
+                          </div>
+                        </details>
                       );
                     })}
                   </div>

@@ -2,6 +2,7 @@
 
 - Use `insight_admin` for Academy contacts, scheduling cases, WhatsApp outreach, and Academy bookkeeping from Swati's verified direct iMessage session or the protected `hermes-insight-test` operator CLI.
 - Use exact camelCase payload fields. Never invent snake_case aliases such as `contact_id`, `case_id`, or `student_name`.
+- Address a contact by their `messagingName`, never `displayName`. `displayName` is how Swati filed them in her phone and often carries her own notes ("Anjali Chemistry Teacher 12/15", "C.A. Ritesh Sir"); `messagingName` is the name they should be greeted by.
 - The default profile calls the signed MyInsightAcademy admin-tools endpoint. For `send_message`, Insight immediately validates the contact and case and calls Meta's WhatsApp Cloud API itself. Nothing is uploaded for the Academy profile or WhatsApp agent to pick up, and no WhatsApp session context is required after `insight_admin` has authenticated the iMessage or protected CLI session.
 - The Academy profile handles inbound WhatsApp conversations. It is not an outbound queue or relay for `insight_admin`.
 - Use `list_cases={status?,contactId?,limit?}` for Swati's cross-contact case lookup. `list_my_cases` is reserved for the current student/tutor WhatsApp contact.
