@@ -149,12 +149,14 @@ Worked cases, all of which become test cases:
 | `Priya Ma'am` | `Priya` |
 | `Mrs Kulkarni Maths` | `Mrs Kulkarni` |
 | `Ravi` | `Ravi` |
-| `Ravi Uncle` | `Ravi Uncle` (Uncle is not in any list) |
+| `Ravi Uncle` | `Ravi` (first-word rule reaches it anyway) |
 | `Maths Sameer` | `Maths` (wrong; edited by hand) |
 | `Sir` | `Sir` (nothing survives stripping; step 5) |
 
-The lists stop here deliberately. Relationship words (Uncle, Aunty, Bhaiya),
-role words (Teacher, Tutor) and leading date/subject junk are **not** stripped:
+The lists stop here deliberately. Relationship words (Uncle, Aunty, Bhaiya)
+need no list at all — they trail the name, so the first-word rule already skips
+them. Role words (Teacher, Tutor) and leading date/subject junk are **not**
+stripped:
 longer lists misfire on names that legitimately contain those words, and every
 derived name is visible in the directory and editable in one tap.
 
@@ -164,9 +166,12 @@ above plus explicit-override precedence and whitespace-only input.
 
 ### 4.3 Where the messaging name is used
 
-- `src/app/api/whatsapp/send/route.ts` — both call sites (lesson report request
-  and scheduling templates) switch from `contact.display_name` to
-  `messagingName(contact)`. The contact selects must add `preferred_name`.
+- `src/app/api/whatsapp/send/route.ts` — all four recipient-name call sites
+  switch from `contact.display_name` to `messagingName(contact)`: the lesson
+  report request, the family invoice `recipientName`, and both scheduling
+  paths (`buildSchedulingMessageContent` and
+  `validateSchedulingBodyParameters`). The contact select must add
+  `preferred_name`.
 - `src/app/api/hermes/tools/route.ts` — `preferred_name` joins `CONTACT_FIELDS`
   and each contact is serialised to the agent with an added `messagingName`.
   This covers Kitty's free-text replies, which the template path does not.
