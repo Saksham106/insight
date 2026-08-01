@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
 import { academyInformation, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
+import { messagingName } from "@/lib/hermes/contact-name";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
 import { projectLessonCycle, sanitizeLessonReport, sanitizeTutorContactIds } from "@/lib/hermes/lesson-ledger";
 import { projectOpenObjectives, type LessonObjectiveRecord, type PaymentObjectiveRecord } from "@/lib/hermes/open-objectives";
@@ -112,7 +113,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
       supabase.from("hermes_scheduling_cases").select("id, title").eq("id", input.caseId).maybeSingle(),
     ]);
     if (!adminContact || !caseRecord) return { status: "failed", error: "admin_notification_target_unavailable" };
-    const requesterName = actorContact?.display_name ?? "Kitty";
+    const requesterName = actorContact ? messagingName(actorContact) : "Kitty";
     const caseSummary = `${caseRecord.title} — ${input.reason}`.slice(0, 500);
     const idempotencyKey = `admin-attention-${createHash("sha256").update(`${input.caseId}:${actorContact?.id ?? actorKind}:${input.eventType}:${input.reason}`).digest("hex")}`;
     const senderBody = JSON.stringify({
@@ -247,7 +248,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const { data: caseRecord, error } = await supabase.from("hermes_scheduling_cases").select("id, title, status, timezone, tutor_kind, workspace_state, proposed_times, resolution, human_takeover, created_at, updated_at").eq("id", caseId).maybeSingle();
         if (error) throw error;
         if (!caseRecord) return failure("Case not found", 404);
-        const { data: participants, error: participantsError } = await supabase.from("hermes_case_participants").select("contact_id, participant_role, availability, response_status, contact:hermes_contacts(id, display_name, role, timezone, communication_policy, consent_status, is_active)").eq("case_id", caseId);
+        const { data: participants, error: participantsError } = await supabase.from("hermes_case_participants").select("contact_id, participant_role, availability, response_status, contact:hermes_contacts(id, display_name, preferred_name, role, timezone, communication_policy, consent_status, is_active)").eq("case_id", caseId);
         if (participantsError) throw participantsError;
         return NextResponse.json({ case: caseRecord, participants: projectCaseParticipantsForActor(participants ?? [], actorKind, actorContact?.id ?? null) });
       }
@@ -277,7 +278,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         if (error) throw error;
         const ids = (cases ?? []).map((item) => item.id);
         const { data: participants, error: participantError } = ids.length
-          ? await supabase.from("hermes_case_participants").select("case_id, contact_id, participant_role, availability, response_status, contact:hermes_contacts(id, display_name, role, timezone, communication_policy, consent_status, is_active)").in("case_id", ids)
+          ? await supabase.from("hermes_case_participants").select("case_id, contact_id, participant_role, availability, response_status, contact:hermes_contacts(id, display_name, preferred_name, role, timezone, communication_policy, consent_status, is_active)").in("case_id", ids)
           : { data: [], error: null };
         if (participantError) throw participantError;
         return NextResponse.json({

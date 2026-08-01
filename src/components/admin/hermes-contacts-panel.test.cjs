@@ -16,6 +16,6 @@ test("the contact directory is searchable and editable", () => {
   assert.match(panel, /whatsapp_e164\.toLowerCase\(\)\.includes\(needle\)/);
   assert.match(panel, /messagingName\(contact\)/, "search and display resolve the messaging name");
   assert.match(panel, /method: "PATCH"/);
-  assert.match(panel, /preferredName: trimmed === "" \? null : trimmed/, "clearing resets to the derived default");
+  assert.match(panel, /preferredName: trimmed === "" \? null : trimmed/, "clearing resets to the neutral greeting");
   assert.doesNotMatch(panel, /Read-only/, "the directory is no longer read-only");
 });

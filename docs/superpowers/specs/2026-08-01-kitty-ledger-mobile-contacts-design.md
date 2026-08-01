@@ -243,4 +243,19 @@ directory are untouched.
 - Editing anything other than the messaging name from the directory (role,
   policy, and profile links keep their existing paths).
 - The Financial settlements card and any ledger data loading.
-```
+
+## Review hardening (2026-08-01)
+
+The implementation review found that arbitrary phone labels cannot be parsed
+safely enough for automatic client greetings. Labels such as `Aarav Mom`,
+`Pooja's Mother`, initials, and common `Md.`/`Mohd` abbreviations make a
+first-token rule incorrect or disrespectful. The final behavior therefore
+supersedes the derivation fallback described above:
+
+- `preferred_name` is the only confirmed personalized greeting.
+- A null or whitespace-only value resolves to the neutral `there`.
+- `deriveMessagingName(display_name)` remains a visible admin suggestion and
+  is never persisted or sent until the admin confirms it.
+- The migration remains additive and does not backfill client rows.
+- Case-participant projections and the Swati alert preserve/use
+  `preferred_name`; raw `display_name` is never passed to a Meta parameter.

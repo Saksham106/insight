@@ -15,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { messagingName } from "@/lib/hermes/contact-name";
+import { deriveMessagingName, messagingName } from "@/lib/hermes/contact-name";
 
 function readable(value: string) {
   return value.replaceAll("_", " ");
@@ -23,7 +23,7 @@ function readable(value: string) {
 
 /** What an empty input resets the contact to. */
 function derivedDefault(contact: HermesAdminContact) {
-  return messagingName({ display_name: contact.display_name, preferred_name: null });
+  return deriveMessagingName(contact.display_name);
 }
 
 /**
@@ -33,6 +33,7 @@ function derivedDefault(contact: HermesAdminContact) {
 function MessagingName({ contact }: { contact: HermesAdminContact }) {
   const router = useRouter();
   const resolved = messagingName(contact);
+  const suggested = derivedDefault(contact);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(resolved);
   const [error, setError] = useState<string | null>(null);
@@ -71,11 +72,14 @@ function MessagingName({ contact }: { contact: HermesAdminContact }) {
         Messages as{" "}
         <span className={contact.preferred_name ? "font-semibold text-navy" : undefined}>
           {resolved}
-        </span>{" "}
+        </span>
+        {!contact.preferred_name && suggested !== resolved ? (
+          <span> · Suggested {suggested}</span>
+        ) : null}{" "}
         <button
           type="button"
           onClick={() => {
-            setValue(resolved);
+            setValue(contact.preferred_name ?? suggested);
             setError(null);
             setEditing(true);
           }}
@@ -130,6 +134,7 @@ export function HermesContactsPanel({ contacts }: { contacts: HermesAdminContact
       (contact) =>
         contact.display_name.toLowerCase().includes(needle) ||
         messagingName(contact).toLowerCase().includes(needle) ||
+        derivedDefault(contact).toLowerCase().includes(needle) ||
         contact.whatsapp_e164.toLowerCase().includes(needle),
     );
   }, [contacts, needle]);

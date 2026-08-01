@@ -41,8 +41,8 @@ test("communication policy and opt-out precedence fail closed", () => {
 
 test("contact projection exposes only role-aware operational fields", () => {
   const raw = { id: "contact-1", display_name: "Asha", whatsapp_e164: "+84901112233", role: "student", timezone: "Asia/Ho_Chi_Minh", communication_policy: "direct", consent_status: "attested", profile_id: "private-profile", last_inbound_at: "today" };
-  assert.deepEqual(projectContact(raw), { id: "contact-1", displayName: "Asha", messagingName: "Asha", role: "student", timezone: "Asia/Ho_Chi_Minh", communicationPolicy: "direct", canMessage: true });
-  assert.equal(projectContact({ ...raw, display_name: "C.A. Ritesh Sir" }).messagingName, "Ritesh");
+  assert.deepEqual(projectContact(raw), { id: "contact-1", displayName: "Asha", messagingName: "there", role: "student", timezone: "Asia/Ho_Chi_Minh", communicationPolicy: "direct", canMessage: true });
+  assert.equal(projectContact({ ...raw, display_name: "C.A. Ritesh Sir" }).messagingName, "there");
   assert.equal(projectContact({ ...raw, display_name: "C.A. Ritesh Sir", preferred_name: "RK" }).messagingName, "RK");
   assert.equal(JSON.stringify(projectContact(raw)).includes("profile"), false);
   assert.equal(JSON.stringify(projectContact(raw)).includes("whatsapp"), false);
