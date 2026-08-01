@@ -70,10 +70,10 @@ export interface HermesSettlementCycle {
 
 export const HERMES_TABS = [
   "conversations",
-  "attention",
-  "scheduling",
   "ledger",
   "contacts",
+  "scheduling",
+  "attention",
 ] as const;
 
 export type HermesTab = (typeof HERMES_TABS)[number];

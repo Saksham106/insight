@@ -64,10 +64,10 @@ export function HermesAssistantDashboard({
 
   const tabs: Array<{ id: HermesTab; label: string; icon: React.ReactNode; count?: number }> = [
     { id: "conversations", label: "Conversations", icon: <Users size={16} />, count: contacts.length },
-    { id: "attention", label: "Needs attention", icon: <AlertCircle size={16} />, count: attentionCount },
-    { id: "scheduling", label: "Scheduling", icon: <Clock3 size={16} />, count: cases.length },
     { id: "ledger", label: "Ledger", icon: <Banknote size={16} />, count: lessonCycles.length + settlements.length },
     { id: "contacts", label: "Contacts", icon: <Contact size={16} /> },
+    { id: "scheduling", label: "Scheduling", icon: <Clock3 size={16} />, count: cases.length },
+    { id: "attention", label: "Needs attention", icon: <AlertCircle size={16} />, count: attentionCount },
   ];
 
   return (

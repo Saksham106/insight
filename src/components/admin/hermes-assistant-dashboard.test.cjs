@@ -196,3 +196,16 @@ test("settlement mutations remain admin-only and never move money", () => {
   assert.match(route, /record_academy_tutor_payout/);
   assert.doesNotMatch(route, /stripe|transfer|bank|paypal/i);
 });
+
+test("tab bar leads with the sections Swati opens most", () => {
+  const shared = read("src/components/admin/hermes-dashboard-shared.tsx");
+  const order = shared
+    .match(/export const HERMES_TABS = \[([\s\S]*?)\] as const;/)[1]
+    .match(/"([a-z]+)"/g)
+    .map((quoted) => quoted.replaceAll('"', ""));
+  assert.deepEqual(order, ["conversations", "ledger", "contacts", "scheduling", "attention"]);
+
+  const shell = read("src/components/admin/hermes-assistant-dashboard.tsx");
+  const rendered = [...shell.matchAll(/\{ id: "([a-z]+)", label:/g)].map((match) => match[1]);
+  assert.deepEqual(rendered, order, "rendered tab order must match HERMES_TABS");
+});
