@@ -23,14 +23,18 @@ export function NewConversationModal({
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when these exact people already had a chat, so nothing was created.
+  const [duplicateOf, setDuplicateOf] = useState<string | null>(null);
 
-  const toggle = (id: string) =>
+  const toggle = (id: string) => {
+    setDuplicateOf(null);
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
 
   const nameById = useMemo(() => new Map(contacts.map((c) => [c.id, c.full_name])), [contacts]);
   const placeholder = useMemo(
@@ -40,6 +44,7 @@ export function NewConversationModal({
 
   const create = async () => {
     setError(null);
+    setDuplicateOf(null);
     if (!hasMinimumRoster(selected.size)) {
       setError(`Pick at least ${MINIMUM_ROSTER} people.`);
       return;
@@ -54,6 +59,12 @@ export function NewConversationModal({
     setCreating(false);
     if (!res.ok) {
       setError(data.error ?? "Could not create the conversation.");
+      return;
+    }
+    // These people already had a chat, so none was created. Say so and offer
+    // to open it, rather than closing on a chat the admin didn't just make.
+    if (data.existing) {
+      setDuplicateOf(data.conversationId as string);
       return;
     }
     await onCreated(data.conversationId as string);
@@ -73,11 +84,24 @@ export function NewConversationModal({
         />
         <GroupPeoplePicker contacts={contacts} selected={selected} onToggle={toggle} />
         {error && <p className="text-sm text-error">{error}</p>}
+        {duplicateOf && (
+          <div
+            className="border border-border"
+            style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", borderRadius: "8px", background: "var(--color-soft)" }}
+          >
+            <p className="text-sm text-navy">
+              A chat with exactly these people already exists, so no new one was created.
+            </p>
+            <Button size="sm" onClick={() => onCreated(duplicateOf)} style={{ alignSelf: "flex-start" }}>
+              Open it
+            </Button>
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
           <p className="text-xs text-muted">{selected.size} selected</p>
           <div style={{ display: "flex", gap: "8px" }}>
             <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button size="sm" onClick={create} disabled={creating || !hasMinimumRoster(selected.size)}>
+            <Button size="sm" onClick={create} disabled={creating || Boolean(duplicateOf) || !hasMinimumRoster(selected.size)}>
               {creating ? "Creating…" : "Create chat"}
             </Button>
           </div>

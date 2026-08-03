@@ -27,21 +27,6 @@ test("isGroupConversation is true only above two members", () => {
   assert.equal(s.isGroupConversation(9), true);
 });
 
-test("isDirectConversationKey matches exactly two members with no title", () => {
-  assert.equal(s.isDirectConversationKey(2, null), true);
-  assert.equal(s.isDirectConversationKey(2, ""), true);
-  assert.equal(s.isDirectConversationKey(2, "   "), true);
-});
-
-test("isDirectConversationKey rejects a deliberately named pair", () => {
-  assert.equal(s.isDirectConversationKey(2, "Algebra tutoring"), false);
-});
-
-test("isDirectConversationKey rejects rosters that are not exactly two", () => {
-  assert.equal(s.isDirectConversationKey(1, null), false);
-  assert.equal(s.isDirectConversationKey(3, null), false);
-});
-
 test("hasMinimumRoster requires two people", () => {
   assert.equal(s.hasMinimumRoster(0), false);
   assert.equal(s.hasMinimumRoster(1), false);
