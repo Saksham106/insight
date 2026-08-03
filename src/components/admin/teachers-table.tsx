@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { AdminUserCard } from "@/components/admin/admin-user-card";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { EditUserModal, type LabelOption } from "@/components/admin/edit-user-modal";
+import { ReassignRoleButton } from "@/components/admin/reassign-role-button";
 import { getOnboardingStatus } from "@/lib/onboarding-status";
 import {
   Table,
@@ -108,6 +109,7 @@ export function TeachersTable({ teachers, allLabels }: TeachersTableProps) {
         >
           <Pencil size={14} />
         </Button>
+        <ReassignRoleButton user={{ id: teacher.id, full_name: teacher.full_name }} currentRole="teacher" />
         {onboarding.label === "Invite sent" ? (
           <Button variant="outline" size="sm" onClick={() => resendCredentials(teacher)} disabled={resendingId === teacher.id}>
             {resendingId === teacher.id ? "Resending..." : "Resend"}
