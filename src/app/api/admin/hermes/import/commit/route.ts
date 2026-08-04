@@ -78,14 +78,19 @@ export async function POST(request: Request) {
   }
 
   let updated = 0;
+  let firstFailure: string | null = null;
   for (const update of updates) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("hermes_contacts")
       .update({ role: update.role })
       .eq("id", update.contactId)
       .is("deleted_at", null)
       .select("id")
       .maybeSingle();
+    if (error) {
+      firstFailure ??= "One or more contact updates failed.";
+      continue;
+    }
     if (!data) continue;
     updated += 1;
     await supabase.from("hermes_audit_events").insert({
@@ -98,19 +103,26 @@ export async function POST(request: Request) {
   for (const restore of restores) {
     const patch: Record<string, unknown> = { deleted_at: null, is_active: true };
     if (restore.role) patch.role = restore.role;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("hermes_contacts")
       .update(patch)
       .eq("id", restore.contactId)
       .select("id")
       .maybeSingle();
+    if (error) {
+      firstFailure ??= "One or more contact restores failed.";
+      continue;
+    }
     if (!data) continue;
     restored += 1;
+    const fields = restore.role ? ["deleted_at", "is_active", "role"] : ["deleted_at", "is_active"];
     await supabase.from("hermes_audit_events").insert({
       actor_type: "admin", actor_profile_id: profile.id, event_type: "contact_restored",
-      entity_type: "hermes_contact", entity_id: restore.contactId, metadata: { source: "import" },
+      entity_type: "hermes_contact", entity_id: restore.contactId, metadata: { fields, source: "import" },
     });
   }
 
-  return NextResponse.json({ result: { created, skipped, updated, restored } });
+  const result = { created, skipped, updated, restored };
+  if (firstFailure) return NextResponse.json({ error: firstFailure, result }, { status: 500 });
+  return NextResponse.json({ result });
 }
