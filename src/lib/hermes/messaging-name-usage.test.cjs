@@ -26,3 +26,21 @@ test("the agent is handed a messagingName and told to use it", () => {
     /messagingName/,
   );
 });
+
+test("case participant projections preserve the explicit messaging name", () => {
+  const toolsRoute = read("src/app/api/hermes/tools/route.ts");
+  assert.doesNotMatch(
+    toolsRoute,
+    /contact:hermes_contacts\(id, display_name, role/,
+    "case participant projections must not drop an explicit preferred name",
+  );
+});
+
+test("the Swati alert does not put a raw phone label in a Meta parameter", () => {
+  const toolsRoute = read("src/app/api/hermes/tools/route.ts");
+  assert.doesNotMatch(
+    toolsRoute,
+    /requesterName = actorContact\?\.display_name/,
+    "an internal Meta template parameter must not receive the raw phone label either",
+  );
+});

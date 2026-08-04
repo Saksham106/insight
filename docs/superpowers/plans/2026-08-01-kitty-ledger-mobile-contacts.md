@@ -1101,3 +1101,13 @@ State the exact test count, and state plainly that the migration has **not** bee
 - Editing role, policy, or profile links from the directory.
 - The Financial settlements card and any ledger data loading.
 - Applying the migration or deploying.
+
+## Review amendment (2026-08-01)
+
+The completed review changed the null-name policy after adversarial Indian
+contact-label cases demonstrated that no heuristic is safe for automatic
+personalization. The shipping contract is: explicit `preferred_name` wins;
+otherwise `messagingName` returns `there`, while `deriveMessagingName` is shown
+only as an admin-edit suggestion. Review fixes also add `preferred_name` to
+case-participant projections, remove the raw label from the Swati Meta alert,
+and add/validate the live-table check constraint without dropping it.

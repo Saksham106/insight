@@ -20,6 +20,8 @@ test("the migration adds a nullable, length-checked preferred_name", () => {
   const migration = read("supabase/migrations/20260801120000_add_hermes_contact_preferred_name.sql");
   assert.match(migration, /add column if not exists preferred_name text/);
   assert.match(migration, /between 1 and 100/);
+  assert.match(migration, /not valid/);
+  assert.match(migration, /validate constraint hermes_contacts_preferred_name_length/);
   assert.doesNotMatch(migration, /update public\.hermes_contacts/, "must not backfill");
 });
 

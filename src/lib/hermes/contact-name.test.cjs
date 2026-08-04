@@ -42,6 +42,24 @@ test("drops qualification prefixes and trailing honorifics", () => {
   assert.equal(deriveMessagingName("Adv Nikhil ji"), "Nikhil");
 });
 
+test("uses a neutral greeting when a phone label names a relative instead of the recipient", () => {
+  assert.equal(deriveMessagingName("Aarav Mom"), "there");
+  assert.equal(deriveMessagingName("Pooja's Mother"), "there");
+  assert.equal(deriveMessagingName("Rohan Dad"), "there");
+});
+
+test("does not greet people by initials, conjunctions, emoji, or a qualification", () => {
+  assert.equal(deriveMessagingName("A K Sharma"), "A K Sharma");
+  assert.equal(deriveMessagingName("Mr and Mrs Sharma"), "there");
+  assert.equal(deriveMessagingName("🧪 Anjali Chemistry Teacher"), "Anjali");
+  assert.equal(deriveMessagingName("CA Sir"), "Sir");
+});
+
+test("keeps common abbreviated Indian given-name prefixes with the following name", () => {
+  assert.equal(deriveMessagingName("Mohd Arif"), "Mohd Arif");
+  assert.equal(deriveMessagingName("Md. Irfan"), "Md. Irfan");
+});
+
 test("falls back to the original when stripping would leave nothing", () => {
   assert.equal(deriveMessagingName("Sir"), "Sir");
   assert.equal(deriveMessagingName("   "), "");
@@ -55,12 +73,12 @@ test("an explicit preferred name always wins", () => {
   );
   assert.equal(
     messagingName({ display_name: "Anjali Chemistry Teacher 12/15", preferred_name: null }),
-    "Anjali",
+    "there",
   );
-  assert.equal(messagingName({ display_name: "C.A. Ritesh Sir" }), "Ritesh");
+  assert.equal(messagingName({ display_name: "C.A. Ritesh Sir" }), "there");
   assert.equal(
     messagingName({ display_name: "C.A. Ritesh Sir", preferred_name: "   " }),
-    "Ritesh",
-    "a whitespace-only override is not an override",
+    "there",
+    "a whitespace-only override is not a confirmed name",
   );
 });
