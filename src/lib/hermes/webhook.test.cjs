@@ -144,3 +144,15 @@ test("webhook stores a removed contact's message without replying or reviving", 
   // Nothing in the inbound path clears deleted_at.
   assert.doesNotMatch(source, /deleted_at: null/);
 });
+
+test("a removed contact's STOP still records an opt-out — this is deliberate, do not guard it on disposition", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"), "utf8");
+  const optOutBlock = source.match(/const optedOut = event\.messageType[\s\S]*?\.eq\("id", contact\.id\);/);
+  assert.ok(optOutBlock, "opt-out update block must exist");
+  // The opt-out write happens for any contact that texts STOP, deleted or not:
+  // a removed contact's consent withdrawal must never be silently dropped just
+  // because an admin also removed them from the directory.
+  assert.match(optOutBlock[0], /communication_policy: "opted_out"/);
+  assert.match(optOutBlock[0], /consent_status: "withdrawn"/);
+  assert.doesNotMatch(optOutBlock[0], /disposition/);
+});
