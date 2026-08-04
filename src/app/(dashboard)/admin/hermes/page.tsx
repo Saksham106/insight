@@ -39,9 +39,7 @@ export default async function HermesAdminPage({
     await Promise.all([
       supabase
         .from("hermes_contacts")
-        .select("id, display_name, preferred_name, whatsapp_e164, role, profile_id, profile_link_status, communication_policy, consent_status, timezone, updated_at")
-        .eq("is_active", true)
-        .is("deleted_at", null)
+        .select("id, display_name, preferred_name, whatsapp_e164, role, profile_id, profile_link_status, communication_policy, consent_status, timezone, updated_at, deleted_at")
         .order("display_name"),
       supabase
         .from("hermes_scheduling_cases")
@@ -73,7 +71,12 @@ export default async function HermesAdminPage({
         .catch(() => ({ data: [], error: true })),
     ]);
 
-  const activeContacts = contacts.data ?? [];
+  // The query above returns active and removed contacts together so the
+  // Contacts tab can offer restore. Every other consumer on this page
+  // (conversations, attention, header stats, tab counts) must only ever see
+  // the active set — a removed contact is not someone Kitty still messages.
+  const allContacts = contacts.data ?? [];
+  const activeContacts = allContacts.filter((contact) => !contact.deleted_at);
   const selectedContact =
     requestedContactId === null
       ? null
@@ -85,13 +88,16 @@ export default async function HermesAdminPage({
         .catch(() => ({ data: [], error: true }))
     : { data: [], error: false };
 
+  const directoryContacts = attachAndSortConversationSummaries(
+    allContacts,
+    summaryResult.data,
+  );
+
   return (
     <HermesAssistantDashboard
       tab={tab}
-      contacts={attachAndSortConversationSummaries(
-        activeContacts,
-        summaryResult.data,
-      )}
+      contacts={directoryContacts.filter((contact) => !contact.deleted_at)}
+      directoryContacts={directoryContacts}
       selectedContact={selectedContact}
       transcript={transcriptResult.data}
       transcriptError={

@@ -23,6 +23,8 @@ import type { AdminLessonCycle } from "@/lib/hermes/lesson-ledger-admin";
 interface HermesAssistantDashboardProps {
   tab: HermesTab;
   contacts: HermesAdminContact[];
+  /** Active and removed contacts together, for the Contacts tab's directory. */
+  directoryContacts: HermesAdminContact[];
   selectedContact: HermesContactIdentity | null;
   transcript: HermesTranscriptMessage[];
   transcriptError: string | null;
@@ -46,6 +48,7 @@ function Stat({ label, value }: { label: string; value: number }) {
 export function HermesAssistantDashboard({
   tab = DEFAULT_HERMES_TAB,
   contacts,
+  directoryContacts,
   selectedContact,
   transcript,
   transcriptError,
@@ -162,7 +165,7 @@ export function HermesAssistantDashboard({
         />
       ) : null}
 
-      {tab === "contacts" ? <HermesContactsPanel contacts={contacts} /> : null}
+      {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} /> : null}
     </div>
   );
 }
