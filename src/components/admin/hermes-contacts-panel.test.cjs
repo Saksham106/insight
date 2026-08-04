@@ -19,3 +19,20 @@ test("the contact directory is searchable and editable", () => {
   assert.match(panel, /preferredName: trimmed === "" \? null : trimmed/, "clearing resets to the neutral greeting");
   assert.doesNotMatch(panel, /Read-only/, "the directory is no longer read-only");
 });
+
+test("Pause/Resume cannot overwrite a deliberately chosen messaging policy", () => {
+  const panel = read("src/components/admin/hermes-contacts-panel.tsx");
+  // Resume hard-codes "direct", so offering the toggle for guardian_only would
+  // silently drop a minor's guardian-only protection after one round trip.
+  assert.match(
+    panel,
+    /const canToggleCommunication = contact\.communication_policy === "direct" \|\| paused/,
+    "the toggle is limited to the two policies it can actually round-trip",
+  );
+  assert.match(panel, /disabled=\{busy \|\| !canToggleCommunication\}/, "the gate reaches the button");
+  assert.doesNotMatch(
+    panel,
+    /communication_policy === "opted_out"/,
+    "one general rule, not a resurrected opted_out-only special case",
+  );
+});
