@@ -14,6 +14,12 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   const body = await request.json();
   const update: Record<string, unknown> = {};
 
+  let restoring = false;
+  if (body.restore === true) {
+    restoring = true;
+    Object.assign(update, { deleted_at: null, is_active: true });
+  }
+
   if (typeof body.displayName === "string") {
     const name = body.displayName.trim();
     if (!name) return NextResponse.json({ error: "Name cannot be empty." }, { status: 400 });
@@ -56,8 +62,49 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   if (Object.keys(update).length === 0) return NextResponse.json({ error: "No supported changes were supplied." }, { status: 400 });
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase.from("hermes_contacts").update(update).eq("id", id).is("deleted_at", null).select("id, display_name, preferred_name, role, profile_id, communication_policy").maybeSingle();
+  let query = supabase.from("hermes_contacts").update(update).eq("id", id);
+  // Every field except restore refuses to edit a contact that was removed.
+  if (!restoring) query = query.is("deleted_at", null);
+  const { data, error } = await query
+    .select("id, display_name, preferred_name, role, profile_id, communication_policy")
+    .maybeSingle();
   if (error || !data) return NextResponse.json({ error: "Could not update the contact." }, { status: 500 });
-  await supabase.from("hermes_audit_events").insert({ actor_type: "admin", actor_profile_id: profile.id, event_type: "contact_updated", entity_type: "hermes_contact", entity_id: id, metadata: { fields: Object.keys(update) } });
+  await supabase.from("hermes_audit_events").insert({
+    actor_type: "admin",
+    actor_profile_id: profile.id,
+    event_type: restoring ? "contact_restored" : "contact_updated",
+    entity_type: "hermes_contact",
+    entity_id: id,
+    metadata: { fields: Object.keys(update) },
+  });
+  return NextResponse.json({ contact: data });
+}
+
+/**
+ * Removes a contact from the directory and from Kitty's reach. Soft only:
+ * transcripts, audit events, and case participation reference this row.
+ */
+export async function DELETE(_request: Request, context: RouteContext<"/api/admin/hermes/contacts/[id]">) {
+  const profile = await getUserProfile();
+  if (!profile || profile.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  const { id } = await context.params;
+
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("hermes_contacts")
+    .update({ deleted_at: new Date().toISOString(), is_active: false })
+    .eq("id", id)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) return NextResponse.json({ error: "Could not remove the contact." }, { status: 500 });
+
+  await supabase.from("hermes_audit_events").insert({
+    actor_type: "admin",
+    actor_profile_id: profile.id,
+    event_type: "contact_deleted",
+    entity_type: "hermes_contact",
+    entity_id: id,
+  });
   return NextResponse.json({ contact: data });
 }
