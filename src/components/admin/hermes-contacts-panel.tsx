@@ -132,6 +132,7 @@ function ContactActions({ contact }: { contact: HermesAdminContact }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const paused = contact.communication_policy === "paused";
+  const optedOut = contact.communication_policy === "opted_out";
 
   async function send(method: "PATCH" | "DELETE", body?: Record<string, unknown>) {
     setBusy(true);
@@ -178,7 +179,15 @@ function ContactActions({ contact }: { contact: HermesAdminContact }) {
         {contact.role === "unclassified" ? <option value="unclassified">Unclassified</option> : null}
         {ASSIGNABLE_ROLES.map((role) => <option key={role} value={role}>{readable(role)}</option>)}
       </select>
-      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => send("PATCH", { communicationPolicy: paused ? "direct" : "paused" })}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={busy || optedOut}
+        title={optedOut ? "This contact opted out via WhatsApp. Pause/Resume is disabled so that marker is not erased." : undefined}
+        aria-label={optedOut ? `${contact.display_name} opted out via WhatsApp; Pause and Resume are disabled` : undefined}
+        onClick={() => send("PATCH", { communicationPolicy: paused ? "direct" : "paused" })}
+      >
         {paused ? "Resume" : "Pause"}
       </Button>
       <Button

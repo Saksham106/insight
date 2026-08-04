@@ -313,7 +313,15 @@ test("import RPC preserves contacts that already exist", () => {
   const sql = readMigration("_preserve_known_hermes_contacts_on_import.sql");
   // The conflict branch must be a no-op self-assignment, never an overwrite.
   assert.match(sql, /on conflict \(whatsapp_e164\) do update set\s+display_name = public\.hermes_contacts\.display_name/);
-  for (const clobbered of ["role = excluded.role", "profile_id = excluded.profile_id", "deleted_at = null"]) {
+  for (const clobbered of [
+    "role = excluded.role",
+    "profile_id = excluded.profile_id",
+    "deleted_at = null",
+    "profile_link_status = excluded.profile_link_status",
+    "consent_status = 'attested'",
+    "consent_attested_by = p_imported_by",
+    "timezone = coalesce(excluded.timezone",
+  ]) {
     assert.doesNotMatch(sql, new RegExp(clobbered.replace(/[.()]/g, "\\$&")));
   }
   assert.match(sql, /'skipped', v_skipped/);

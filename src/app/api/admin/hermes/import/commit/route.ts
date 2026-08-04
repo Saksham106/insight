@@ -111,7 +111,14 @@ export async function POST(request: Request) {
       .select("id, display_name, communication_policy, consent_status")
       .maybeSingle();
     if (error) {
-      firstFailure ??= "One or more contact restores failed.";
+      // Restoring a contact whose profile_id is still set can collide with
+      // the partial unique index (profile_id where deleted_at is null) if a
+      // later import linked that same Insight profile to a different
+      // contact while this one was removed. Name the fix, not a bare 500.
+      firstFailure ??=
+        error.code === "23505"
+          ? "This contact's linked Insight profile is now linked to another contact. Unlink that contact first, then restore this one."
+          : "One or more contact restores failed.";
       continue;
     }
     if (!data) continue;

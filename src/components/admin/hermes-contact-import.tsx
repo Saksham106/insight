@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { ImportPreview } from "@/lib/hermes/import";
+import type { ProfileMatchSuggestion } from "@/lib/hermes/matching";
 import type { HermesContactRole } from "@/lib/hermes/types";
 
 type AssignableRole = Exclude<HermesContactRole, "unclassified">;
@@ -21,34 +23,19 @@ const ROLES: Array<{ value: AssignableRole; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
-interface PreviewSuggestion {
-  profileId: string;
-  fullName: string;
-  role: string;
-  timezone: string | null;
-}
-
-interface PreviewRow {
-  sourceIndex: number;
-  displayName: string;
-  rawPhone: string;
-  normalizedPhone: string | null;
-  status: "new" | "existing" | "removed" | "error";
-  existing: { id: string; displayName: string; role: string; deleted: boolean } | null;
-  suggestions: PreviewSuggestion[];
-  error: string | null;
-}
-
-interface PreviewResponse {
-  rows: PreviewRow[];
-  previewToken: string;
-  summary: { total: number; new: number; existing: number; removed: number; errors: number };
-  error?: string;
-}
+/** The commit endpoint's response shape: a signed preview plus the wire error field. */
+type PreviewResponse = ImportPreview & { previewToken: string; error?: string };
 
 interface Choice {
   role: HermesContactRole;
   profileId: string | null;
+}
+
+interface ImportResult {
+  created?: number;
+  updated?: number;
+  restored?: number;
+  skipped?: number;
 }
 
 interface RestoredMutedContact {
@@ -131,7 +118,7 @@ export function HermesContactImport() {
     setChoices((current) => ({ ...current, [index]: { role, profileId: null } }));
   }
 
-  function chooseProfile(index: number, suggestion: PreviewSuggestion) {
+  function chooseProfile(index: number, suggestion: ProfileMatchSuggestion) {
     setChoices((current) => ({ ...current, [index]: { role: suggestion.role as HermesContactRole, profileId: suggestion.profileId } }));
   }
 
@@ -180,20 +167,33 @@ export function HermesContactImport() {
     });
     const data = await response.json();
     setLoading(false);
+
+    const { created = 0, updated = 0, restored = 0, skipped = 0 } = (data.result ?? {}) as ImportResult;
+    const restoredMuted = (data.restoredMuted ?? []) as RestoredMutedContact[];
+    const skippedNote = skipped > 0 ? `, ${skipped} skipped` : "";
+    const mutedNote =
+      restoredMuted.length > 0
+        ? ` ${joinNames(
+            restoredMuted.map((contact) => `${contact.displayName} (${readable(contact.communicationPolicy)})`),
+          )} — Kitty will not message them until you change that.`
+        : "";
+
     if (!response.ok) {
-      setStatus(data.error ?? "The contacts were not imported.");
+      // The commit route still applies whatever it can before failing, so a
+      // 500 may carry a partial result. Report it instead of hiding it behind
+      // "one or more contact updates failed" — the admin needs to know what
+      // actually happened, and the directory behind this dialog is now stale.
+      const progress = data.result
+        ? ` ${created} added, ${updated} updated, ${restored} restored${skippedNote} before the failure.`
+        : "";
+      setStatus(`${data.error ?? "The contacts were not imported."}${progress}${mutedNote}`);
+      router.refresh();
       return;
     }
-    const { created = 0, updated = 0, restored = 0 } = data.result ?? {};
-    const restoredMuted = (data.restoredMuted ?? []) as RestoredMutedContact[];
-    let message =
-      `Done — ${created} added, ${updated} updated, ${restored} restored. ` +
-      `${preview.summary.existing - updated} left untouched.`;
-    if (restoredMuted.length > 0) {
-      const names = joinNames(restoredMuted.map((contact) => contact.displayName));
-      const verb = restoredMuted.length === 1 ? "is" : "are";
-      message += ` ${names} ${verb} opted out — Kitty will not message them.`;
-    }
+
+    const message =
+      `Done — ${created} added, ${updated} updated, ${restored} restored${skippedNote}. ` +
+      `${preview.summary.existing - updated} left untouched.${mutedNote}`;
     setStatus(message);
     reset();
     router.refresh();
