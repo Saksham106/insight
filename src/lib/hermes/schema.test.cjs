@@ -312,3 +312,19 @@ test("import RPC preserves contacts that already exist", () => {
   }
   assert.match(sql, /'skipped', v_skipped/);
 });
+
+test("contact route soft-deletes and restores without erasing history", () => {
+  const source = fs.readFileSync(
+    path.join(process.cwd(), "src/app/api/admin/hermes/contacts/[id]/route.ts"),
+    "utf8",
+  );
+  assert.match(source, /export async function DELETE/);
+  // Soft delete only — a hard delete would orphan transcripts and audit events.
+  assert.doesNotMatch(source, /\.delete\(\)/);
+  assert.match(source, /deleted_at: new Date\(\)\.toISOString\(\)/);
+  assert.match(source, /is_active: false/);
+  assert.match(source, /"contact_deleted"/);
+  assert.match(source, /"contact_restored"/);
+  // Restore is the one path allowed to touch an already-deleted row.
+  assert.match(source, /if \(!restoring\) query = query\.is\("deleted_at", null\)/);
+});
