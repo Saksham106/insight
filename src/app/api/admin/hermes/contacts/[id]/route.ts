@@ -68,7 +68,20 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   const { data, error } = await query
     .select("id, display_name, preferred_name, role, profile_id, communication_policy, consent_status")
     .maybeSingle();
-  if (error || !data) return NextResponse.json({ error: "Could not update the contact." }, { status: 500 });
+  if (error) {
+    // Restoring a contact whose profile_id is still set can collide with the
+    // partial unique index (profile_id where deleted_at is null) if a later
+    // import linked that same Insight profile to a different contact while
+    // this one was removed. Name the fix instead of a bare 500.
+    if (restoring && error.code === "23505") {
+      return NextResponse.json(
+        { error: "This contact's linked Insight profile is now linked to another contact. Unlink that contact first, then restore this one." },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ error: "Could not update the contact." }, { status: 500 });
+  }
+  if (!data) return NextResponse.json({ error: "Could not update the contact." }, { status: 500 });
   await supabase.from("hermes_audit_events").insert({
     actor_type: "admin",
     actor_profile_id: profile.id,
