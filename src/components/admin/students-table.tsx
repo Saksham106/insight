@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { AdminUserCard } from "@/components/admin/admin-user-card";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { EditUserModal, type UserOption } from "@/components/admin/edit-user-modal";
+import { ReassignRoleButton } from "@/components/admin/reassign-role-button";
 import { getOnboardingStatus } from "@/lib/onboarding-status";
 import {
   Table,
@@ -117,6 +118,7 @@ export function StudentsTable({ students, allParents }: StudentsTableProps) {
         >
           <Pencil size={14} />
         </Button>
+        <ReassignRoleButton user={{ id: student.id, full_name: student.full_name }} currentRole="student" />
         {onboarding.label === "Invite sent" ? (
           <Button variant="outline" size="sm" onClick={() => resendCredentials(student)} disabled={resendingId === student.id}>
             {resendingId === student.id ? "Resending..." : "Resend"}

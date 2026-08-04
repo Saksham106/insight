@@ -40,7 +40,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
+  // `existing` tells the client no chat was created because these exact people
+  // already have one, so it can say so rather than silently opening it.
+  if (result.existing) {
+    return NextResponse.json({ conversationId: result.conversationId, existing: true });
+  }
+
   revalidateTag("dashboard", "max");
   revalidateTag("admin-dashboard", "max");
-  return NextResponse.json({ conversationId: result.conversationId });
+  return NextResponse.json({ conversationId: result.conversationId, existing: false });
 }

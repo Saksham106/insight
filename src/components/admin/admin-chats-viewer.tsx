@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ChevronLeft, Plus, Search, Users } from "lucide-react";
+import { ChevronLeft, Plus, Search, Settings, Users } from "lucide-react";
 
 import { ChatWindow, type ChatMessage } from "@/components/chat/chat-window";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NewConversationModal } from "@/components/admin/new-conversation-modal";
-import { ConversationMembersModal } from "@/components/admin/conversation-members-modal";
+import { ManageChatModal } from "@/components/admin/manage-chat-modal";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { MESSAGE_PAGE_SIZE, type ChattableContact, type ConversationSummary } from "@/lib/chat-types";
 import { createClient } from "@/lib/supabase/client";
@@ -38,7 +38,7 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
-  const [showMembers, setShowMembers] = useState(false);
+  const [showManage, setShowManage] = useState(false);
 
   const load = useCallback(async () => {
     const [convRes, contactsRes] = await Promise.all([
@@ -189,7 +189,7 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
               key={active.id}
               conversation={active}
               currentUserId={currentUserId}
-              onManageMembers={() => setShowMembers(true)}
+              onManage={() => setShowManage(true)}
               onBack={isMobile ? () => setActiveId(null) : undefined}
             />
           ) : (
@@ -212,20 +212,20 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
         />
       )}
 
-      {showMembers && active && (
-        <ConversationMembersModal
+      {showManage && active && (
+        <ManageChatModal
           conversation={active}
           contacts={contacts}
-          onClose={() => setShowMembers(false)}
+          onClose={() => setShowManage(false)}
           onChanged={async () => {
-            setShowMembers(false);
+            setShowManage(false);
             await load();
           }}
-          onArchived={(id) => {
-            // Optimistically drop the row so archiving feels instant, then
+          onDeleted={(id) => {
+            // Optimistically drop the row so deleting feels instant, then
             // reconcile with the server.
             setConversations((prev) => prev.filter((c) => c.id !== id));
-            setShowMembers(false);
+            setShowManage(false);
             setActiveId(null);
             void load();
           }}
@@ -238,12 +238,12 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
 function AdminThread({
   conversation,
   currentUserId,
-  onManageMembers,
+  onManage,
   onBack,
 }: {
   conversation: ConversationSummary;
   currentUserId: string;
-  onManageMembers: () => void;
+  onManage: () => void;
   onBack?: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -308,8 +308,8 @@ function AdminThread({
             <p className="text-xs text-muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {conversation.members.length} {conversation.members.length === 1 ? "member" : "members"}
             </p>
-            <Button variant="outline" size="sm" onClick={onManageMembers} style={{ flexShrink: 0 }}>
-              <Users size={15} style={{ marginRight: "6px" }} /> Members
+            <Button variant="outline" size="sm" onClick={onManage} style={{ flexShrink: 0 }}>
+              <Settings size={15} style={{ marginRight: "6px" }} /> Manage
             </Button>
           </div>
           <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>

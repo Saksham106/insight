@@ -3,10 +3,10 @@ import type { ChatMember, ChattableContact, ConversationSummary } from "@/lib/ch
 import { derivePairs, type MemberRole } from "@/lib/chat/group-derive";
 import {
   hasMinimumRoster,
-  isDirectConversationKey,
   isGroupConversation,
   resolveConversationTitle,
 } from "@/lib/chat/conversation-shape";
+import { rosterKey } from "@/lib/chat/roster-key";
 
 interface Profile {
   id: string;
@@ -195,15 +195,16 @@ export async function getChattableContacts(profile: Profile): Promise<ChattableC
   return (contacts ?? []) as ChattableContact[];
 }
 
-// Create a conversation with the given members (creator always included). Returns
-// the new conversation id, or an existing 1:1 conversation id if one already
-// exists between exactly these two people.
+// Create a conversation with the given members (creator always included).
+// Returns the new conversation id, or the id of the conversation that already
+// holds exactly these people — `existing` says which happened so callers can
+// explain the redirect instead of silently landing somewhere unexpected.
 export async function createConversation(params: {
   creatorId: string;
   memberIds: string[];
   isGroup: boolean;
   title: string | null;
-}): Promise<{ conversationId: string } | { error: string }> {
+}): Promise<{ conversationId: string; existing: boolean } | { error: string }> {
   const admin = createAdminClient();
 
   const uniqueMembers = [...new Set([params.creatorId, ...params.memberIds])];
@@ -212,16 +213,13 @@ export async function createConversation(params: {
   }
 
   // The title that will actually be stored: non-group requests never persist a
-  // title, so the dedupe key below must see the same thing storage will.
+  // title.
   const effectiveTitle = params.isGroup ? params.title : null;
 
-  // Reuse an existing direct thread between exactly these two people so we never
-  // create duplicate DMs. Keyed on the roster and the absence of a name, not on
-  // the caller's isGroup hint.
-  if (isDirectConversationKey(uniqueMembers.length, effectiveTitle)) {
-    const existing = await findExistingDirectConversation(uniqueMembers[0], uniqueMembers[1]);
-    if (existing) return { conversationId: existing };
-  }
+  // One relationship, one thread: if these exact people already have a live
+  // conversation, reuse it rather than opening a second one beside it.
+  const existing = await findConversationByExactRoster(admin, uniqueMembers);
+  if (existing) return { conversationId: existing, existing: true };
 
   const { data: convo, error: convoError } = await admin
     .from("conversations")
@@ -242,43 +240,63 @@ export async function createConversation(params: {
     return { error: partError.message };
   }
 
-  return { conversationId: convo.id as string };
+  return { conversationId: convo.id as string, existing: false };
 }
 
-async function findExistingDirectConversation(a: string, b: string): Promise<string | null> {
-  const admin = createAdminClient();
-  const { data: aConvos } = await admin.from("conversation_participants").select("conversation_id").eq("user_id", a);
-  const aIds = (aConvos ?? []).map((r) => r.conversation_id as string);
-  if (aIds.length === 0) return null;
+// The live conversation whose roster is exactly these people, or null.
+//
+// Any roster size, and the chat's name is irrelevant: a named chat and an
+// unnamed chat holding the same people are the same relationship, and letting
+// one hide from the other is precisely how duplicate threads appear. Pass
+// `excludeId` when re-checking a conversation that is itself being edited, so
+// it doesn't match itself.
+//
+// Archived chats are excluded: otherwise deleting a chat would permanently trap
+// those people, since every later attempt to start one would dedupe into the
+// deleted — and now unreachable — thread.
+async function findConversationByExactRoster(
+  admin: AdminClient,
+  memberIds: string[],
+  excludeId?: string,
+): Promise<string | null> {
+  const target = [...new Set(memberIds)];
+  if (target.length === 0) return null;
 
-  const { data: shared } = await admin
+  // Any matching conversation must contain the first member, so their
+  // memberships are the whole candidate set.
+  const { data: seeded } = await admin
     .from("conversation_participants")
     .select("conversation_id")
-    .eq("user_id", b)
-    .in("conversation_id", aIds);
-  const sharedIds = (shared ?? []).map((r) => r.conversation_id as string);
-  if (sharedIds.length === 0) return null;
+    .eq("user_id", target[0]);
+  const candidateIds = [...new Set((seeded ?? []).map((r) => r.conversation_id as string))].filter(
+    (id) => id !== excludeId,
+  );
+  if (candidateIds.length === 0) return null;
 
-  // A direct thread is any conversation with exactly these two people and no
-  // deliberate name. A named pair is a real conversation in its own right and
-  // must not be silently reused as someone's DM. Archived threads are excluded
-  // too: otherwise archiving a DM permanently blocks that pair from ever
-  // messaging again, since every later "message this person" would dedupe
-  // into the archived (and now unreachable) conversation id.
-  const { data: convos } = await admin
+  const { data: live } = await admin
     .from("conversations")
-    .select("id, title")
-    .in("id", sharedIds)
+    .select("id")
+    .in("id", candidateIds)
     .is("archived_at", null);
+  const liveIds = (live ?? []).map((r) => r.id as string);
+  if (liveIds.length === 0) return null;
 
-  for (const c of convos ?? []) {
-    const { count } = await admin
-      .from("conversation_participants")
-      .select("*", { count: "exact", head: true })
-      .eq("conversation_id", c.id as string);
-    if (isDirectConversationKey(count ?? 0, (c.title as string | null) ?? null)) {
-      return c.id as string;
-    }
+  const { data: parts } = await admin
+    .from("conversation_participants")
+    .select("conversation_id, user_id")
+    .in("conversation_id", liveIds);
+
+  const rosterByConvo = new Map<string, string[]>();
+  for (const p of parts ?? []) {
+    const cid = p.conversation_id as string;
+    const roster = rosterByConvo.get(cid) ?? [];
+    roster.push(p.user_id as string);
+    rosterByConvo.set(cid, roster);
+  }
+
+  const wanted = rosterKey(target);
+  for (const [cid, roster] of rosterByConvo) {
+    if (rosterKey(roster) === wanted) return cid;
   }
   return null;
 }
@@ -322,7 +340,7 @@ export async function createAdminConversation(params: {
   creatorId: string;
   memberIds: string[];
   title: string | null;
-}): Promise<{ conversationId: string } | { error: string }> {
+}): Promise<{ conversationId: string; existing: boolean } | { error: string }> {
   const admin = createAdminClient();
   const uniqueMembers = [...new Set(params.memberIds)].filter((id) => id !== params.creatorId);
   if (!hasMinimumRoster(uniqueMembers.length)) {
@@ -331,13 +349,11 @@ export async function createAdminConversation(params: {
 
   const cleanTitle = params.title?.trim() ? params.title.trim().slice(0, 80) : null;
 
-  // Reuse an existing direct thread between exactly these two people so the
-  // admin's "New chat" can't spawn a second, duplicate DM for a pair that
-  // already has one — mirroring the dedupe createConversation already does.
-  if (isDirectConversationKey(uniqueMembers.length, cleanTitle)) {
-    const existing = await findExistingDirectConversation(uniqueMembers[0], uniqueMembers[1]);
-    if (existing) return { conversationId: existing };
-  }
+  // "New chat" for people who already have one hands back the chat they have.
+  // The name the admin typed is not part of the match: two threads holding the
+  // same people are one relationship however they're labelled.
+  const existing = await findConversationByExactRoster(admin, uniqueMembers);
+  if (existing) return { conversationId: existing, existing: true };
 
   const { data: convo, error: convoError } = await admin
     .from("conversations")
@@ -354,7 +370,7 @@ export async function createAdminConversation(params: {
   }
 
   await ensureAssignments(admin, await memberRoles(admin, uniqueMembers));
-  return { conversationId: convo.id as string };
+  return { conversationId: convo.id as string, existing: false };
 }
 
 export async function renameConversation(id: string, title: string | null): Promise<{ error?: string }> {
@@ -384,6 +400,14 @@ export async function updateConversationMembers(
   const target = [...new Set(memberIds)];
   if (!hasMinimumRoster(target.length)) {
     return { error: "A conversation needs at least two people." };
+  }
+
+  // The roster editor is the other route to a duplicate: editing this chat's
+  // members into another live chat's exact roster would leave the same people
+  // holding two threads, which creation now refuses to produce.
+  const clash = await findConversationByExactRoster(admin, target, id);
+  if (clash) {
+    return { error: "Another chat already has exactly these people." };
   }
 
   const { data: current } = await admin

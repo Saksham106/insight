@@ -50,6 +50,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 500 });
   }
 
+  if (result.existing) {
+    return NextResponse.json({ conversationId: result.conversationId, existing: true });
+  }
+
   revalidateTag("dashboard", "max");
-  return NextResponse.json({ conversationId: result.conversationId });
+  return NextResponse.json({ conversationId: result.conversationId, existing: false });
 }

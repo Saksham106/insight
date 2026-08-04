@@ -15,13 +15,6 @@ export function isGroupConversation(memberCount: number): boolean {
   return memberCount > 2;
 }
 
-// The dedupe key for "do these two already have a direct thread?". A pair the
-// admin deliberately named is NOT a DM — reusing it would silently hijack a
-// named conversation as someone's 1:1.
-export function isDirectConversationKey(memberCount: number, title: string | null): boolean {
-  return memberCount === 2 && !title?.trim();
-}
-
 export function hasMinimumRoster(memberCount: number): boolean {
   return memberCount >= MINIMUM_ROSTER;
 }

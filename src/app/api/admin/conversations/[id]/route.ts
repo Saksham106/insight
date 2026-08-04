@@ -24,17 +24,20 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   const title: unknown = body?.title;
   const memberIds: unknown = body?.memberIds;
 
-  if (typeof title === "string" || title === null) {
-    const res = await renameConversation(id, (title as string | null) ?? null);
-    if (res.error) return NextResponse.json({ error: res.error }, { status: 500 });
-  }
-
   if (Array.isArray(memberIds)) {
     if (memberIds.some((m) => typeof m !== "string")) {
       return NextResponse.json({ error: "A conversation needs at least two people." }, { status: 400 });
     }
     const res = await updateConversationMembers(id, memberIds as string[]);
     if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
+  }
+
+  // The roster is processed first because duplicate-roster rejection is an
+  // expected validation outcome. Do not make a requested rename visible and
+  // then tell the admin that the combined save failed.
+  if (typeof title === "string" || title === null) {
+    const res = await renameConversation(id, (title as string | null) ?? null);
+    if (res.error) return NextResponse.json({ error: res.error }, { status: 500 });
   }
 
   revalidate();
