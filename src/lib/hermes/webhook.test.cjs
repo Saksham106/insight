@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { filterWebhookPayload, isInboundContactEligible, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } = require(path.join(__dirname, "webhook.ts"));
+const { filterWebhookPayload, inboundContactDisposition, isInboundContactEligible, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } = require(path.join(__dirname, "webhook.ts"));
 
 const fixture = {
   object: "whatsapp_business_account",
@@ -125,4 +125,22 @@ test("WhatsApp settlement approval finalizes exact snapshots before reporting su
   assert.match(source, /finalize_academy_settlement/);
   assert.match(source, /settlement_finalization_failed/);
   assert.match(source, /entity_type: approval\?\.settlement_cycle_id \? "settlement_cycle" : approval \? "scheduling_case" : "approval_command"/);
+});
+
+test("classifies an inbound contact without reviving a removed one", () => {
+  assert.equal(inboundContactDisposition(null), "create");
+  assert.equal(inboundContactDisposition({ deleted_at: null }), "active");
+  assert.equal(inboundContactDisposition({ deleted_at: "2026-07-01T00:00:00Z" }), "deleted");
+});
+
+test("webhook stores a removed contact's message without replying or reviving", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"), "utf8");
+  assert.match(source, /inboundContactDisposition/);
+  // The lookup must see removed rows, or the insert below hits the unique index.
+  assert.match(source, /\.select\("id, role, communication_policy, consent_status, is_active, deleted_at"\)/);
+  assert.match(source, /disposition === "create"/);
+  assert.match(source, /disposition !== "deleted"/);
+  assert.match(source, /"deleted_contact_received"/);
+  // Nothing in the inbound path clears deleted_at.
+  assert.doesNotMatch(source, /deleted_at: null/);
 });
