@@ -8,21 +8,28 @@ export interface ExistingHermesContact {
   id: string;
   display_name: string;
   whatsapp_e164: string;
+  role: string;
+  deleted_at: string | null;
 }
+
+/** Which bucket the review screen files this row under. */
+export type ImportRowStatus = "new" | "existing" | "removed" | "error";
 
 export interface ImportPreviewRow {
   sourceIndex: number;
   displayName: string;
   rawPhone: string;
   normalizedPhone: string | null;
-  existingContactId: string | null;
+  status: ImportRowStatus;
+  /** The directory contact this row already matches, if any. */
+  existing: { id: string; displayName: string; role: string; deleted: boolean } | null;
   suggestions: ProfileMatchSuggestion[];
   error: "name_required" | "phone_required" | "country_code_required" | "invalid_phone" | "duplicate_in_upload" | null;
 }
 
 export interface ImportPreview {
   rows: ImportPreviewRow[];
-  summary: { total: number; ready: number; errors: number; existing: number; suggestedMatches: number };
+  summary: { total: number; new: number; existing: number; removed: number; errors: number };
 }
 
 export interface ImportPreviewTokenPayload {
@@ -71,15 +78,15 @@ export function verifyImportPreview(token: string, secret: string, now = Date.no
 }
 
 export function validateImportSelection(rows: ImportPreviewRow[], contacts: ImportSelection[]) {
-  const readyByPhone = new Map(
+  const creatableByPhone = new Map(
     rows
-      .filter((row) => !row.error && row.normalizedPhone)
+      .filter((row) => row.status === "new" && row.normalizedPhone)
       .map((row) => [row.normalizedPhone!, row]),
   );
   if (contacts.length === 0 || new Set(contacts.map((contact) => contact.normalizedPhone)).size !== contacts.length) return false;
 
   return contacts.every((contact) => {
-    const row = readyByPhone.get(contact.normalizedPhone);
+    const row = creatableByPhone.get(contact.normalizedPhone);
     if (!row || row.displayName !== contact.displayName) return false;
     if (!contact.profileId) return true;
     return row.suggestions.some((suggestion) => suggestion.profileId === contact.profileId && suggestion.role === contact.role);
@@ -93,7 +100,7 @@ export function buildImportPreview(input: {
   defaultCallingCode?: string;
 }): ImportPreview {
   const seen = new Set<string>();
-  const existingByPhone = new Map(input.existingContacts.map((contact) => [contact.whatsapp_e164, contact.id]));
+  const existingByPhone = new Map(input.existingContacts.map((contact) => [contact.whatsapp_e164, contact]));
   const rows: ImportPreviewRow[] = [];
 
   for (const contact of input.parsed) {
@@ -113,13 +120,27 @@ export function buildImportPreview(input: {
         }
       }
 
+      const match = normalizedPhone ? existingByPhone.get(normalizedPhone) ?? null : null;
+      const existing = match
+        ? { id: match.id, displayName: match.display_name, role: match.role, deleted: match.deleted_at !== null }
+        : null;
+      const status: ImportRowStatus = error
+        ? "error"
+        : existing
+          ? existing.deleted
+            ? "removed"
+            : "existing"
+          : "new";
+
       rows.push({
         sourceIndex: contact.sourceIndex,
         displayName: contact.displayName,
         rawPhone,
         normalizedPhone,
-        existingContactId: normalizedPhone ? existingByPhone.get(normalizedPhone) ?? null : null,
-        suggestions: error ? [] : suggestProfileMatches(contact.displayName, input.profiles),
+        status,
+        existing,
+        // Only a contact being created needs an Insight profile suggestion.
+        suggestions: status === "new" ? suggestProfileMatches(contact.displayName, input.profiles) : [],
         error,
       });
     });
@@ -129,10 +150,10 @@ export function buildImportPreview(input: {
     rows,
     summary: {
       total: rows.length,
-      ready: rows.filter((row) => !row.error).length,
-      errors: rows.filter((row) => row.error).length,
-      existing: rows.filter((row) => !row.error && row.existingContactId).length,
-      suggestedMatches: rows.filter((row) => !row.error && row.suggestions.length > 0).length,
+      new: rows.filter((row) => row.status === "new").length,
+      existing: rows.filter((row) => row.status === "existing").length,
+      removed: rows.filter((row) => row.status === "removed").length,
+      errors: rows.filter((row) => row.status === "error").length,
     },
   };
 }
