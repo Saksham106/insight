@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   const supabase = createAdminClient();
   const [profilesResult, contactsResult] = await Promise.all([
     supabase.from("profiles").select("id, full_name, role, timezone").eq("is_active", true).is("deleted_at", null),
-    supabase.from("hermes_contacts").select("id, display_name, whatsapp_e164").is("deleted_at", null),
+    supabase.from("hermes_contacts").select("id, display_name, whatsapp_e164, role, deleted_at"),
   ]);
   if (profilesResult.error || contactsResult.error) {
     return NextResponse.json({ error: "Could not prepare the contact preview." }, { status: 500 });

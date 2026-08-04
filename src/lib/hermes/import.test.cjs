@@ -40,23 +40,50 @@ test("returns all ambiguous exact candidates without linking one", () => {
   assert.equal(suggestProfileMatches("Priya", duplicates).length, 2);
 });
 
-test("builds a minimized preview with normalized numbers and duplicate errors", () => {
+test("buckets rows as new, existing, removed, or error", () => {
   const preview = buildImportPreview({
     parsed: [
       { sourceIndex: 0, displayName: "Priya Mehta", phones: ["+91 98765 43210"] },
       { sourceIndex: 1, displayName: "Priya Duplicate", phones: ["+919876543210"] },
       { sourceIndex: 2, displayName: "Local Student", phones: ["0917 583 553"] },
+      { sourceIndex: 3, displayName: "Gone Away", phones: ["+15551234567"] },
     ],
     profiles,
-    existingContacts: [{ id: "c1", display_name: "Existing", whatsapp_e164: "+84917583553" }],
+    existingContacts: [
+      { id: "c1", display_name: "Existing", whatsapp_e164: "+84917583553", role: "student", deleted_at: null },
+      { id: "c2", display_name: "Removed Earlier", whatsapp_e164: "+15551234567", role: "parent", deleted_at: "2026-07-01T00:00:00Z" },
+    ],
     defaultCallingCode: "84",
   });
 
+  assert.equal(preview.rows[0].status, "new");
   assert.equal(preview.rows[0].normalizedPhone, "+919876543210");
   assert.equal(preview.rows[0].suggestions[0].profileId, "p1");
+  assert.equal(preview.rows[0].existing, null);
+
+  assert.equal(preview.rows[1].status, "error");
   assert.equal(preview.rows[1].error, "duplicate_in_upload");
-  assert.equal(preview.rows[2].existingContactId, "c1");
-  assert.deepEqual(preview.summary, { total: 3, ready: 2, errors: 1, existing: 1, suggestedMatches: 1 });
+
+  assert.equal(preview.rows[2].status, "existing");
+  assert.deepEqual(preview.rows[2].existing, { id: "c1", displayName: "Existing", role: "student", deleted: false });
+
+  assert.equal(preview.rows[3].status, "removed");
+  assert.deepEqual(preview.rows[3].existing, { id: "c2", displayName: "Removed Earlier", role: "parent", deleted: true });
+
+  assert.deepEqual(preview.summary, { total: 4, new: 1, existing: 1, removed: 1, errors: 1 });
+});
+
+test("suggests Insight profiles only for contacts being created", () => {
+  const preview = buildImportPreview({
+    parsed: [{ sourceIndex: 0, displayName: "Priya Mehta", phones: ["+919876543210"] }],
+    profiles,
+    existingContacts: [
+      { id: "c1", display_name: "Priya Mehta", whatsapp_e164: "+919876543210", role: "teacher", deleted_at: null },
+    ],
+  });
+
+  assert.equal(preview.rows[0].status, "existing");
+  assert.deepEqual(preview.rows[0].suggestions, []);
 });
 
 test("reports country-code and parser errors instead of guessing", () => {
@@ -86,7 +113,8 @@ test("binds committed contacts to signed preview rows and suggested profile ids"
     displayName: "Priya Mehta",
     rawPhone: "+91 98765 43210",
     normalizedPhone: "+919876543210",
-    existingContactId: null,
+    status: "new",
+    existing: null,
     suggestions: [{ profileId: "p1", fullName: "Priya Mehta", role: "teacher", timezone: "Asia/Kolkata", confidence: "exact" }],
     error: null,
   }];
@@ -95,6 +123,10 @@ test("binds committed contacts to signed preview rows and suggested profile ids"
   assert.equal(validateImportSelection(rows, [{ displayName: "Mallory", normalizedPhone: "+919876543210", role: "teacher", profileId: "p1" }]), false);
   assert.equal(validateImportSelection(rows, [{ displayName: "Priya Mehta", normalizedPhone: "+15551234567", role: "teacher", profileId: null }]), false);
   assert.equal(validateImportSelection(rows, [{ displayName: "Priya Mehta", normalizedPhone: "+919876543210", role: "teacher", profileId: "p2" }]), false);
+
+  // A contact already in the directory must never travel the create path.
+  const knownRows = [{ ...rows[0], status: "existing", existing: { id: "c1", displayName: "Priya Mehta", role: "student", deleted: false } }];
+  assert.equal(validateImportSelection(knownRows, [{ displayName: "Priya Mehta", normalizedPhone: "+919876543210", role: "teacher", profileId: null }]), false);
 });
 
 test("admin import routes authenticate before privileged database access", () => {
