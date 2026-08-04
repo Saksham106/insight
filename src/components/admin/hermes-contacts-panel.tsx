@@ -128,7 +128,10 @@ function ContactActions({ contact }: { contact: HermesAdminContact }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const paused = contact.communication_policy === "paused";
-  const optedOut = contact.communication_policy === "opted_out";
+  // Pause/Resume is a genuine two-state toggle only between "direct" and
+  // "paused". Any other policy (guardian_only, approval_required, opted_out)
+  // was set deliberately and must not be silently overwritten by a click.
+  const canToggleCommunication = contact.communication_policy === "direct" || paused;
 
   async function send(method: "PATCH" | "DELETE", body?: Record<string, unknown>) {
     setBusy(true);
@@ -179,9 +182,17 @@ function ContactActions({ contact }: { contact: HermesAdminContact }) {
         type="button"
         size="sm"
         variant="outline"
-        disabled={busy || optedOut}
-        title={optedOut ? "This contact opted out via WhatsApp. Pause/Resume is disabled so that marker is not erased." : undefined}
-        aria-label={optedOut ? `${contact.display_name} opted out via WhatsApp; Pause and Resume are disabled` : undefined}
+        disabled={busy || !canToggleCommunication}
+        title={
+          canToggleCommunication
+            ? undefined
+            : `This contact's messaging is set to ${readable(contact.communication_policy)}. Pause/Resume is disabled so that setting is not overwritten.`
+        }
+        aria-label={
+          canToggleCommunication
+            ? undefined
+            : `${contact.display_name}'s messaging is set to ${readable(contact.communication_policy)}; Pause and Resume are disabled`
+        }
         onClick={() => send("PATCH", { communicationPolicy: paused ? "direct" : "paused" })}
       >
         {paused ? "Resume" : "Pause"}
