@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
-import { digestImportRows, validateImportSelection, verifyImportPreview } from "@/lib/hermes/import";
+import {
+  digestImportRows,
+  validateImportChanges,
+  validateImportSelection,
+  verifyImportPreview,
+  type ImportContactChange,
+} from "@/lib/hermes/import";
 import type { HermesContactRole } from "@/lib/hermes/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -12,6 +18,10 @@ interface CommitContact {
   normalizedPhone: string;
   role: HermesContactRole;
   profileId?: string | null;
+}
+
+function assignableRole(role: unknown): role is Exclude<HermesContactRole, "unclassified"> {
+  return typeof role === "string" && ROLES.has(role as HermesContactRole) && role !== "unclassified";
 }
 
 export async function POST(request: Request) {
@@ -26,25 +36,81 @@ export async function POST(request: Request) {
   if (!token || token.digest !== digestImportRows(previewRows)) {
     return NextResponse.json({ error: "The preview expired or changed. Upload the contact file again." }, { status: 400 });
   }
-  if (body.consentAttested !== true) {
-    return NextResponse.json({ error: "Confirm consent before importing contacts." }, { status: 400 });
-  }
 
   const contacts = (Array.isArray(body.contacts) ? body.contacts : []) as CommitContact[];
-  if (contacts.length === 0) return NextResponse.json({ error: "Select at least one valid contact." }, { status: 400 });
-  if (contacts.some((contact) => !contact.displayName?.trim() || !/^\+[1-9]\d{7,14}$/.test(contact.normalizedPhone) || !ROLES.has(contact.role) || contact.role === "unclassified")) {
+  const updates = (Array.isArray(body.updates) ? body.updates : []) as ImportContactChange[];
+  const restores = (Array.isArray(body.restores) ? body.restores : []) as ImportContactChange[];
+
+  if (contacts.length === 0 && updates.length === 0 && restores.length === 0) {
+    return NextResponse.json({ error: "Select at least one contact to import, update, or restore." }, { status: 400 });
+  }
+  // Consent covers contacts being created. Contacts already in the directory
+  // were attested in an earlier batch and are not re-attested here.
+  if (contacts.length > 0 && body.consentAttested !== true) {
+    return NextResponse.json({ error: "Confirm consent before importing contacts." }, { status: 400 });
+  }
+  if (contacts.some((contact) => !contact.displayName?.trim() || !/^\+[1-9]\d{7,14}$/.test(contact.normalizedPhone) || !assignableRole(contact.role))) {
     return NextResponse.json({ error: "Every selected contact needs a valid name, number, and role." }, { status: 400 });
   }
-  if (!validateImportSelection(previewRows, contacts)) {
+  if (contacts.length > 0 && !validateImportSelection(previewRows, contacts)) {
     return NextResponse.json({ error: "The selected contacts do not match the signed preview. Upload the contact file again." }, { status: 400 });
+  }
+  if (updates.some((update) => !assignableRole(update.role)) || restores.some((restore) => restore.role !== null && !assignableRole(restore.role))) {
+    return NextResponse.json({ error: "Choose a valid role for every changed contact." }, { status: 400 });
+  }
+  if (!validateImportChanges(previewRows, updates, "existing") || !validateImportChanges(previewRows, restores, "removed")) {
+    return NextResponse.json({ error: "The changed contacts do not match the signed preview. Upload the contact file again." }, { status: 400 });
   }
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase.rpc("import_hermes_contacts", {
-    p_imported_by: profile.id,
-    p_source_sha256: token.digest,
-    p_contacts: contacts,
-  });
-  if (error) return NextResponse.json({ error: "The contacts were not imported." }, { status: 500 });
-  return NextResponse.json({ result: data });
+  let created = 0;
+  let skipped = 0;
+
+  if (contacts.length > 0) {
+    const { data, error } = await supabase.rpc("import_hermes_contacts", {
+      p_imported_by: profile.id,
+      p_source_sha256: token.digest,
+      p_contacts: contacts,
+    });
+    if (error) return NextResponse.json({ error: "The contacts were not imported." }, { status: 500 });
+    created = Number((data as { created?: number })?.created ?? 0);
+    skipped = Number((data as { skipped?: number })?.skipped ?? 0);
+  }
+
+  let updated = 0;
+  for (const update of updates) {
+    const { data } = await supabase
+      .from("hermes_contacts")
+      .update({ role: update.role })
+      .eq("id", update.contactId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+    if (!data) continue;
+    updated += 1;
+    await supabase.from("hermes_audit_events").insert({
+      actor_type: "admin", actor_profile_id: profile.id, event_type: "contact_updated",
+      entity_type: "hermes_contact", entity_id: update.contactId, metadata: { fields: ["role"], source: "import" },
+    });
+  }
+
+  let restored = 0;
+  for (const restore of restores) {
+    const patch: Record<string, unknown> = { deleted_at: null, is_active: true };
+    if (restore.role) patch.role = restore.role;
+    const { data } = await supabase
+      .from("hermes_contacts")
+      .update(patch)
+      .eq("id", restore.contactId)
+      .select("id")
+      .maybeSingle();
+    if (!data) continue;
+    restored += 1;
+    await supabase.from("hermes_audit_events").insert({
+      actor_type: "admin", actor_profile_id: profile.id, event_type: "contact_restored",
+      entity_type: "hermes_contact", entity_id: restore.contactId, metadata: { source: "import" },
+    });
+  }
+
+  return NextResponse.json({ result: { created, skipped, updated, restored } });
 }

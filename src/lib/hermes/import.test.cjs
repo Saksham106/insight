@@ -17,7 +17,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 };
 
 const { suggestProfileMatches } = require(path.join(__dirname, "matching.ts"));
-const { buildImportPreview, signImportPreview, validateImportSelection, verifyImportPreview } = require(path.join(__dirname, "import.ts"));
+const { buildImportPreview, signImportPreview, validateImportChanges, validateImportSelection, verifyImportPreview } = require(path.join(__dirname, "import.ts"));
 
 const profiles = [
   { id: "p1", full_name: "Priya Mehta", role: "teacher", timezone: "Asia/Kolkata" },
@@ -127,6 +127,49 @@ test("binds committed contacts to signed preview rows and suggested profile ids"
   // A contact already in the directory must never travel the create path.
   const knownRows = [{ ...rows[0], status: "existing", existing: { id: "c1", displayName: "Priya Mehta", role: "student", deleted: false } }];
   assert.equal(validateImportSelection(knownRows, [{ displayName: "Priya Mehta", normalizedPhone: "+919876543210", role: "teacher", profileId: null }]), false);
+});
+
+test("binds updates and restores to signed rows of the matching bucket", () => {
+  const rows = [
+    {
+      sourceIndex: 0,
+      displayName: "Known Person",
+      rawPhone: "+84917583553",
+      normalizedPhone: "+84917583553",
+      status: "existing",
+      existing: { id: "c1", displayName: "Known Person", role: "student", deleted: false },
+      suggestions: [],
+      error: null,
+    },
+    {
+      sourceIndex: 1,
+      displayName: "Gone Away",
+      rawPhone: "+15551234567",
+      normalizedPhone: "+15551234567",
+      status: "removed",
+      existing: { id: "c2", displayName: "Gone Away", role: "parent", deleted: true },
+      suggestions: [],
+      error: null,
+    },
+  ];
+
+  assert.equal(validateImportChanges(rows, [{ contactId: "c1", role: "teacher" }], "existing"), true);
+  assert.equal(validateImportChanges(rows, [{ contactId: "c2", role: null }], "removed"), true);
+
+  // A removed contact cannot be routed through the update list, or vice versa.
+  assert.equal(validateImportChanges(rows, [{ contactId: "c2", role: "teacher" }], "existing"), false);
+  assert.equal(validateImportChanges(rows, [{ contactId: "c1", role: null }], "removed"), false);
+
+  // A contact id that appears in no signed row cannot be edited through import.
+  assert.equal(validateImportChanges(rows, [{ contactId: "c9", role: "teacher" }], "existing"), false);
+
+  // The same contact cannot be changed twice in one request.
+  assert.equal(
+    validateImportChanges(rows, [{ contactId: "c1", role: "teacher" }, { contactId: "c1", role: "parent" }], "existing"),
+    false,
+  );
+
+  assert.equal(validateImportChanges(rows, [], "existing"), true);
 });
 
 test("admin import routes authenticate before privileged database access", () => {

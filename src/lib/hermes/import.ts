@@ -93,6 +93,29 @@ export function validateImportSelection(rows: ImportPreviewRow[], contacts: Impo
   });
 }
 
+export interface ImportContactChange {
+  contactId: string;
+  /** Null keeps the role the contact already had. */
+  role: string | null;
+}
+
+/**
+ * A change may only target a contact the signed preview actually matched, in
+ * the bucket the caller claims. Without this the import endpoint would be a
+ * way to edit any contact by id.
+ */
+export function validateImportChanges(
+  rows: ImportPreviewRow[],
+  changes: ImportContactChange[],
+  status: "existing" | "removed",
+) {
+  const allowed = new Set(
+    rows.filter((row) => row.status === status && row.existing).map((row) => row.existing!.id),
+  );
+  if (new Set(changes.map((change) => change.contactId)).size !== changes.length) return false;
+  return changes.every((change) => allowed.has(change.contactId));
+}
+
 export function buildImportPreview(input: {
   parsed: ParsedVCardContact[];
   profiles: MatchableProfile[];
