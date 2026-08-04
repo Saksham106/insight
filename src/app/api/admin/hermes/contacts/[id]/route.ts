@@ -66,7 +66,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   // Every field except restore refuses to edit a contact that was removed.
   if (!restoring) query = query.is("deleted_at", null);
   const { data, error } = await query
-    .select("id, display_name, preferred_name, role, profile_id, communication_policy")
+    .select("id, display_name, preferred_name, role, profile_id, communication_policy, consent_status")
     .maybeSingle();
   if (error || !data) return NextResponse.json({ error: "Could not update the contact." }, { status: 500 });
   await supabase.from("hermes_audit_events").insert({
@@ -75,7 +75,9 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     event_type: restoring ? "contact_restored" : "contact_updated",
     entity_type: "hermes_contact",
     entity_id: id,
-    metadata: { fields: Object.keys(update) },
+    metadata: restoring
+      ? { fields: Object.keys(update), communication_policy: data.communication_policy, consent_status: data.consent_status }
+      : { fields: Object.keys(update) },
   });
   return NextResponse.json({ contact: data });
 }

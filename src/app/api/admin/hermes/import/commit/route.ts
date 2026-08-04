@@ -100,6 +100,7 @@ export async function POST(request: Request) {
   }
 
   let restored = 0;
+  const restoredMuted: { contactId: string; displayName: string; communicationPolicy: string }[] = [];
   for (const restore of restores) {
     const patch: Record<string, unknown> = { deleted_at: null, is_active: true };
     if (restore.role) patch.role = restore.role;
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
       .from("hermes_contacts")
       .update(patch)
       .eq("id", restore.contactId)
-      .select("id")
+      .select("id, display_name, communication_policy, consent_status")
       .maybeSingle();
     if (error) {
       firstFailure ??= "One or more contact restores failed.";
@@ -115,14 +116,20 @@ export async function POST(request: Request) {
     }
     if (!data) continue;
     restored += 1;
+    // A contact restored to the directory may still be opted out from an earlier
+    // WhatsApp "STOP" received while removed; surface that so the admin knows.
+    if (data.communication_policy !== "direct") {
+      restoredMuted.push({ contactId: data.id, displayName: data.display_name, communicationPolicy: data.communication_policy });
+    }
     const fields = restore.role ? ["deleted_at", "is_active", "role"] : ["deleted_at", "is_active"];
     await supabase.from("hermes_audit_events").insert({
       actor_type: "admin", actor_profile_id: profile.id, event_type: "contact_restored",
-      entity_type: "hermes_contact", entity_id: restore.contactId, metadata: { fields, source: "import" },
+      entity_type: "hermes_contact", entity_id: restore.contactId,
+      metadata: { fields, source: "import", communication_policy: data.communication_policy, consent_status: data.consent_status },
     });
   }
 
   const result = { created, skipped, updated, restored };
-  if (firstFailure) return NextResponse.json({ error: firstFailure, result }, { status: 500 });
-  return NextResponse.json({ result });
+  if (firstFailure) return NextResponse.json({ error: firstFailure, result, restoredMuted }, { status: 500 });
+  return NextResponse.json({ result, restoredMuted });
 }
