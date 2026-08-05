@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -25,11 +26,15 @@ test("mutations use the atomic Kitty RPC boundary", () => {
     "create_kitty_class_series",
     "create_kitty_one_off_class",
     "request_kitty_class_change",
+    "propose_kitty_class_replacement",
     "decide_kitty_class_change",
     "finalize_kitty_class_change",
     "override_kitty_class_occurrence",
   ]) assert.match(source, new RegExp(`rpc\\(["']${rpc}["']`));
   assert.match(source, /assertAdmin\(actor\)/);
   assert.match(source, /assertContactMembership/);
+  assert.match(source, /validateParticipants/);
+  assert.match(source, /role === "parent_guardian"/);
+  assert.match(source, /occurrence_selection_confirmed/);
+  assert.match(source, /selectionTokenDigest/);
 });
-

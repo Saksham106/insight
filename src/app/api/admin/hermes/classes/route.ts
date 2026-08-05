@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
+import { kittyLocalDateTimeToUtc } from "@/lib/hermes/kitty-classes";
 import { createKittyClass, listKittyClasses, type KittyClassParticipantInput } from "@/lib/hermes/kitty-class-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -35,16 +36,21 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as Record<string, unknown>;
     const participants = Array.isArray(body.participants) ? body.participants as KittyClassParticipantInput[] : [];
+    const timezone = String(body.timezone ?? "");
+    const localStartsAt = typeof body.localStartsAt === "string" ? body.localStartsAt : null;
+    const startsAt = localStartsAt ? kittyLocalDateTimeToUtc(localStartsAt, timezone) : typeof body.startsAt === "string" ? body.startsAt : undefined;
+    const durationMinutes = typeof body.durationMinutes === "number" ? body.durationMinutes : undefined;
+    const endsAt = startsAt && durationMinutes ? new Date(new Date(startsAt).getTime() + durationMinutes * 60_000).toISOString() : typeof body.endsAt === "string" ? body.endsAt : undefined;
     const created = await createKittyClass(createAdminClient(), { kind: "admin", profileId: profile.id, channel: "dashboard" }, {
       kind: body.kind === "weekly" ? "weekly" : "one_off",
       title: String(body.title ?? ""),
       subject: typeof body.subject === "string" ? body.subject : null,
-      timezone: String(body.timezone ?? ""),
-      startsAt: typeof body.startsAt === "string" ? body.startsAt : undefined,
-      endsAt: typeof body.endsAt === "string" ? body.endsAt : undefined,
+      timezone,
+      startsAt,
+      endsAt,
       localDate: typeof body.localDate === "string" ? body.localDate : undefined,
       recurrence: body.recurrence,
-      durationMinutes: typeof body.durationMinutes === "number" ? body.durationMinutes : undefined,
+      durationMinutes,
       effectiveStart: typeof body.effectiveStart === "string" ? body.effectiveStart : undefined,
       effectiveEnd: typeof body.effectiveEnd === "string" ? body.effectiveEnd : null,
       participants,

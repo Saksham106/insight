@@ -54,18 +54,27 @@ export function HermesClassesPanel({ classes, series, contacts, enabled }: {
     setMessage(null);
     const form = new FormData(event.currentTarget);
     const teacherId = String(form.get("teacherId") ?? "");
-    const learnerId = String(form.get("learnerId") ?? "");
-    const learnerRole = String(form.get("learnerRole")) === "parent_guardian" ? "parent_guardian" : "student";
+    const studentId = String(form.get("studentId") ?? "");
+    const parentId = String(form.get("parentId") ?? "");
+    if (!studentId && !parentId) {
+      setPending(false);
+      setMessage("Choose a student, a parent, or both.");
+      return;
+    }
     const participants = [
       { contactId: teacherId, role: "teacher", decisionSide: "teacher", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
-      {
-        contactId: learnerId,
-        role: learnerRole,
-        decisionSide: "student",
-        receivesNotifications: form.get("receivesUpdates") === "on",
-        confirmsCancellation: form.get("confirmsCancellation") === "on",
-        confirmsReschedule: form.get("confirmsReschedule") === "on",
-      },
+      ...(studentId ? [{
+        contactId: studentId, role: "student", decisionSide: "student",
+        receivesNotifications: form.get("studentReceivesUpdates") === "on",
+        confirmsCancellation: form.get("studentConfirmsCancellation") === "on",
+        confirmsReschedule: form.get("studentConfirmsReschedule") === "on",
+      }] : []),
+      ...(parentId ? [{
+        contactId: parentId, role: "parent_guardian", decisionSide: "student",
+        receivesNotifications: form.get("parentReceivesUpdates") === "on",
+        confirmsCancellation: form.get("parentConfirmsCancellation") === "on",
+        confirmsReschedule: form.get("parentConfirmsReschedule") === "on",
+      }] : []),
     ];
     const startsAt = String(form.get("startsAt") ?? "");
     const durationMinutes = Number(form.get("durationMinutes") ?? 60);
@@ -78,8 +87,8 @@ export function HermesClassesPanel({ classes, series, contacts, enabled }: {
         }
       : {
           kind, title: form.get("title"), subject: form.get("subject"), timezone: form.get("timezone"),
-          startsAt: new Date(startsAt).toISOString(),
-          endsAt: new Date(new Date(startsAt).getTime() + durationMinutes * 60_000).toISOString(),
+          localStartsAt: startsAt,
+          durationMinutes,
           localDate: startsAt.slice(0, 10), participants,
         };
     const response = await fetch("/api/admin/hermes/classes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
@@ -137,11 +146,20 @@ export function HermesClassesPanel({ classes, series, contacts, enabled }: {
             </> : <label className="text-sm">Date and time<input className="input" type="datetime-local" name="startsAt" required /></label>}
             <label className="text-sm">Duration (minutes)<input className="input" type="number" min="5" max="1440" name="durationMinutes" defaultValue="60" required /></label>
             <label className="text-sm">Teacher<select className="input" name="teacherId" required><option value="">Select teacher</option>{contacts.filter((c) => c.role === "teacher").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
-            <label className="text-sm">Student or parent<select className="input" name="learnerId" required><option value="">Select contact</option>{contacts.filter((c) => c.role === "student" || c.role === "parent").map((c) => <option key={c.id} value={c.id}>{c.display_name} ({c.role === "parent" ? "Parent" : "Student"})</option>)}</select></label>
-            <label className="text-sm">Contact role<select className="input" name="learnerRole"><option value="student">Student</option><option value="parent_guardian">Parent</option></select></label>
-            <label><input type="checkbox" name="receivesUpdates" defaultChecked /> Receives updates</label>
-            <label><input type="checkbox" name="confirmsCancellation" defaultChecked /> Confirms cancellations</label>
-            <label><input type="checkbox" name="confirmsReschedule" defaultChecked /> Confirms reschedules</label>
+            <fieldset className="border border-border" style={{ borderRadius: 10, padding: 12 }}>
+              <legend className="text-sm font-semibold">Student contact (optional when a parent is selected)</legend>
+              <label className="text-sm">Student<select className="input" name="studentId"><option value="">No student contact</option>{contacts.filter((c) => c.role === "student").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
+              <label><input type="checkbox" name="studentReceivesUpdates" defaultChecked /> Receives updates</label>
+              <label><input type="checkbox" name="studentConfirmsCancellation" defaultChecked /> Confirms cancellations</label>
+              <label><input type="checkbox" name="studentConfirmsReschedule" defaultChecked /> Confirms reschedules</label>
+            </fieldset>
+            <fieldset className="border border-border" style={{ borderRadius: 10, padding: 12 }}>
+              <legend className="text-sm font-semibold">Parent contact (optional when a student is selected)</legend>
+              <label className="text-sm">Parent<select className="input" name="parentId"><option value="">No parent contact</option>{contacts.filter((c) => c.role === "parent").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
+              <label><input type="checkbox" name="parentReceivesUpdates" defaultChecked /> Receives updates</label>
+              <label><input type="checkbox" name="parentConfirmsCancellation" defaultChecked /> Confirms cancellations</label>
+              <label><input type="checkbox" name="parentConfirmsReschedule" defaultChecked /> Confirms reschedules</label>
+            </fieldset>
             <button className="btn btn-primary" type="submit">{pending ? "Saving…" : "Save class"}</button>
           </fieldset>
           {message ? <p className="text-sm" role="status">{message}</p> : null}
@@ -150,4 +168,3 @@ export function HermesClassesPanel({ classes, series, contacts, enabled }: {
     </PanelCard>
   );
 }
-
