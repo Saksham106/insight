@@ -35,6 +35,8 @@ export default async function HermesAdminPage({
     settlements,
     summaryResult,
     lessonResult,
+    classOccurrences,
+    classSeries,
   ] =
     await Promise.all([
       supabase
@@ -69,6 +71,15 @@ export default async function HermesAdminPage({
       loadAdminLessonCycles(supabase)
         .then((data) => ({ data, error: false }))
         .catch(() => ({ data: [], error: true })),
+      supabase
+        .from("kitty_class_occurrences")
+        .select("id, series_id, title, subject, starts_at, ends_at, timezone, status, version")
+        .order("starts_at", { ascending: true })
+        .limit(200),
+      supabase
+        .from("kitty_class_series")
+        .select("id, title, weekdays, local_time, timezone, status")
+        .order("title"),
     ]);
 
   // The query above returns active and removed contacts together so the
@@ -122,6 +133,9 @@ export default async function HermesAdminPage({
       }
       settlements={settlements.data ?? []}
       loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error ? "Some Kitty information could not be loaded." : null}
+      classOccurrences={classOccurrences.data ?? []}
+      classSeries={classSeries.data ?? []}
+      classCalendarEnabled={process.env.KITTY_CLASS_CALENDAR_ENABLED === "true"}
     />
   );
 }
