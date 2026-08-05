@@ -7,6 +7,36 @@ const test = require("node:test");
 
 const read = (relative) => fs.readFileSync(path.join(process.cwd(), relative), "utf8");
 
+const migrationProbeBootstrap = `
+do $$ begin create role anon; exception when duplicate_object then null; end $$;
+do $$ begin create role authenticated; exception when duplicate_object then null; end $$;
+do $$ begin create role service_role; exception when duplicate_object then null; end $$;
+create table public.profiles (id uuid primary key);
+create table public.hermes_contacts (id uuid primary key);
+create table public.hermes_messages (id uuid primary key);
+create function public.is_admin() returns boolean language sql stable as $$ select true $$;
+create function public.set_updated_at() returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+`;
+
+function runContainerCommand(args, options = {}) {
+  return childProcess.spawnSync("docker", ["exec", ...args], {
+    encoding: "utf8",
+    ...options,
+  });
+}
+
+function runProbeSql(container, database, sql) {
+  return runContainerCommand(
+    ["-i", container, "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", database],
+    { input: sql },
+  );
+}
+
 test("the complete Kitty class coordination path is wired and isolated", () => {
   const migration = read("supabase/migrations/20260805120000_add_kitty_class_calendar.sql");
   const service = read("src/lib/hermes/kitty-class-service.ts");
@@ -81,6 +111,42 @@ test("group RPC runtime behavior rejects cross-class enrollments and waits for e
   );
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /kitty group runtime probe passed/);
+});
+
+test("group migration rejects a legacy recurring occurrence with an active scoped teacher", {
+  skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
+}, () => {
+  const container = process.env.KITTY_SCHEMA_TEST_CONTAINER;
+  const database = `kitty_group_migration_probe_${process.pid}`;
+  const predecessor = read("supabase/migrations/20260805120000_add_kitty_class_calendar.sql");
+  const seed = read("src/lib/hermes/kitty-class-group-migration-negative-probe.sql");
+  const migration = read("supabase/migrations/20260805222827_add_kitty_group_classes.sql");
+
+  const droppedBefore = runContainerCommand([container, "dropdb", "--if-exists", "-U", "postgres", database]);
+  assert.equal(droppedBefore.status, 0, `${droppedBefore.stdout}\n${droppedBefore.stderr}`);
+  const created = runContainerCommand([container, "createdb", "-U", "postgres", database]);
+  assert.equal(created.status, 0, `${created.stdout}\n${created.stderr}`);
+
+  try {
+    for (const [label, sql] of [
+      ["bootstrap", migrationProbeBootstrap],
+      ["predecessor migration", predecessor],
+      ["legacy recurring occurrence fixture", seed],
+    ]) {
+      const result = runProbeSql(container, database, sql);
+      assert.equal(result.status, 0, `${label} failed:\n${result.stdout}\n${result.stderr}`);
+    }
+
+    const result = runProbeSql(container, database, migration);
+    assert.notEqual(result.status, 0, "group migration unexpectedly accepted the legacy recurring teacher override");
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /legacy Kitty recurring occurrence .* cannot have an active occurrence-scoped teacher/,
+    );
+  } finally {
+    const droppedAfter = runContainerCommand([container, "dropdb", "--if-exists", "-U", "postgres", database]);
+    assert.equal(droppedAfter.status, 0, `${droppedAfter.stdout}\n${droppedAfter.stderr}`);
+  }
 });
 
 test("rollout remains disabled until every template and staging probe is ready", () => {

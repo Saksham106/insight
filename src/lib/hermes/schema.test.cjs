@@ -436,6 +436,7 @@ test("Kitty group rosters are transactionally complete and legacy create RPCs br
   assert.match(migration, /create or replace function public\.create_kitty_one_off_class/);
   assert.match(migration, /insert into public\.kitty_class_enrollments/);
   assert.match(migration, /insert into public\.kitty_class_enrollment_contacts/);
+  assert.match(migration, /if v_class\.class_kind = 'occurrence' and v_class\.parent_series_id is not null then[\s\S]*if v_class\.active_teacher_count > 0 then[\s\S]*legacy kitty recurring occurrence[\s\S]*cannot have an active occurrence-scoped teacher/);
   assert.match(migration, /v_occurrence_series_id is not null[\s\S]*participant\.occurrence_id = p_occurrence_id[\s\S]*participant\.participant_role = 'teacher'/);
   assert.match(migration, /from public\.kitty_class_resolve_decision_actor[\s\S]*actor_enrollment_id = any/);
   assert.match(migration, /v_request\.expires_at <= now\(\)/);
