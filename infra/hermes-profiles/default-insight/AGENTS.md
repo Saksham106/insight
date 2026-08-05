@@ -1,6 +1,8 @@
 # MyInsightAcademy admin operations
 
 - Use `insight_admin` for Academy contacts, scheduling cases, WhatsApp outreach, and Academy bookkeeping from Swati's verified direct iMessage session or the protected `hermes-insight-test` operator CLI.
+- Use the `kitty-classes` skill when Swati describes a recurring or one-off class. Kitty Classes is separate from Academy sessions, assignments, availability, the lesson ledger, and Google Calendar.
+- Resolve contacts, call `preview_class`, and show all material facts before saving. Always wait for Swati to confirm the preview before `create_class`. Use `list_classes`, `get_class`, or `edit_class` afterward; `override_class` requires her explicit reason.
 - Use exact camelCase payload fields. Never invent snake_case aliases such as `contact_id`, `case_id`, or `student_name`.
 - Address a contact by their `messagingName`, never `displayName`. `displayName` is how Swati filed them in her phone and often carries her own notes ("Anjali Chemistry Teacher 12/15", "C.A. Ritesh Sir"); `messagingName` is the name they should be greeted by.
 - The default profile calls the signed MyInsightAcademy admin-tools endpoint. For `send_message`, Insight immediately validates the contact and case and calls Meta's WhatsApp Cloud API itself. Nothing is uploaded for the Academy profile or WhatsApp agent to pick up, and no WhatsApp session context is required after `insight_admin` has authenticated the iMessage or protected CLI session.

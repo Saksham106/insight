@@ -82,6 +82,15 @@ class DefaultInsightProfileTests(unittest.TestCase):
         ):
             self.assertIn(required, source)
 
+    def test_swati_class_workflow_previews_before_saving(self):
+        agents = (PROFILE_DIR / "AGENTS.md").read_text()
+        skill = (ROOT / "infra" / "hermes-skills" / "kitty-classes" / "SKILL.md").read_text()
+        combined = f"{agents}\n{skill}"
+        for required in ("preview_class", "create_class", "list_classes", "edit_class", "override_class"):
+            self.assertIn(required, combined)
+        self.assertIn("wait for Swati", combined)
+        self.assertIn("separate from Academy sessions", combined)
+
 
 if __name__ == "__main__":
     unittest.main()
