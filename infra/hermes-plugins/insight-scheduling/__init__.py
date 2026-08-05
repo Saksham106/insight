@@ -23,6 +23,10 @@ def register(ctx):
                 "phone number, or channel in payload. "
                 "The response includes notification status. Do not claim Swati was notified unless it reports "
                 "accepted, sent, delivered, read, or duplicate of one of those states."
+                " For class changes first use find_my_classes={referenceDate,query?}; ask the sender to confirm "
+                "the exact occurrence; then use confirm_class_selection={occurrenceId,occurrenceVersion}. Only after "
+                "that confirmation use request_class_change={occurrenceId,occurrenceVersion,changeType,reason?,"
+                "proposedStartsAt?,proposedEndsAt?,proposedTimezone?}. The service notifies only the configured class contacts."
             ),
             "parameters": {
                 "type": "object",
