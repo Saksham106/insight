@@ -171,6 +171,7 @@ create function public.assert_kitty_class_roster(
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v_active_teacher_count integer;
+  v_occurrence_series_id uuid;
 begin
   if p_series_id is not null
     and exists (select 1 from public.kitty_class_series where id = p_series_id)
@@ -193,27 +194,37 @@ begin
     end if;
   end if;
 
-  if p_occurrence_id is not null
-    and exists (
-      select 1 from public.kitty_class_occurrences occurrence
-      where occurrence.id = p_occurrence_id and occurrence.series_id is null
-    )
-  then
-    select count(*) into v_active_teacher_count
-    from public.kitty_class_participants participant
-    where participant.occurrence_id = p_occurrence_id
-      and participant.is_active
-      and participant.participant_role = 'teacher';
-    if v_active_teacher_count <> 1 then
-      raise exception 'kitty_class_requires_exactly_one_active_teacher' using errcode = '23514';
-    end if;
-    if not exists (
-      select 1 from public.kitty_class_enrollments enrollment
-      where enrollment.occurrence_id = p_occurrence_id
-        and enrollment.is_active
-        and (enrollment.active_until is null or enrollment.active_until >= current_date)
-    ) then
-      raise exception 'kitty_class_requires_active_enrollment' using errcode = '23514';
+  if p_occurrence_id is not null then
+    select occurrence.series_id into v_occurrence_series_id
+    from public.kitty_class_occurrences occurrence
+    where occurrence.id = p_occurrence_id;
+    if found and v_occurrence_series_id is not null then
+      if exists (
+        select 1 from public.kitty_class_participants participant
+        where participant.occurrence_id = p_occurrence_id
+          and participant.is_active
+          and participant.participant_role = 'teacher'
+      ) then
+        raise exception 'kitty_class_recurring_occurrence_cannot_override_teacher'
+          using errcode = '23514';
+      end if;
+    elsif found then
+      select count(*) into v_active_teacher_count
+      from public.kitty_class_participants participant
+      where participant.occurrence_id = p_occurrence_id
+        and participant.is_active
+        and participant.participant_role = 'teacher';
+      if v_active_teacher_count <> 1 then
+        raise exception 'kitty_class_requires_exactly_one_active_teacher' using errcode = '23514';
+      end if;
+      if not exists (
+        select 1 from public.kitty_class_enrollments enrollment
+        where enrollment.occurrence_id = p_occurrence_id
+          and enrollment.is_active
+          and (enrollment.active_until is null or enrollment.active_until >= current_date)
+      ) then
+        raise exception 'kitty_class_requires_active_enrollment' using errcode = '23514';
+      end if;
     end if;
   end if;
 end;
