@@ -83,6 +83,19 @@ begin
     raise exception 'legacy enrollment backfill missing';
   end if;
 
+  begin
+    insert into public.kitty_class_participants(
+      occurrence_id, contact_id, participant_role, decision_side,
+      confirms_cancellation, confirms_reschedule
+    ) values (
+      '00000000-0000-0000-0000-000000000401',
+      '00000000-0000-0000-0000-000000000201', 'teacher', 'teacher', true, true
+    );
+    set constraints enforce_kitty_class_roster_on_participants immediate;
+    raise exception 'recurring occurrence accepted an occurrence-scoped teacher';
+  exception when check_violation then null;
+  end;
+
   insert into public.kitty_class_enrollments(
     id, series_id, student_contact_id, active_from
   ) values (
