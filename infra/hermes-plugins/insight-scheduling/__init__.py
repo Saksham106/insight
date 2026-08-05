@@ -27,6 +27,8 @@ def register(ctx):
                 "the exact occurrence; then use confirm_class_selection={occurrenceId,occurrenceVersion}. Only after "
                 "that confirmation use its returned selectionToken in request_class_change={occurrenceId,occurrenceVersion,selectionToken,changeType,reason?,"
                 "proposedStartsAt?,proposedEndsAt?,proposedTimezone?}. The service notifies only the configured class contacts."
+                " For replies about an existing request, call find_my_pending_changes={referenceCode?} before deciding;"
+                " never infer an internal request ID from the short reference code."
             ),
             "parameters": {
                 "type": "object",

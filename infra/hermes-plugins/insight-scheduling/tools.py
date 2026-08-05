@@ -41,6 +41,7 @@ ACTIONS = (
     "confirm_lesson_cycle",
     "reopen_lesson_cycle",
     "find_my_classes",
+    "find_my_pending_changes",
     "confirm_class_selection",
     "request_class_change",
     "decide_class_change",
@@ -48,7 +49,7 @@ ACTIONS = (
 )
 
 CLASS_ACTIONS = frozenset((
-    "find_my_classes", "confirm_class_selection", "request_class_change",
+    "find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change",
     "decide_class_change", "propose_replacement_time",
 ))
 

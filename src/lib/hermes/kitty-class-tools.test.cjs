@@ -10,7 +10,7 @@ test("class tool actions are split between admin and contact authority", () => {
   const tools = read("src/lib/hermes/kitty-class-tools.ts");
   const route = read("src/app/api/hermes/class-tools/route.ts");
   for (const action of ["preview_class", "create_class", "list_classes", "get_class", "edit_class", "override_class"]) assert.ok(tools.includes(`"${action}"`));
-  for (const action of ["find_my_classes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"]) assert.ok(tools.includes(`"${action}"`));
+  for (const action of ["find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"]) assert.ok(tools.includes(`"${action}"`));
   assert.match(route, /verifyServiceRequest/);
   assert.match(route, /parseIMessageAdminActor/);
   assert.match(route, /parseWhatsAppToolActor/);
@@ -25,4 +25,3 @@ test("contact tools cannot create or edit series", () => {
   assert.match(tools, /action_not_allowed/);
   assert.match(tools, /confirmKittyClassSelection/);
 });
-

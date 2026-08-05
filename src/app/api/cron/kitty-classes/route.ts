@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { signServiceRequest } from "@/lib/hermes/auth";
-import { completePastKittyOccurrences, expandDueKittySeries } from "@/lib/hermes/kitty-class-service";
+import { completePastKittyOccurrences, expandDueKittySeries, maintainKittyClassState } from "@/lib/hermes/kitty-class-service";
 import { drainKittyClassNotifications } from "@/lib/hermes/kitty-class-notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -16,6 +16,7 @@ async function maintain(request: Request) {
   const senderSecret = process.env.WHATSAPP_SENDER_SHARED_SECRET;
   if (!senderSecret) return NextResponse.json({ error: "Sender unavailable" }, { status: 503 });
   const client = createAdminClient();
+  const maintenance = await maintainKittyClassState(client);
   const expansion = await expandDueKittySeries(client);
   const completedOccurrences = await completePastKittyOccurrences(client);
   const delivery = await drainKittyClassNotifications(client, async (item) => {
@@ -40,13 +41,15 @@ async function maintain(request: Request) {
       body,
     });
     const responseBody = await result.json().catch(() => ({}));
-    if (!result.ok) return { status: result.status === 409 ? "blocked" as const : "failed" as const, errorCode: typeof responseBody.error === "string" ? responseBody.error : "delivery_failed" };
+    if (!result.ok) return { status: responseBody.blocked === true ? "blocked" as const : "failed" as const, errorCode: typeof responseBody.error === "string" ? responseBody.error : "delivery_failed" };
     return { status: "sent" as const, messageId: typeof responseBody?.message?.id === "string" ? responseBody.message.id : null };
   }, 20);
   return NextResponse.json({
     expandedSeries: expansion.expandedSeries,
     createdOccurrences: expansion.createdOccurrences,
     completedOccurrences,
+    expiredRequests: maintenance?.expiredRequests ?? 0,
+    reclaimedNotifications: maintenance?.reclaimedNotifications ?? 0,
     sentNotifications: delivery.sent,
     failedNotifications: delivery.failed,
     blockedNotifications: delivery.blocked,
@@ -55,4 +58,3 @@ async function maintain(request: Request) {
 
 export const GET = maintain;
 export const POST = maintain;
-

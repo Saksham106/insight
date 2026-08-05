@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
 import { kittyLocalDateTimeToUtc } from "@/lib/hermes/kitty-classes";
-import { createKittyClass, listKittyClasses, type KittyClassParticipantInput } from "@/lib/hermes/kitty-class-service";
+import { createKittyClass, listKittyClasses, retryKittyClassNotification, type KittyClassParticipantInput } from "@/lib/hermes/kitty-class-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function enabled() {
@@ -61,5 +61,19 @@ export async function POST(request: Request) {
       ? "Check the class time and participants."
       : "Could not create the Kitty class.";
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  const profile = await administrator();
+  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  if (!enabled()) return NextResponse.json({ error: "Kitty Classes is not enabled." }, { status: 503 });
+  try {
+    const body = await request.json() as Record<string, unknown>;
+    if (body.action !== "retry_notification" || typeof body.notificationId !== "string") throw new Error("invalid_action");
+    const notification = await retryKittyClassNotification(createAdminClient(), { kind: "admin", profileId: profile.id, channel: "dashboard" }, body.notificationId);
+    return NextResponse.json({ notification });
+  } catch {
+    return NextResponse.json({ error: "This notification could not be retried." }, { status: 400 });
   }
 }

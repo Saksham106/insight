@@ -25,7 +25,7 @@ Coordinate only the isolated Kitty class calendar. Treat Academy sessions, avail
 3. State one exact occurrence with class title, local date, time, and timezone. Ask the sender to confirm it.
 4. After an affirmative reply that clearly refers to that occurrence, call `confirm_class_selection={occurrenceId,occurrenceVersion}`.
 5. Use the returned short-lived `selectionToken` when calling `request_class_change`. Only this confirmed selection can cross the boundary before any counterparty notification.
-6. For a reply to a pending request, use `decide_class_change` with the exact request version and digest. When both sides approve, the service finalizes the change and reserves notices to both sides.
+6. For a reply to a pending request, call `find_my_pending_changes` with the visible reference code when available. Use the returned internal request ID, exact version, and digest with `decide_class_change`. When both sides approve, the service finalizes the change and reserves notices to both sides.
 
 External contacts cannot create classes, edit a series, select recipients, supply an actor, or override a decision. On ambiguity, stale data, missing permission, or a safety concern, stop the mutation and escalate to Swati.
 
@@ -34,10 +34,11 @@ External contacts cannot create classes, edit a series, select recipients, suppl
 | Intent | Action | Required identity facts |
 |---|---|---|
 | Find a class | `find_my_classes` | `referenceDate`, optional query |
+| Find a pending request | `find_my_pending_changes` | optional visible reference code |
 | Confirm selection | `confirm_class_selection` | occurrence ID and version |
 | Cancel/reschedule | `request_class_change` | confirmed occurrence, version, selection token, type |
-| Offer new time | `propose_replacement_time` | confirmed occurrence, exact zoned interval |
-| Agree/reject | `decide_class_change` | request ID, version, digest, occurrence ID |
+| Offer new time | `propose_replacement_time` | request ID, version, digest, exact zoned interval |
+| Agree/reject | `decide_class_change` | request ID, version, digest |
 
 ## Example
 

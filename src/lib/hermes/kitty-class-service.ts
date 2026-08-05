@@ -28,9 +28,17 @@ function dbError(error: { message?: string } | null) {
 
 function validateParticipants(participants: KittyClassParticipantInput[]) {
   if (participants.length < 2 || new Set(participants.map((item) => item.contactId)).size !== participants.length) throw new Error("invalid_participants");
-  if (!participants.some((item) => item.role === "teacher" && item.decisionSide === "teacher")) throw new Error("invalid_participants");
-  if (!participants.some((item) => (item.role === "student" || item.role === "parent_guardian") && item.decisionSide === "student")) throw new Error("invalid_participants");
+  if (participants.filter((item) => item.role === "teacher").length !== 1 || participants.filter((item) => item.role === "student").length !== 1) throw new Error("invalid_participants");
+  const teacher = participants.find((item) => item.role === "teacher");
+  if (!teacher || teacher.decisionSide !== "teacher" || !teacher.receivesNotifications || !teacher.confirmsCancellation || !teacher.confirmsReschedule) throw new Error("invalid_participants");
+  const studentSide = participants.filter((item) => item.role === "student" || item.role === "parent_guardian");
+  if (!studentSide.some((item) => item.decisionSide === "student" && item.confirmsCancellation)) throw new Error("invalid_participants");
+  if (!studentSide.some((item) => item.decisionSide === "student" && item.confirmsReschedule)) throw new Error("invalid_participants");
   if (participants.some((item) => (item.confirmsCancellation || item.confirmsReschedule) && !item.decisionSide)) throw new Error("invalid_participants");
+  if (participants.some((item) =>
+    (item.decisionSide === "teacher" && item.role !== "teacher")
+    || (item.decisionSide === "student" && item.role !== "student" && item.role !== "parent_guardian")
+    || (item.role === "observer" && (item.decisionSide !== null || item.confirmsCancellation || item.confirmsReschedule)))) throw new Error("invalid_participants");
 }
 
 function projectOccurrence(row: Record<string, unknown>) {
@@ -236,7 +244,7 @@ export async function beginKittyClassChange(client: Client, actor: KittyClassAct
   if (!selection) throw new Error("selection_confirmation_required");
   const confirms = input.changeType === "cancel" ? member.confirms_cancellation : member.confirms_reschedule;
   if (!confirms || !member.decision_side) throw new Error("change_not_permitted");
-  const payload = [input.occurrenceId, input.occurrenceVersion, input.changeType, input.proposedStartsAt ?? "", input.proposedEndsAt ?? ""];
+  const payload = [input.occurrenceId, input.occurrenceVersion, input.changeType, input.proposedStartsAt ?? "", input.proposedEndsAt ?? "", input.proposedTimezone ?? ""];
   const digest = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
   const { data, error } = await client.rpc("request_kitty_class_change", {
     p_occurrence_id: input.occurrenceId, p_change_type: input.changeType,
@@ -250,16 +258,13 @@ export async function beginKittyClassChange(client: Client, actor: KittyClassAct
 }
 
 export async function decideKittyClassChange(client: Client, actor: KittyClassActor, input: {
-  requestId: string; requestVersion: number; payloadDigest: string; occurrenceId: string;
+  requestId: string; requestVersion: number; payloadDigest: string;
   decision: "approved" | "rejected"; providerMessageId?: string;
 }) {
   if (actor.kind !== "contact") throw new Error("contact_required");
-  const member = await assertContactMembership(client, input.occurrenceId, actor.contactId);
-  if (!member.decision_side) throw new Error("change_not_permitted");
   const { data, error } = await client.rpc("decide_kitty_class_change", {
     p_request_id: input.requestId, p_request_version: input.requestVersion,
-    p_payload_digest: input.payloadDigest, p_decision_side: member.decision_side,
-    p_decided_by: actor.contactId, p_decision: input.decision,
+    p_payload_digest: input.payloadDigest, p_decided_by: actor.contactId, p_decision: input.decision,
     p_provider_message_id: input.providerMessageId ?? null,
   });
   dbError(error);
@@ -267,11 +272,10 @@ export async function decideKittyClassChange(client: Client, actor: KittyClassAc
 }
 
 export async function proposeKittyClassReplacement(client: Client, actor: KittyClassActor, input: {
-  requestId: string; requestVersion: number; payloadDigest: string; occurrenceId: string;
+  requestId: string; requestVersion: number; payloadDigest: string;
   proposedStartsAt: string; proposedEndsAt: string; proposedTimezone?: string;
 }) {
   if (actor.kind !== "contact") throw new Error("contact_required");
-  await assertContactMembership(client, input.occurrenceId, actor.contactId);
   const newDigest = createHash("sha256").update(JSON.stringify([
     input.requestId, input.requestVersion + 1, input.proposedStartsAt, input.proposedEndsAt, input.proposedTimezone ?? "",
   ])).digest("hex");
@@ -280,6 +284,32 @@ export async function proposeKittyClassReplacement(client: Client, actor: KittyC
     p_payload_digest: input.payloadDigest, p_proposed_by: actor.contactId,
     p_starts_at: input.proposedStartsAt, p_ends_at: input.proposedEndsAt,
     p_timezone: input.proposedTimezone ?? null, p_new_payload_digest: newDigest,
+  });
+  dbError(error);
+  return Array.isArray(data) ? data[0] : data;
+}
+
+export async function findMyPendingKittyChanges(client: Client, actor: KittyClassActor, referenceCode?: string) {
+  if (actor.kind !== "contact") throw new Error("contact_required");
+  const normalizedReference = referenceCode?.replace(/[^a-f0-9]/gi, "").toUpperCase() || null;
+  if (normalizedReference && normalizedReference.length !== 6) throw new Error("invalid_payload");
+  const { data, error } = await client.rpc("find_my_pending_kitty_class_changes", {
+    p_contact_id: actor.contactId, p_reference_code: normalizedReference,
+  });
+  dbError(error);
+  return (data ?? []).map((row: Record<string, unknown>) => ({ ...row, referenceCode: String(row.id).replaceAll("-", "").slice(0, 6).toUpperCase() }));
+}
+
+export async function maintainKittyClassState(client: Client) {
+  const { data, error } = await client.rpc("maintain_kitty_class_state");
+  dbError(error);
+  return data as { expiredRequests?: number; reclaimedNotifications?: number } | null;
+}
+
+export async function retryKittyClassNotification(client: Client, actor: KittyClassActor, notificationId: string) {
+  assertAdmin(actor);
+  const { data, error } = await client.rpc("retry_kitty_class_notification", {
+    p_notification_id: notificationId, p_profile_id: actor.profileId,
   });
   dbError(error);
   return Array.isArray(data) ? data[0] : data;
@@ -318,16 +348,20 @@ async function expandSingleSeries(client: Client, series: Record<string, unknown
     durationMinutes: Number(series.duration_minutes), effectiveStart: String(series.effective_start),
     effectiveEnd: series.effective_end ? String(series.effective_end) : null, fromDate, throughDate: through.toISOString().slice(0, 10),
   });
+  let createdCount = 0;
   if (rows.length) {
-    const { error } = await client.from("kitty_class_occurrences").upsert(rows.map((row) => ({
+    const { data: created, error } = await client.from("kitty_class_occurrences").upsert(rows.map((row) => ({
       series_id: row.seriesId, occurrence_key: row.occurrenceKey, title: row.title, subject: row.subject,
       starts_at: row.startsAt, ends_at: row.endsAt, local_date: row.localDate, timezone: row.timezone,
       origin_channel: "system",
-    })), { onConflict: "occurrence_key", ignoreDuplicates: true });
+    })), { onConflict: "occurrence_key", ignoreDuplicates: true }).select("id");
     dbError(error);
+    createdCount = created?.length ?? 0;
   }
-  await client.from("kitty_class_series").update({ expanded_through: through.toISOString().slice(0, 10) }).eq("id", series.id);
-  return rows.length;
+  const { error: expansionError } = await client.from("kitty_class_series")
+    .update({ expanded_through: through.toISOString().slice(0, 10) }).eq("id", series.id);
+  dbError(expansionError);
+  return createdCount;
 }
 
 export async function expandDueKittySeries(client: Client, now = new Date()) {

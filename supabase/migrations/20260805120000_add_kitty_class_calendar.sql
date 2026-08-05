@@ -1,3 +1,7 @@
+alter table public.hermes_messages
+  add column if not exists provider_payload_digest text
+  check (provider_payload_digest is null or provider_payload_digest ~ '^[a-f0-9]{64}$');
+
 create table public.kitty_class_series (
   id uuid primary key default gen_random_uuid(),
   title text not null check (length(btrim(title)) between 1 and 240),
@@ -60,6 +64,11 @@ create table public.kitty_class_participants (
   updated_at timestamptz not null default now(),
   check (num_nonnulls(series_id, occurrence_id) = 1),
   check ((confirms_cancellation or confirms_reschedule) = false or decision_side is not null),
+  check (
+    (decision_side = 'teacher' and participant_role = 'teacher')
+    or (decision_side = 'student' and participant_role in ('student', 'parent_guardian'))
+    or (decision_side is null and not confirms_cancellation and not confirms_reschedule)
+  ),
   unique nulls not distinct (series_id, occurrence_id, contact_id)
 );
 
@@ -157,16 +166,16 @@ alter table public.kitty_class_change_confirmations enable row level security;
 alter table public.kitty_class_audit_events enable row level security;
 alter table public.kitty_class_notification_outbox enable row level security;
 
-create policy kitty_class_series_admin_all on public.kitty_class_series for all to authenticated
-  using ((select public.is_admin())) with check ((select public.is_admin()));
-create policy kitty_class_occurrences_admin_all on public.kitty_class_occurrences for all to authenticated
-  using ((select public.is_admin())) with check ((select public.is_admin()));
-create policy kitty_class_participants_admin_all on public.kitty_class_participants for all to authenticated
-  using ((select public.is_admin())) with check ((select public.is_admin()));
-create policy kitty_class_change_requests_admin_all on public.kitty_class_change_requests for all to authenticated
-  using ((select public.is_admin())) with check ((select public.is_admin()));
-create policy kitty_class_confirmations_admin_all on public.kitty_class_change_confirmations for all to authenticated
-  using ((select public.is_admin())) with check ((select public.is_admin()));
+create policy kitty_class_series_admin_read on public.kitty_class_series for select to authenticated
+  using ((select public.is_admin()));
+create policy kitty_class_occurrences_admin_read on public.kitty_class_occurrences for select to authenticated
+  using ((select public.is_admin()));
+create policy kitty_class_participants_admin_read on public.kitty_class_participants for select to authenticated
+  using ((select public.is_admin()));
+create policy kitty_class_change_requests_admin_read on public.kitty_class_change_requests for select to authenticated
+  using ((select public.is_admin()));
+create policy kitty_class_confirmations_admin_read on public.kitty_class_change_confirmations for select to authenticated
+  using ((select public.is_admin()));
 
 revoke all on table public.kitty_class_series from anon;
 revoke all on table public.kitty_class_occurrences from anon;
@@ -178,11 +187,11 @@ revoke all on table public.kitty_class_notification_outbox from anon;
 revoke all on table public.kitty_class_audit_events from authenticated;
 revoke all on table public.kitty_class_notification_outbox from authenticated;
 
-grant select, insert, update, delete on table public.kitty_class_series to authenticated;
-grant select, insert, update, delete on table public.kitty_class_occurrences to authenticated;
-grant select, insert, update, delete on table public.kitty_class_participants to authenticated;
-grant select, insert, update, delete on table public.kitty_class_change_requests to authenticated;
-grant select, insert, update, delete on table public.kitty_class_change_confirmations to authenticated;
+grant select on table public.kitty_class_series to authenticated;
+grant select on table public.kitty_class_occurrences to authenticated;
+grant select on table public.kitty_class_participants to authenticated;
+grant select on table public.kitty_class_change_requests to authenticated;
+grant select on table public.kitty_class_change_confirmations to authenticated;
 
 grant all on table public.kitty_class_series to service_role;
 grant all on table public.kitty_class_occurrences to service_role;
@@ -214,8 +223,12 @@ language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_series public.kitty_class_series;
 begin
   if jsonb_typeof(p_participants) <> 'array' or jsonb_array_length(p_participants) < 2 then raise exception 'participants_required'; end if;
-  if not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and item->>'decisionSide' = 'teacher')
-    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student')
+  if (select count(*) from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher') <> 1
+    or (select count(*) from jsonb_array_elements(p_participants) item where item->>'role' = 'student') <> 1
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and item->>'decisionSide' = 'teacher')
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student' and coalesce((item->>'confirmsCancellation')::boolean, false))
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student' and coalesce((item->>'confirmsReschedule')::boolean, false))
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and coalesce((item->>'receivesNotifications')::boolean, true) and coalesce((item->>'confirmsCancellation')::boolean, false) and coalesce((item->>'confirmsReschedule')::boolean, false))
   then raise exception 'participant_sides_required'; end if;
   insert into public.kitty_class_series(
     title, subject, timezone, local_time, duration_minutes, weekdays,
@@ -248,8 +261,12 @@ language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_occurrence public.kitty_class_occurrences;
 begin
   if jsonb_typeof(p_participants) <> 'array' or jsonb_array_length(p_participants) < 2 then raise exception 'participants_required'; end if;
-  if not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and item->>'decisionSide' = 'teacher')
-    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student')
+  if (select count(*) from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher') <> 1
+    or (select count(*) from jsonb_array_elements(p_participants) item where item->>'role' = 'student') <> 1
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and item->>'decisionSide' = 'teacher')
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student' and coalesce((item->>'confirmsCancellation')::boolean, false))
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student' and coalesce((item->>'confirmsReschedule')::boolean, false))
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and coalesce((item->>'receivesNotifications')::boolean, true) and coalesce((item->>'confirmsCancellation')::boolean, false) and coalesce((item->>'confirmsReschedule')::boolean, false))
   then raise exception 'participant_sides_required'; end if;
   insert into public.kitty_class_occurrences(
     occurrence_key, title, subject, starts_at, ends_at, local_date, timezone,
@@ -286,6 +303,7 @@ begin
   if not exists (
     select 1 from public.kitty_class_participants
     where contact_id = p_requested_by and is_active and decision_side = p_requester_side
+      and case when p_change_type = 'cancel' then confirms_cancellation else confirms_reschedule end
       and (occurrence_id = p_occurrence_id or series_id = v_occurrence.series_id)
   ) then raise exception 'participant_required'; end if;
   insert into public.kitty_class_change_requests(
@@ -309,8 +327,11 @@ begin
       jsonb_build_object('occurrenceId', v_occurrence.id),
       'kitty-class:' || v_request.id::text || ':' || participant.contact_id::text || ':' || v_intent
     from public.kitty_class_participants participant
-    where participant.is_active and participant.receives_notifications
-      and participant.decision_side <> p_requester_side
+    where participant.is_active and participant.contact_id <> p_requested_by
+      and (participant.receives_notifications or (
+        participant.decision_side <> p_requester_side
+        and case when p_change_type = 'cancel' then participant.confirms_cancellation else participant.confirms_reschedule end
+      ))
       and (participant.occurrence_id = v_occurrence.id or participant.series_id = v_occurrence.series_id)
     on conflict (idempotency_key) do nothing;
   insert into public.kitty_class_audit_events(actor_type, actor_contact_id, event_type, entity_type, entity_id)
@@ -327,19 +348,20 @@ language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_request public.kitty_class_change_requests; v_occurrence public.kitty_class_occurrences; v_side text;
 begin
   select * into v_request from public.kitty_class_change_requests where id = p_request_id for update;
-  if not found or v_request.change_type <> 'reschedule' or v_request.status <> 'collecting_alternatives' then raise exception 'request_unavailable'; end if;
+  if not found or v_request.change_type <> 'reschedule' or v_request.status <> 'collecting_alternatives' or v_request.expires_at <= now() then raise exception 'request_unavailable'; end if;
   if v_request.version <> p_request_version or v_request.payload_digest <> p_payload_digest then raise exception 'stale_change_request'; end if;
   if p_starts_at is null or p_ends_at <= p_starts_at then raise exception 'replacement_time_required'; end if;
   select * into v_occurrence from public.kitty_class_occurrences where id = v_request.occurrence_id for update;
   select participant.decision_side into v_side from public.kitty_class_participants participant
-    where participant.contact_id = p_proposed_by and participant.is_active and participant.decision_side is not null
+    where participant.contact_id = p_proposed_by and participant.is_active
+      and participant.decision_side is not null and participant.confirms_reschedule
       and (participant.occurrence_id = v_occurrence.id or participant.series_id = v_occurrence.series_id)
     limit 1;
   if v_side is null then raise exception 'participant_required'; end if;
   update public.kitty_class_change_requests set
     proposed_starts_at = p_starts_at, proposed_ends_at = p_ends_at,
     proposed_timezone = coalesce(p_timezone, v_occurrence.timezone),
-    status = 'awaiting_counterparty', version = version + 1,
+    status = 'awaiting_counterparty', requester_side = v_side, version = version + 1,
     payload_digest = p_new_payload_digest
     where id = v_request.id returning * into v_request;
   insert into public.kitty_class_change_confirmations(
@@ -351,7 +373,8 @@ begin
       jsonb_build_object('occurrenceId', v_occurrence.id),
       'kitty-class:' || v_request.id::text || ':' || v_request.version::text || ':' || participant.contact_id::text || ':class_change_proposal'
     from public.kitty_class_participants participant
-    where participant.is_active and participant.receives_notifications and participant.decision_side <> v_side
+    where participant.is_active and participant.contact_id <> p_proposed_by
+      and (participant.receives_notifications or (participant.decision_side <> v_side and participant.confirms_reschedule))
       and (participant.occurrence_id = v_occurrence.id or participant.series_id = v_occurrence.series_id)
     on conflict (idempotency_key) do nothing;
   insert into public.kitty_class_audit_events(actor_type, actor_contact_id, event_type, entity_type, entity_id)
@@ -361,20 +384,29 @@ end; $$;
 
 create function public.decide_kitty_class_change(
   p_request_id uuid, p_request_version integer, p_payload_digest text,
-  p_decision_side text, p_decided_by uuid, p_decision text, p_provider_message_id text
+  p_decided_by uuid, p_decision text, p_provider_message_id text
 ) returns public.kitty_class_change_requests
 language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_request public.kitty_class_change_requests; v_approved integer;
+declare v_request public.kitty_class_change_requests; v_occurrence public.kitty_class_occurrences; v_decision_side text; v_approved integer;
 begin
   select * into v_request from public.kitty_class_change_requests where id = p_request_id for update;
-  if not found or v_request.status not in ('awaiting_counterparty', 'collecting_alternatives') then raise exception 'request_unavailable'; end if;
+  if not found or v_request.status not in ('awaiting_counterparty', 'collecting_alternatives') or v_request.expires_at <= now() then raise exception 'request_unavailable'; end if;
   if v_request.version <> p_request_version or v_request.payload_digest <> p_payload_digest then raise exception 'stale_change_request'; end if;
   if p_decision not in ('approved', 'rejected') then raise exception 'invalid_decision'; end if;
+  select * into v_occurrence from public.kitty_class_occurrences where id = v_request.occurrence_id for update;
+  select participant.decision_side into v_decision_side
+  from public.kitty_class_participants participant
+  where participant.contact_id = p_decided_by and participant.is_active
+    and participant.decision_side is not null
+    and case when v_request.change_type = 'cancel' then participant.confirms_cancellation else participant.confirms_reschedule end
+    and (participant.occurrence_id = v_occurrence.id or participant.series_id = v_occurrence.series_id)
+  limit 1;
+  if v_decision_side is null or v_decision_side = v_request.requester_side then raise exception 'decision_not_permitted'; end if;
   insert into public.kitty_class_change_confirmations(
     change_request_id, request_version, decision_side, decided_by_contact_id,
     decision, payload_digest, source_channel, provider_message_id, decided_at
   ) values (
-    v_request.id, v_request.version, p_decision_side, p_decided_by,
+    v_request.id, v_request.version, v_decision_side, p_decided_by,
     p_decision, p_payload_digest, 'whatsapp', p_provider_message_id, now()
   ) on conflict (change_request_id, request_version, decision_side) do update set
     decided_by_contact_id = excluded.decided_by_contact_id, decision = excluded.decision,
@@ -395,8 +427,9 @@ begin
     select count(distinct decision_side) into v_approved
     from public.kitty_class_change_confirmations
     where change_request_id = v_request.id and request_version = v_request.version and decision = 'approved';
-    if v_approved = 2 then
+  if v_approved = 2 then
       update public.kitty_class_change_requests set status = 'ready_to_finalize' where id = v_request.id returning * into v_request;
+      select public.finalize_kitty_class_change(v_request.id, v_request.version, v_request.payload_digest) into v_request;
     end if;
   end if;
   insert into public.kitty_class_audit_events(actor_type, actor_contact_id, event_type, entity_type, entity_id)
@@ -411,7 +444,7 @@ language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_request public.kitty_class_change_requests; v_occurrence public.kitty_class_occurrences; v_replacement public.kitty_class_occurrences; v_intent text;
 begin
   select * into v_request from public.kitty_class_change_requests where id = p_request_id for update;
-  if not found or v_request.status <> 'ready_to_finalize' then raise exception 'request_not_ready'; end if;
+  if not found or v_request.status <> 'ready_to_finalize' or v_request.expires_at <= now() then raise exception 'request_not_ready'; end if;
   if v_request.version <> p_request_version or v_request.payload_digest <> p_payload_digest then raise exception 'stale_change_request'; end if;
   select * into v_occurrence from public.kitty_class_occurrences where id = v_request.occurrence_id for update;
   if v_request.change_type = 'cancel' then
@@ -495,18 +528,96 @@ begin
   return v_occurrence;
 end; $$;
 
+create function public.maintain_kitty_class_state()
+returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_request record; v_notification record; v_expired integer := 0; v_reclaimed integer := 0;
+begin
+  for v_request in
+    update public.kitty_class_change_requests
+      set status = 'expired', finalized_at = now()
+      where expires_at <= now()
+        and status in ('awaiting_requester_confirmation', 'awaiting_counterparty', 'collecting_alternatives', 'ready_to_finalize')
+      returning id, occurrence_id
+  loop
+    update public.kitty_class_occurrences
+      set status = 'scheduled', version = version + 1
+      where id = v_request.occurrence_id and status = 'change_requested';
+    insert into public.kitty_class_audit_events(actor_type, event_type, entity_type, entity_id)
+      values ('system', 'change_expired', 'change_request', v_request.id);
+    v_expired := v_expired + 1;
+  end loop;
+
+  for v_notification in
+    update public.kitty_class_notification_outbox
+      set status = 'failed', available_at = now(), last_error_code = 'stale_sending_lease'
+      where status = 'sending' and updated_at < now() - interval '10 minutes'
+      returning id
+  loop
+    insert into public.kitty_class_audit_events(actor_type, event_type, entity_type, entity_id)
+      values ('system', 'notification_lease_reclaimed', 'notification', v_notification.id);
+    v_reclaimed := v_reclaimed + 1;
+  end loop;
+  return jsonb_build_object('expiredRequests', v_expired, 'reclaimedNotifications', v_reclaimed);
+end; $$;
+
+create function public.find_my_pending_kitty_class_changes(p_contact_id uuid, p_reference_code text default null)
+returns table (
+  id uuid, occurrence_id uuid, change_type text, status text,
+  proposed_starts_at timestamptz, proposed_ends_at timestamptz,
+  proposed_timezone text, payload_digest text, version integer, expires_at timestamptz
+)
+language sql stable security definer set search_path = public, pg_temp as $$
+  select request.id, request.occurrence_id, request.change_type, request.status,
+    request.proposed_starts_at, request.proposed_ends_at, request.proposed_timezone,
+    request.payload_digest, request.version, request.expires_at
+  from public.kitty_class_change_requests request
+  join public.kitty_class_occurrences occurrence on occurrence.id = request.occurrence_id
+  where request.status in ('awaiting_counterparty', 'collecting_alternatives', 'ready_to_finalize')
+    and request.expires_at > now()
+    and (p_reference_code is null or upper(left(replace(request.id::text, '-', ''), 6)) = upper(p_reference_code))
+    and exists (
+      select 1 from public.kitty_class_participants participant
+      where participant.contact_id = p_contact_id and participant.is_active
+        and (participant.occurrence_id = occurrence.id or participant.series_id = occurrence.series_id)
+    )
+  order by request.created_at desc
+  limit 20
+$$;
+
+create function public.retry_kitty_class_notification(p_notification_id uuid, p_profile_id uuid)
+returns public.kitty_class_notification_outbox
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_notification public.kitty_class_notification_outbox;
+begin
+  update public.kitty_class_notification_outbox
+    set status = 'pending', attempt_count = 0, available_at = now(), last_error_code = null
+    where id = p_notification_id and status in ('failed', 'blocked')
+    returning * into v_notification;
+  if not found then raise exception 'notification_not_retryable'; end if;
+  insert into public.kitty_class_audit_events(actor_type, actor_profile_id, event_type, entity_type, entity_id)
+    values ('admin', p_profile_id, 'notification_retry_requested', 'notification', p_notification_id);
+  return v_notification;
+end; $$;
+
 revoke execute on function public.create_kitty_class_series(text, text, text, time, integer, smallint[], date, date, text, uuid, jsonb) from public, anon, authenticated;
 revoke execute on function public.create_kitty_one_off_class(text, text, timestamptz, timestamptz, date, text, text, uuid, text, jsonb) from public, anon, authenticated;
 revoke execute on function public.request_kitty_class_change(uuid, text, uuid, text, text, timestamptz, timestamptz, text, text) from public, anon, authenticated;
 revoke execute on function public.propose_kitty_class_replacement(uuid, integer, text, uuid, timestamptz, timestamptz, text, text) from public, anon, authenticated;
-revoke execute on function public.decide_kitty_class_change(uuid, integer, text, text, uuid, text, text) from public, anon, authenticated;
+revoke execute on function public.decide_kitty_class_change(uuid, integer, text, uuid, text, text) from public, anon, authenticated;
 revoke execute on function public.finalize_kitty_class_change(uuid, integer, text) from public, anon, authenticated;
 revoke execute on function public.override_kitty_class_occurrence(uuid, text, text, uuid, timestamptz, timestamptz, text) from public, anon, authenticated;
+revoke execute on function public.maintain_kitty_class_state() from public, anon, authenticated;
+revoke execute on function public.find_my_pending_kitty_class_changes(uuid, text) from public, anon, authenticated;
+revoke execute on function public.retry_kitty_class_notification(uuid, uuid) from public, anon, authenticated;
 
 grant execute on function public.create_kitty_class_series(text, text, text, time, integer, smallint[], date, date, text, uuid, jsonb) to service_role;
 grant execute on function public.create_kitty_one_off_class(text, text, timestamptz, timestamptz, date, text, text, uuid, text, jsonb) to service_role;
 grant execute on function public.request_kitty_class_change(uuid, text, uuid, text, text, timestamptz, timestamptz, text, text) to service_role;
 grant execute on function public.propose_kitty_class_replacement(uuid, integer, text, uuid, timestamptz, timestamptz, text, text) to service_role;
-grant execute on function public.decide_kitty_class_change(uuid, integer, text, text, uuid, text, text) to service_role;
+grant execute on function public.decide_kitty_class_change(uuid, integer, text, uuid, text, text) to service_role;
 grant execute on function public.finalize_kitty_class_change(uuid, integer, text) to service_role;
 grant execute on function public.override_kitty_class_occurrence(uuid, text, text, uuid, timestamptz, timestamptz, text) to service_role;
+grant execute on function public.maintain_kitty_class_state() to service_role;
+grant execute on function public.find_my_pending_kitty_class_changes(uuid, text) to service_role;
+grant execute on function public.retry_kitty_class_notification(uuid, uuid) to service_role;
