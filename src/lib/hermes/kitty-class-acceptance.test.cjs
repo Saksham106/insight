@@ -37,6 +37,17 @@ test("the complete Kitty class coordination path is wired and isolated", () => {
   }
 });
 
+test("the Kitty group-class foundation preserves legacy classes without guessing family relationships", () => {
+  const migration = read("supabase/migrations/20260805222827_add_kitty_group_classes.sql").toLowerCase();
+
+  assert.match(migration, /insert into public\.kitty_class_enrollments/);
+  assert.match(migration, /participant_role = 'student'/);
+  assert.match(migration, /raise exception[\s\S]*(?:zero|multiple|exactly one)[\s\S]*legacy student/);
+  assert.match(migration, /participant_role = 'parent_guardian'/);
+  assert.match(migration, /required_enrollment_ids uuid\[\] not null/);
+  assert.match(migration, /unique \(change_request_id, request_version, enrollment_id\)/);
+});
+
 test("rollout remains disabled until every template and staging probe is ready", () => {
   const env = read(".env.example");
   const readme = read("infra/hermes-profiles/academy/README.md");
