@@ -15,6 +15,9 @@ test("classes panel exposes the isolated class views and configurable participan
   assert.match(source, /\/api\/admin\/hermes\/classes/);
   assert.match(source, /name="studentId"/);
   assert.match(source, /name="parentId"/);
-  assert.match(source, /Choose a student, a parent, or both/);
+  assert.match(source, /Choose the student for this class/);
+  assert.match(source, /name="studentId" required/);
+  assert.match(source, /Retry notification/);
+  assert.match(source, /retry_notification/);
   assert.doesNotMatch(source, /\/api\/sessions/);
 });

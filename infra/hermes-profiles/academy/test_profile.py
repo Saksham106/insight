@@ -167,7 +167,7 @@ class AcademyProfileTests(unittest.TestCase):
         skill = (PROFILE_DIR.parents[1] / "hermes-skills" / "kitty-classes" / "SKILL.md").read_text()
         combined = f"{agents}\n{skill}"
         for required in (
-            "find_my_classes", "confirm_class_selection", "request_class_change",
+            "find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change",
             "decide_class_change", "propose_replacement_time",
         ):
             self.assertIn(required, combined)

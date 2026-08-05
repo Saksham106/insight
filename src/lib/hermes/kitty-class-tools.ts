@@ -7,7 +7,7 @@ import {
   createKittyClass,
   decideKittyClassChange,
   editKittyClass,
-  finalizeKittyClassChange,
+  findMyPendingKittyChanges,
   getKittyClassOccurrence,
   listKittyClasses,
   overrideKittyClass,
@@ -17,7 +17,7 @@ import {
 } from "./kitty-class-service";
 
 export const ADMIN_CLASS_ACTIONS = ["preview_class", "create_class", "list_classes", "get_class", "edit_class", "override_class"] as const;
-export const CONTACT_CLASS_ACTIONS = ["find_my_classes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"] as const;
+export const CONTACT_CLASS_ACTIONS = ["find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"] as const;
 export type KittyClassToolAction = (typeof ADMIN_CLASS_ACTIONS)[number] | (typeof CONTACT_CLASS_ACTIONS)[number];
 
 type Payload = Record<string, unknown>;
@@ -82,6 +82,7 @@ export async function executeKittyClassTool(client: SupabaseClient, actor: Kitty
       const classes = await listKittyClasses(client, actor, { view: "upcoming", limit: 100 });
       return { classes: matchKittyOccurrences({ candidates: classes as Parameters<typeof matchKittyOccurrences>[0]["candidates"], referenceDate: text(payload, "referenceDate"), query: typeof payload.query === "string" ? payload.query : "", limit: 5 }), requiresSelectionConfirmation: true };
     }
+    case "find_my_pending_changes": return { changeRequests: await findMyPendingKittyChanges(client, actor, typeof payload.referenceCode === "string" ? payload.referenceCode : undefined) };
     case "confirm_class_selection": return { confirmation: await confirmKittyClassSelection(client, actor, { occurrenceId: text(payload, "occurrenceId"), version: number(payload, "occurrenceVersion") }), confirmed: true };
     case "request_class_change": {
       const occurrenceId = text(payload, "occurrenceId");
@@ -97,21 +98,18 @@ export async function executeKittyClassTool(client: SupabaseClient, actor: Kitty
     }
     case "propose_replacement_time": return { changeRequest: await proposeKittyClassReplacement(client, actor, {
       requestId: text(payload, "requestId"), requestVersion: number(payload, "requestVersion"),
-      payloadDigest: text(payload, "payloadDigest"), occurrenceId: text(payload, "occurrenceId"),
+      payloadDigest: text(payload, "payloadDigest"),
       proposedStartsAt: text(payload, "proposedStartsAt"), proposedEndsAt: text(payload, "proposedEndsAt"),
       proposedTimezone: typeof payload.proposedTimezone === "string" ? payload.proposedTimezone : undefined,
     }), counterpartyNotificationReserved: true };
     case "decide_class_change": {
       const decided = await decideKittyClassChange(client, actor, {
         requestId: text(payload, "requestId"), requestVersion: number(payload, "requestVersion"),
-        payloadDigest: text(payload, "payloadDigest"), occurrenceId: text(payload, "occurrenceId"),
+        payloadDigest: text(payload, "payloadDigest"),
         decision: payload.decision === "approved" ? "approved" : "rejected",
         providerMessageId: typeof payload.providerMessageId === "string" ? payload.providerMessageId : undefined,
       });
-      const finalized = decided.status === "ready_to_finalize"
-        ? await finalizeKittyClassChange(client, { requestId: decided.id, requestVersion: decided.version, payloadDigest: decided.payload_digest })
-        : null;
-      return { changeRequest: finalized ?? decided, finalNotificationsReserved: Boolean(finalized) };
+      return { changeRequest: decided, finalNotificationsReserved: decided.status === "finalized" };
     }
   }
 }

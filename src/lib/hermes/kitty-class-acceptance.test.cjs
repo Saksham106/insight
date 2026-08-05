@@ -19,7 +19,14 @@ test("the complete Kitty class coordination path is wired and isolated", () => {
   assert.match(service, /occurrence_selection_confirmed/);
   assert.match(service, /selectionTokenDigest/);
   assert.match(migration, /participant\.decision_side <> p_requester_side/);
+  assert.match(migration, /v_decision_side is null or v_decision_side = v_request\.requester_side/);
+  assert.match(migration, /confirms_cancellation else participant\.confirms_reschedule/);
+  assert.match(migration, /maintain_kitty_class_state/);
+  assert.match(migration, /returns table \([\s\S]*payload_digest text, version integer, expires_at timestamptz/);
   assert.match(migration, /v_approved = 2/);
+  assert.match(migration, /select public\.finalize_kitty_class_change\(v_request\.id, v_request\.version, v_request\.payload_digest\) into v_request/);
+  assert.match(migration, /decision_side = 'teacher' and participant_role = 'teacher'/);
+  assert.match(migration, /decision_side = 'student' and participant_role in \('student', 'parent_guardian'\)/);
   assert.match(migration, /class_cancelled/);
   assert.match(migration, /class_rescheduled/);
   assert.match(migration, /on conflict \(idempotency_key\) do nothing/);

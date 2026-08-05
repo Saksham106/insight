@@ -37,6 +37,7 @@ export default async function HermesAdminPage({
     lessonResult,
     classOccurrences,
     classSeries,
+    classNotificationIssues,
   ] =
     await Promise.all([
       supabase
@@ -80,6 +81,12 @@ export default async function HermesAdminPage({
         .from("kitty_class_series")
         .select("id, title, weekdays, local_time, timezone, status")
         .order("title"),
+      supabase
+        .from("kitty_class_notification_outbox")
+        .select("id, occurrence_id, status, last_error_code, updated_at")
+        .in("status", ["failed", "blocked"])
+        .order("updated_at", { ascending: false })
+        .limit(50),
     ]);
 
   // The query above returns active and removed contacts together so the
@@ -132,9 +139,10 @@ export default async function HermesAdminPage({
         lessonResult.error ? "Lesson ledger temporarily unavailable." : null
       }
       settlements={settlements.data ?? []}
-      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error ? "Some Kitty information could not be loaded." : null}
+      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error || classOccurrences.error || classSeries.error || classNotificationIssues.error ? "Some Kitty information could not be loaded." : null}
       classOccurrences={classOccurrences.data ?? []}
       classSeries={classSeries.data ?? []}
+      classNotificationIssues={classNotificationIssues.data ?? []}
       classCalendarEnabled={process.env.KITTY_CLASS_CALENDAR_ENABLED === "true"}
     />
   );

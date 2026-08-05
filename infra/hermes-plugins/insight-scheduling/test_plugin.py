@@ -94,7 +94,7 @@ class PluginTests(unittest.TestCase):
         self.assertIn("Do not claim", source)
 
     def test_exposes_confirmation_first_class_change_actions(self):
-        for action in ("find_my_classes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"):
+        for action in ("find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"):
             self.assertIn(action, self.tools.ACTIONS)
         source = (PLUGIN_DIR / "__init__.py").read_text()
         self.assertLess(source.index("find_my_classes"), source.index("confirm_class_selection"))

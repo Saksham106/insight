@@ -38,6 +38,7 @@ interface HermesAssistantDashboardProps {
   loadError: string | null;
   classOccurrences: Array<{ id: string; series_id: string | null; title: string; subject: string | null; starts_at: string; ends_at: string; timezone: string; status: string; version: number }>;
   classSeries: Array<{ id: string; title: string; weekdays: number[]; local_time: string; timezone: string; status: string }>;
+  classNotificationIssues: Array<{ id: string; occurrence_id: string; status: string; last_error_code: string | null; updated_at: string }>;
   classCalendarEnabled: boolean;
 }
 
@@ -65,6 +66,7 @@ export function HermesAssistantDashboard({
   loadError,
   classOccurrences,
   classSeries,
+  classNotificationIssues,
   classCalendarEnabled,
 }: HermesAssistantDashboardProps) {
   const attentionContacts = contacts.filter((contact) =>
@@ -175,7 +177,7 @@ export function HermesAssistantDashboard({
 
       {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} /> : null}
 
-      {tab === "classes" ? <HermesClassesPanel classes={classOccurrences} series={classSeries} contacts={contacts} enabled={classCalendarEnabled} /> : null}
+      {tab === "classes" ? <HermesClassesPanel classes={classOccurrences} series={classSeries} contacts={contacts} notificationIssues={classNotificationIssues} enabled={classCalendarEnabled} /> : null}
     </div>
   );
 }

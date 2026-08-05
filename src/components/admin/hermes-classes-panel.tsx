@@ -20,6 +20,7 @@ type ClassOccurrence = {
 
 type ClassSeries = { id: string; title: string; weekdays: number[]; local_time: string; timezone: string; status: string };
 type Contact = { id: string; display_name: string; role: string };
+type NotificationIssue = { id: string; occurrence_id: string; status: string; last_error_code: string | null; updated_at: string };
 type View = "upcoming" | "attention" | "recurring" | "history";
 
 const VIEW_LABELS: Array<[View, string]> = [
@@ -31,10 +32,11 @@ const VIEW_LABELS: Array<[View, string]> = [
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-export function HermesClassesPanel({ classes, series, contacts, enabled }: {
+export function HermesClassesPanel({ classes, series, contacts, notificationIssues, enabled }: {
   classes: ClassOccurrence[];
   series: ClassSeries[];
   contacts: Contact[];
+  notificationIssues: NotificationIssue[];
   enabled: boolean;
 }) {
   const router = useRouter();
@@ -48,6 +50,20 @@ export function HermesClassesPanel({ classes, series, contacts, enabled }: {
     return classes.filter((item) => ["scheduled", "change_requested"].includes(item.status));
   }, [classes, view]);
 
+  async function retryNotification(notificationId: string) {
+    setPending(true);
+    setMessage(null);
+    const response = await fetch("/api/admin/hermes/classes", {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "retry_notification", notificationId }),
+    });
+    const result = await response.json();
+    setPending(false);
+    if (!response.ok) return setMessage(result.error ?? "Could not retry notification.");
+    setMessage("Notification queued for a safe retry.");
+    router.refresh();
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -56,9 +72,9 @@ export function HermesClassesPanel({ classes, series, contacts, enabled }: {
     const teacherId = String(form.get("teacherId") ?? "");
     const studentId = String(form.get("studentId") ?? "");
     const parentId = String(form.get("parentId") ?? "");
-    if (!studentId && !parentId) {
+    if (!studentId) {
       setPending(false);
-      setMessage("Choose a student, a parent, or both.");
+      setMessage("Choose the student for this class. You can still make the parent the only contact who receives or confirms updates.");
       return;
     }
     const participants = [
@@ -109,6 +125,19 @@ export function HermesClassesPanel({ classes, series, contacts, enabled }: {
         ))}
       </div>
 
+      {view === "attention" && notificationIssues.length ? (
+        <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+          {notificationIssues.map((issue) => {
+            const occurrence = classes.find((item) => item.id === issue.occurrence_id);
+            return <article key={issue.id} className="border border-border" style={{ borderRadius: 10, padding: 14 }}>
+              <strong>{occurrence?.title ?? "Class notification"}</strong>
+              <p className="text-sm text-muted">Delivery {issue.status}: {issue.last_error_code ?? "unknown error"}</p>
+              <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => retryNotification(issue.id)}>Retry notification</button>
+            </article>;
+          })}
+        </div>
+      ) : null}
+
       {view === "recurring" ? (
         series.length ? <div style={{ display: "grid", gap: 10 }}>{series.map((item) => (
           <article key={item.id} className="border border-border" style={{ borderRadius: 10, padding: 14 }}>
@@ -147,14 +176,14 @@ export function HermesClassesPanel({ classes, series, contacts, enabled }: {
             <label className="text-sm">Duration (minutes)<input className="input" type="number" min="5" max="1440" name="durationMinutes" defaultValue="60" required /></label>
             <label className="text-sm">Teacher<select className="input" name="teacherId" required><option value="">Select teacher</option>{contacts.filter((c) => c.role === "teacher").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
             <fieldset className="border border-border" style={{ borderRadius: 10, padding: 12 }}>
-              <legend className="text-sm font-semibold">Student contact (optional when a parent is selected)</legend>
-              <label className="text-sm">Student<select className="input" name="studentId"><option value="">No student contact</option>{contacts.filter((c) => c.role === "student").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
+              <legend className="text-sm font-semibold">Student</legend>
+              <label className="text-sm">Student<select className="input" name="studentId" required><option value="">Select student</option>{contacts.filter((c) => c.role === "student").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
               <label><input type="checkbox" name="studentReceivesUpdates" defaultChecked /> Receives updates</label>
               <label><input type="checkbox" name="studentConfirmsCancellation" defaultChecked /> Confirms cancellations</label>
               <label><input type="checkbox" name="studentConfirmsReschedule" defaultChecked /> Confirms reschedules</label>
             </fieldset>
             <fieldset className="border border-border" style={{ borderRadius: 10, padding: 12 }}>
-              <legend className="text-sm font-semibold">Parent contact (optional when a student is selected)</legend>
+              <legend className="text-sm font-semibold">Parent contact (optional)</legend>
               <label className="text-sm">Parent<select className="input" name="parentId"><option value="">No parent contact</option>{contacts.filter((c) => c.role === "parent").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
               <label><input type="checkbox" name="parentReceivesUpdates" defaultChecked /> Receives updates</label>
               <label><input type="checkbox" name="parentConfirmsCancellation" defaultChecked /> Confirms cancellations</label>
