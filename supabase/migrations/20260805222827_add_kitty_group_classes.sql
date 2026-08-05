@@ -33,6 +33,7 @@ declare
 begin
   for v_class in
     select 'series'::text as class_kind, series.id as class_id,
+      null::uuid as parent_series_id,
       count(participant.id) filter (
         where participant.is_active and participant.participant_role = 'student'
       ) as active_student_count,
@@ -45,7 +46,7 @@ begin
     left join public.kitty_class_participants participant on participant.series_id = series.id
     group by series.id
     union all
-    select 'occurrence'::text, occurrence.id,
+    select 'occurrence'::text, occurrence.id, occurrence.series_id,
       count(participant.id) filter (
         where participant.is_active and participant.participant_role = 'student'
       ),
@@ -64,13 +65,18 @@ begin
       )
     group by occurrence.id
   loop
+    if v_class.class_kind = 'occurrence' and v_class.parent_series_id is not null then
+      if v_class.active_teacher_count > 0 then
+        raise exception 'legacy Kitty recurring occurrence % cannot have an active occurrence-scoped teacher',
+          v_class.class_id;
+      end if;
+    elsif v_class.active_teacher_count <> 1 then
+      raise exception 'legacy Kitty class % % must have exactly one active legacy teacher; found %',
+        v_class.class_kind, v_class.class_id, v_class.active_teacher_count;
+    end if;
     if v_class.student_count <> 1 then
       raise exception 'legacy Kitty class % % must have exactly one legacy student in total; found %',
         v_class.class_kind, v_class.class_id, v_class.student_count;
-    end if;
-    if v_class.active_teacher_count <> 1 then
-      raise exception 'legacy Kitty class % % must have exactly one active legacy teacher; found %',
-        v_class.class_kind, v_class.class_id, v_class.active_teacher_count;
     end if;
     if v_class.active_student_count <> 1 then
       raise exception 'legacy Kitty class % % must have exactly one active legacy student; found %',
