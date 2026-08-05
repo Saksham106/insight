@@ -1,5 +1,17 @@
 import { createHash } from "node:crypto";
 
+export {
+  projectKittyClassRoster,
+  requiredEnrollmentApprovalIds,
+  validateKittyEnrollments,
+} from "./kitty-class-enrollments";
+export type {
+  KittyEnrollmentContactInput,
+  KittyEnrollmentInput,
+  KittyEnrollmentProjection,
+  KittyEnrollmentRosterActor,
+} from "./kitty-class-enrollments";
+
 export type KittyWeeklyRecurrence = {
   frequency: "weekly";
   weekdays: number[];
