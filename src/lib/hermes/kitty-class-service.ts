@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { expandKittySeries, parseKittyRecurrence } from "./kitty-classes";
@@ -24,6 +24,13 @@ function assertAdmin(actor: KittyClassActor): asserts actor is Extract<KittyClas
 
 function dbError(error: { message?: string } | null) {
   if (error) throw new Error("kitty_class_operation_failed");
+}
+
+function validateParticipants(participants: KittyClassParticipantInput[]) {
+  if (participants.length < 2 || new Set(participants.map((item) => item.contactId)).size !== participants.length) throw new Error("invalid_participants");
+  if (!participants.some((item) => item.role === "teacher" && item.decisionSide === "teacher")) throw new Error("invalid_participants");
+  if (!participants.some((item) => (item.role === "student" || item.role === "parent_guardian") && item.decisionSide === "student")) throw new Error("invalid_participants");
+  if (participants.some((item) => (item.confirmsCancellation || item.confirmsReschedule) && !item.decisionSide)) throw new Error("invalid_participants");
 }
 
 function projectOccurrence(row: Record<string, unknown>) {
@@ -148,7 +155,8 @@ export async function createKittyClass(client: Client, actor: KittyClassActor, i
   participants: KittyClassParticipantInput[];
 }) {
   assertAdmin(actor);
-  if (!input.title.trim() || input.participants.length < 2) throw new Error("invalid_class");
+  if (!input.title.trim()) throw new Error("invalid_class");
+  validateParticipants(input.participants);
   if (input.kind === "one_off") {
     if (!input.startsAt || !input.endsAt || !input.localDate) throw new Error("invalid_class");
     const key = `one-off:${createHash("sha256").update(`${input.title}:${input.startsAt}`).digest("hex")}`;
@@ -156,13 +164,10 @@ export async function createKittyClass(client: Client, actor: KittyClassActor, i
       p_title: input.title, p_subject: input.subject ?? null, p_starts_at: input.startsAt,
       p_ends_at: input.endsAt, p_local_date: input.localDate, p_timezone: input.timezone,
       p_origin_channel: actor.channel, p_created_by: actor.profileId, p_occurrence_key: key,
+      p_participants: input.participants,
     });
     dbError(error);
     const occurrence = Array.isArray(data) ? data[0] : data;
-    const { error: participantError } = await client.from("kitty_class_participants").insert(
-      input.participants.map((participant) => participantRow(participant, { occurrence_id: occurrence.id })),
-    );
-    dbError(participantError);
     return projectOccurrence(occurrence);
   }
 
@@ -173,28 +178,12 @@ export async function createKittyClass(client: Client, actor: KittyClassActor, i
     p_local_time: recurrence.localTime, p_duration_minutes: input.durationMinutes,
     p_weekdays: recurrence.weekdays, p_effective_start: input.effectiveStart,
     p_effective_end: input.effectiveEnd ?? null, p_origin_channel: actor.channel,
-    p_created_by: actor.profileId,
+    p_created_by: actor.profileId, p_participants: input.participants,
   });
   dbError(error);
   const series = Array.isArray(data) ? data[0] : data;
-  const { error: participantError } = await client.from("kitty_class_participants").insert(
-    input.participants.map((participant) => participantRow(participant, { series_id: series.id })),
-  );
-  dbError(participantError);
   await expandSingleSeries(client, series, new Date());
   return { id: series.id, kind: "weekly", version: series.version };
-}
-
-function participantRow(participant: KittyClassParticipantInput, owner: { series_id?: string; occurrence_id?: string }) {
-  return {
-    ...owner,
-    contact_id: participant.contactId,
-    participant_role: participant.role,
-    receives_notifications: participant.receivesNotifications,
-    confirms_cancellation: participant.confirmsCancellation,
-    confirms_reschedule: participant.confirmsReschedule,
-    decision_side: participant.decisionSide,
-  };
 }
 
 export async function editKittyClass(client: Client, actor: KittyClassActor, input: {
@@ -217,17 +206,34 @@ export async function confirmKittyClassSelection(client: Client, actor: KittyCla
   await assertContactMembership(client, input.occurrenceId, actor.contactId);
   const occurrence = await getKittyClassOccurrence(client, actor, input.occurrenceId);
   if (occurrence.version !== input.version || !["scheduled", "change_requested"].includes(occurrence.status)) throw new Error("stale_class");
-  return occurrence;
+  const selectionToken = randomBytes(32).toString("hex");
+  const selectionTokenDigest = createHash("sha256").update(selectionToken).digest("hex");
+  const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+  const { error } = await client.from("kitty_class_audit_events").insert({
+    actor_type: "contact", actor_contact_id: actor.contactId,
+    event_type: "occurrence_selection_confirmed", entity_type: "occurrence", entity_id: input.occurrenceId,
+    metadata: { occurrenceVersion: input.version, selectionTokenDigest, expiresAt },
+  });
+  dbError(error);
+  return { occurrence, selectionToken, expiresAt };
 }
 
 export async function beginKittyClassChange(client: Client, actor: KittyClassActor, input: {
   occurrenceId: string; occurrenceVersion: number; changeType: "cancel" | "reschedule";
-  reason?: string; proposedStartsAt?: string; proposedEndsAt?: string; proposedTimezone?: string;
+  selectionToken: string; reason?: string; proposedStartsAt?: string; proposedEndsAt?: string; proposedTimezone?: string;
 }) {
   if (actor.kind !== "contact") throw new Error("contact_required");
   const member = await assertContactMembership(client, input.occurrenceId, actor.contactId);
   const occurrence = await getKittyClassOccurrence(client, actor, input.occurrenceId);
   if (occurrence.version !== input.occurrenceVersion || occurrence.status !== "scheduled") throw new Error("stale_class");
+  if (!/^[a-f0-9]{64}$/.test(input.selectionToken)) throw new Error("selection_confirmation_required");
+  const selectionTokenDigest = createHash("sha256").update(input.selectionToken).digest("hex");
+  const { data: selection } = await client.from("kitty_class_audit_events").select("id")
+    .eq("actor_contact_id", actor.contactId).eq("event_type", "occurrence_selection_confirmed")
+    .eq("entity_type", "occurrence").eq("entity_id", input.occurrenceId)
+    .contains("metadata", { occurrenceVersion: input.occurrenceVersion, selectionTokenDigest })
+    .gte("created_at", new Date(Date.now() - 15 * 60_000).toISOString()).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!selection) throw new Error("selection_confirmation_required");
   const confirms = input.changeType === "cancel" ? member.confirms_cancellation : member.confirms_reschedule;
   if (!confirms || !member.decision_side) throw new Error("change_not_permitted");
   const payload = [input.occurrenceId, input.occurrenceVersion, input.changeType, input.proposedStartsAt ?? "", input.proposedEndsAt ?? ""];
@@ -255,6 +261,25 @@ export async function decideKittyClassChange(client: Client, actor: KittyClassAc
     p_payload_digest: input.payloadDigest, p_decision_side: member.decision_side,
     p_decided_by: actor.contactId, p_decision: input.decision,
     p_provider_message_id: input.providerMessageId ?? null,
+  });
+  dbError(error);
+  return Array.isArray(data) ? data[0] : data;
+}
+
+export async function proposeKittyClassReplacement(client: Client, actor: KittyClassActor, input: {
+  requestId: string; requestVersion: number; payloadDigest: string; occurrenceId: string;
+  proposedStartsAt: string; proposedEndsAt: string; proposedTimezone?: string;
+}) {
+  if (actor.kind !== "contact") throw new Error("contact_required");
+  await assertContactMembership(client, input.occurrenceId, actor.contactId);
+  const newDigest = createHash("sha256").update(JSON.stringify([
+    input.requestId, input.requestVersion + 1, input.proposedStartsAt, input.proposedEndsAt, input.proposedTimezone ?? "",
+  ])).digest("hex");
+  const { data, error } = await client.rpc("propose_kitty_class_replacement", {
+    p_request_id: input.requestId, p_request_version: input.requestVersion,
+    p_payload_digest: input.payloadDigest, p_proposed_by: actor.contactId,
+    p_starts_at: input.proposedStartsAt, p_ends_at: input.proposedEndsAt,
+    p_timezone: input.proposedTimezone ?? null, p_new_payload_digest: newDigest,
   });
   dbError(error);
   return Array.isArray(data) ? data[0] : data;

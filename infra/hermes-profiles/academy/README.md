@@ -93,6 +93,28 @@ WHATSAPP_CLOUD_ALLOW_ALL_USERS=true
 
 This setting removes Hermes's duplicate phone allowlist; it does not make the Academy publicly conversational. The Meta callback must remain the signed Insight webhook. Insight verifies Meta's signature and forwards only an imported, active, consent-attested, classified contact with `communication_policy=direct`. Unknown, unclassified, paused, guardian-only, approval-required, and opted-out contacts are recorded safely and are not forwarded to Kitty. Insight re-signs the filtered payload with the Meta app secret before sending it to the Academy Cloud adapter.
 
+## Isolated Kitty class calendar
+
+Kitty Classes is a separate calendar owned by Kitty. It does not create or edit Academy sessions, assignments, availability, lesson-ledger evidence, settlements, Google Calendar events, or ordinary chats. Apply `20260805120000_add_kitty_class_calendar.sql`, deploy `/api/hermes/class-tools` and `/api/cron/kitty-classes`, install the `kitty-classes` skill in both relevant profiles, and configure:
+
+```dotenv
+KITTY_CLASS_CALENDAR_ENABLED=false
+INSIGHT_KITTY_CLASS_TOOL_URL=https://<insight-host>/api/hermes/class-tools
+WHATSAPP_TEMPLATE_CLASS_CHANGE_REQUEST=<approved Utility template>
+WHATSAPP_TEMPLATE_CLASS_CHANGE_PROPOSAL=<approved Utility template>
+WHATSAPP_TEMPLATE_CLASS_CANCELLED=<approved Utility template>
+WHATSAPP_TEMPLATE_CLASS_RESCHEDULED=<approved Utility template>
+WHATSAPP_TEMPLATE_CLASS_CHANGE_REJECTED=<approved Utility template>
+```
+
+Each template contains only recipient name, class description, original time, optional replacement time, and a reference code. It never contains a free-form reason. A sender first selects and confirms the exact occurrence. Only then does Insight reserve a notice to the configured opposite side. Cancellation and reschedule finalize only after both sides approve; the teacher is one side, and the class configuration decides whether a student, parent, or both may represent the student side. Final notices go to every configured recipient.
+
+Run a shadow pilot while the flag remains false: create synthetic one-off and Tuesday recurring records in staging, inspect the 90-day expansion across a daylight-saving boundary, and verify that no Academy table changes. Then enable the flag for selected contacts only by creating classes containing those contacts. Exercise ambiguous class lookup, stale version, rejection, both-side approval, duplicate delivery, a blocked template, Swati override, and the daily recovery job. Confirm that external contacts cannot create or edit classes and that the admin Classes tab shows Upcoming, Needs attention, Recurring, and History.
+
+After those probes pass, enable `KITTY_CLASS_CALENDAR_ENABLED=true` in Insight and restart the two Hermes profiles with the dedicated tool URL. Keep the old scheduling-case reschedule path available during the pilot; do not migrate existing cases automatically.
+
+Rollback is immediate: set `KITTY_CLASS_CALENDAR_ENABLED=false`, restart the profiles, and leave all Kitty class, audit, and outbox rows intact. The flag blocks new tools, sends, and maintenance without changing any Academy session or the existing WhatsApp intake path. Resolve any already-finalized class changes manually from the Kitty Classes audit history.
+
 ## Swati approval notifications
 
 Insight can notify Swati on WhatsApp when Kitty creates a pending class proposal or monthly settlement. This is an Insight webhook and database capability, not an Academy-profile credential: the Academy profile never receives the Meta token, approval codes, Google authorization, or database service key. A valid WhatsApp or iMessage decision is sufficient; `/admin/hermes` is the audit and fallback path when delivery fails.

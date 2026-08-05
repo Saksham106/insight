@@ -377,6 +377,7 @@ test("Kitty class calendar is isolated, versioned, and server controlled", () =>
     "create_kitty_class_series",
     "create_kitty_one_off_class",
     "request_kitty_class_change",
+    "propose_kitty_class_replacement",
     "decide_kitty_class_change",
     "finalize_kitty_class_change",
     "override_kitty_class_occurrence",

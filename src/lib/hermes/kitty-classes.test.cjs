@@ -13,6 +13,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 const {
   expandKittySeries,
   kittyClassIdempotencyKey,
+  kittyLocalDateTimeToUtc,
   matchKittyOccurrences,
   parseKittyRecurrence,
   requiredDecisionSides,
@@ -78,4 +79,8 @@ test("builds stable idempotency keys without exposing raw values", () => {
   assert.equal(first, kittyClassIdempotencyKey(["occurrence-1", "contact-2", "class_cancelled"]));
   assert.match(first, /^kitty-class:[a-f0-9]{64}$/);
   assert.equal(first.includes("contact-2"), false);
+});
+
+test("converts a dashboard one-off wall clock in its selected timezone", () => {
+  assert.equal(kittyLocalDateTimeToUtc("2026-08-11T16:00", "Asia/Ho_Chi_Minh"), "2026-08-11T09:00:00.000Z");
 });

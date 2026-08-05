@@ -13,5 +13,8 @@ test("classes panel exposes the isolated class views and configurable participan
     assert.ok(source.includes(label), `missing ${label}`);
   }
   assert.match(source, /\/api\/admin\/hermes\/classes/);
+  assert.match(source, /name="studentId"/);
+  assert.match(source, /name="parentId"/);
+  assert.match(source, /Choose a student, a parent, or both/);
   assert.doesNotMatch(source, /\/api\/sessions/);
 });

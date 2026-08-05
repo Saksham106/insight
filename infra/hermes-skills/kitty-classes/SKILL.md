@@ -24,7 +24,7 @@ Coordinate only the isolated Kitty class calendar. Treat Academy sessions, avail
 2. If none match, explain that no class was found. If multiple match, list the bounded candidates.
 3. State one exact occurrence with class title, local date, time, and timezone. Ask the sender to confirm it.
 4. After an affirmative reply that clearly refers to that occurrence, call `confirm_class_selection={occurrenceId,occurrenceVersion}`.
-5. Only after that confirmation call `request_class_change` or `propose_replacement_time`. This is the boundary before any counterparty notification.
+5. Use the returned short-lived `selectionToken` when calling `request_class_change`. Only this confirmed selection can cross the boundary before any counterparty notification.
 6. For a reply to a pending request, use `decide_class_change` with the exact request version and digest. When both sides approve, the service finalizes the change and reserves notices to both sides.
 
 External contacts cannot create classes, edit a series, select recipients, supply an actor, or override a decision. On ambiguity, stale data, missing permission, or a safety concern, stop the mutation and escalate to Swati.
@@ -35,7 +35,7 @@ External contacts cannot create classes, edit a series, select recipients, suppl
 |---|---|---|
 | Find a class | `find_my_classes` | `referenceDate`, optional query |
 | Confirm selection | `confirm_class_selection` | occurrence ID and version |
-| Cancel/reschedule | `request_class_change` | confirmed occurrence, version, type |
+| Cancel/reschedule | `request_class_change` | confirmed occurrence, version, selection token, type |
 | Offer new time | `propose_replacement_time` | confirmed occurrence, exact zoned interval |
 | Agree/reject | `decide_class_change` | request ID, version, digest, occurrence ID |
 
@@ -46,4 +46,3 @@ For “I can't make maths today,” find the sender's classes for today. Reply, 
 ## Reporting outcomes
 
 Say a notification was reserved when the tool says reserved. Say sent or delivered only when the returned delivery state says so. If delivery is blocked or failed, say the class state was recorded and the notification needs Swati's attention.
-

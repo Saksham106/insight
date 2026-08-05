@@ -86,6 +86,12 @@ function zonedLocalToUtc(localDate: string, localTime: string, timezone: string)
   return result;
 }
 
+export function kittyLocalDateTimeToUtc(value: string, timezone: string) {
+  const match = /^(\d{4}-\d{2}-\d{2})T((?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value);
+  if (!match) throw new Error("invalid_local_time");
+  return zonedLocalToUtc(match[1], match[2], timezone).toISOString();
+}
+
 export function expandKittySeries(input: {
   seriesId: string;
   title: string;

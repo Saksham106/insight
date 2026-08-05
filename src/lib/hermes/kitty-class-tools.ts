@@ -11,6 +11,7 @@ import {
   getKittyClassOccurrence,
   listKittyClasses,
   overrideKittyClass,
+  proposeKittyClassReplacement,
   type KittyClassActor,
   type KittyClassParticipantInput,
 } from "./kitty-class-service";
@@ -81,21 +82,25 @@ export async function executeKittyClassTool(client: SupabaseClient, actor: Kitty
       const classes = await listKittyClasses(client, actor, { view: "upcoming", limit: 100 });
       return { classes: matchKittyOccurrences({ candidates: classes as Parameters<typeof matchKittyOccurrences>[0]["candidates"], referenceDate: text(payload, "referenceDate"), query: typeof payload.query === "string" ? payload.query : "", limit: 5 }), requiresSelectionConfirmation: true };
     }
-    case "confirm_class_selection": return { class: await confirmKittyClassSelection(client, actor, { occurrenceId: text(payload, "occurrenceId"), version: number(payload, "occurrenceVersion") }), confirmed: true };
-    case "request_class_change":
-    case "propose_replacement_time": {
+    case "confirm_class_selection": return { confirmation: await confirmKittyClassSelection(client, actor, { occurrenceId: text(payload, "occurrenceId"), version: number(payload, "occurrenceVersion") }), confirmed: true };
+    case "request_class_change": {
       const occurrenceId = text(payload, "occurrenceId");
       const occurrenceVersion = number(payload, "occurrenceVersion");
-      await confirmKittyClassSelection(client, actor, { occurrenceId, version: occurrenceVersion });
-      const changeType = action === "propose_replacement_time" || payload.changeType === "reschedule" ? "reschedule" : "cancel";
+      const changeType = payload.changeType === "reschedule" ? "reschedule" : "cancel";
       return { changeRequest: await beginKittyClassChange(client, actor, {
-        occurrenceId, occurrenceVersion, changeType,
+        occurrenceId, occurrenceVersion, changeType, selectionToken: text(payload, "selectionToken"),
         reason: typeof payload.reason === "string" ? payload.reason : undefined,
         proposedStartsAt: typeof payload.proposedStartsAt === "string" ? payload.proposedStartsAt : undefined,
         proposedEndsAt: typeof payload.proposedEndsAt === "string" ? payload.proposedEndsAt : undefined,
         proposedTimezone: typeof payload.proposedTimezone === "string" ? payload.proposedTimezone : undefined,
       }), counterpartyNotificationReserved: true };
     }
+    case "propose_replacement_time": return { changeRequest: await proposeKittyClassReplacement(client, actor, {
+      requestId: text(payload, "requestId"), requestVersion: number(payload, "requestVersion"),
+      payloadDigest: text(payload, "payloadDigest"), occurrenceId: text(payload, "occurrenceId"),
+      proposedStartsAt: text(payload, "proposedStartsAt"), proposedEndsAt: text(payload, "proposedEndsAt"),
+      proposedTimezone: typeof payload.proposedTimezone === "string" ? payload.proposedTimezone : undefined,
+    }), counterpartyNotificationReserved: true };
     case "decide_class_change": {
       const decided = await decideKittyClassChange(client, actor, {
         requestId: text(payload, "requestId"), requestVersion: number(payload, "requestVersion"),

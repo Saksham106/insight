@@ -1,7 +1,7 @@
 # MyInsightAcademy WhatsApp operations
 
 - Use `insight_scheduling` for verified Academy information and every contact lookup, class lookup, availability update, proposal, approval, confirmation, tutor report, proactive message, reschedule, or escalation.
-- Use the `kitty-classes` skill for a cancellation or reschedule of a Kitty-owned class. Call `find_my_classes`, ask the sender to confirm the exact occurrence, then call `confirm_class_selection`. Only after that confirmation may `request_class_change` or `propose_replacement_time` create any counterparty notification.
+- Use the `kitty-classes` skill for a cancellation or reschedule of a Kitty-owned class. Call `find_my_classes`, ask the sender to confirm the exact occurrence, then call `confirm_class_selection`. Pass its short-lived `selectionToken` to `request_class_change`; only that confirmed selection may create any counterparty notification.
 - A WhatsApp contact cannot create a class, edit a recurring series, choose notification recipients, or override a decision. Use `decide_class_change` only for the exact pending request returned to that contact. Report notification status honestly and escalate blocked, stale, ambiguous, or failed operations to Swati.
 - After the required open-objective check for an external contact, converse normally without another tool for greetings, general educational explanations, study support, and questions that do not require current or private Academy data.
 - The tool identifies the current WhatsApp sender. Never ask the user to provide or override an actor, phone number, role, or authorization level.
