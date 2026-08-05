@@ -13,7 +13,12 @@ export type WhatsAppIntent =
   | "payment_reminder"
   | "payment_received"
   | "human_attention"
-  | "admin_reschedule_alert";
+  | "admin_reschedule_alert"
+  | "class_change_request"
+  | "class_change_proposal"
+  | "class_cancelled"
+  | "class_rescheduled"
+  | "class_change_rejected";
 
 export type SchedulingWhatsAppIntent = Exclude<WhatsAppIntent, "lesson_report_request" | "tutor_report_request" | "family_invoice" | "payment_reminder" | "payment_received">;
 
@@ -38,6 +43,11 @@ const SCHEDULING_PARAMETER_COUNTS: Record<SchedulingWhatsAppIntent, number> = {
   class_reminder: 3,
   human_attention: 2,
   admin_reschedule_alert: 3,
+  class_change_request: 4,
+  class_change_proposal: 5,
+  class_cancelled: 4,
+  class_rescheduled: 5,
+  class_change_rejected: 4,
 };
 
 function requiredTemplateField(input: Record<string, unknown>, key: string) {
@@ -102,6 +112,38 @@ export function buildSchedulingMessageContent(input: {
       const requesterName = requiredTemplateField(data, "requesterName");
       const caseSummary = requiredTemplateField(data, "caseSummary");
       return { body: `Hi ${recipientName}, scheduling update for ${requesterName}: ${caseSummary}. Reply to coordinate this existing class.`, bodyParameters: [recipientName, requesterName, caseSummary] };
+    }
+    case "class_change_request": {
+      const classDescription = requiredTemplateField(data, "classDescription");
+      const originalDateTime = requiredTemplateField(data, "originalDateTime");
+      const referenceCode = requiredTemplateField(data, "referenceCode");
+      return { body: `Hi ${recipientName}, a change was requested for ${classDescription} at ${originalDateTime}. Reply approve or reject. Reference ${referenceCode}.`, bodyParameters: [recipientName, classDescription, originalDateTime, referenceCode] };
+    }
+    case "class_change_proposal": {
+      const classDescription = requiredTemplateField(data, "classDescription");
+      const originalDateTime = requiredTemplateField(data, "originalDateTime");
+      const replacementDateTime = requiredTemplateField(data, "replacementDateTime");
+      const referenceCode = requiredTemplateField(data, "referenceCode");
+      return { body: `Hi ${recipientName}, can ${classDescription} move from ${originalDateTime} to ${replacementDateTime}? Reply approve or reject. Reference ${referenceCode}.`, bodyParameters: [recipientName, classDescription, originalDateTime, replacementDateTime, referenceCode] };
+    }
+    case "class_cancelled": {
+      const classDescription = requiredTemplateField(data, "classDescription");
+      const originalDateTime = requiredTemplateField(data, "originalDateTime");
+      const referenceCode = requiredTemplateField(data, "referenceCode");
+      return { body: `Hi ${recipientName}, ${classDescription} at ${originalDateTime} has been cancelled. Reference ${referenceCode}.`, bodyParameters: [recipientName, classDescription, originalDateTime, referenceCode] };
+    }
+    case "class_rescheduled": {
+      const classDescription = requiredTemplateField(data, "classDescription");
+      const originalDateTime = requiredTemplateField(data, "originalDateTime");
+      const replacementDateTime = requiredTemplateField(data, "replacementDateTime");
+      const referenceCode = requiredTemplateField(data, "referenceCode");
+      return { body: `Hi ${recipientName}, ${classDescription} has moved from ${originalDateTime} to ${replacementDateTime}. Reference ${referenceCode}.`, bodyParameters: [recipientName, classDescription, originalDateTime, replacementDateTime, referenceCode] };
+    }
+    case "class_change_rejected": {
+      const classDescription = requiredTemplateField(data, "classDescription");
+      const originalDateTime = requiredTemplateField(data, "originalDateTime");
+      const referenceCode = requiredTemplateField(data, "referenceCode");
+      return { body: `Hi ${recipientName}, the requested change to ${classDescription} at ${originalDateTime} was not agreed. The original class remains. Reference ${referenceCode}.`, bodyParameters: [recipientName, classDescription, originalDateTime, referenceCode] };
     }
   }
 }
@@ -174,6 +216,11 @@ export function templateMapFromEnv(env: NodeJS.ProcessEnv): TemplateMap {
     ["payment_received", env.WHATSAPP_TEMPLATE_PAYMENT_RECEIVED],
     ["human_attention", env.WHATSAPP_TEMPLATE_HUMAN_ATTENTION],
     ["admin_reschedule_alert", env.WHATSAPP_TEMPLATE_ADMIN_RESCHEDULE_ALERT],
+    ["class_change_request", env.WHATSAPP_TEMPLATE_CLASS_CHANGE_REQUEST],
+    ["class_change_proposal", env.WHATSAPP_TEMPLATE_CLASS_CHANGE_PROPOSAL],
+    ["class_cancelled", env.WHATSAPP_TEMPLATE_CLASS_CANCELLED],
+    ["class_rescheduled", env.WHATSAPP_TEMPLATE_CLASS_RESCHEDULED],
+    ["class_change_rejected", env.WHATSAPP_TEMPLATE_CLASS_CHANGE_REJECTED],
   ];
   return Object.fromEntries(entries.filter((entry): entry is [WhatsAppIntent, string] => Boolean(entry[1])).map(([intent, name]) => [intent, { name, locale }]));
 }

@@ -91,6 +91,8 @@ test("builds exact semantic parameters for approved scheduling templates", () =>
   assert.deepEqual(buildSchedulingMessageContent({ intent: "class_reminder", recipientName: "Little", templateData: { classDescription: "mathematics class", scheduledDateTime: "Monday at 3 PM Eastern Time" } }).bodyParameters, ["Little", "mathematics class", "Monday at 3 PM Eastern Time"]);
   assert.deepEqual(buildSchedulingMessageContent({ intent: "human_attention", recipientName: "Little", templateData: { matter: "your mathematics schedule" } }).bodyParameters, ["Little", "your mathematics schedule"]);
   assert.deepEqual(buildSchedulingMessageContent({ intent: "admin_reschedule_alert", recipientName: "Swati", templateData: { requesterName: "Little", caseSummary: "mathematics class: requested Monday at 4 PM" } }).bodyParameters, ["Swati", "Little", "mathematics class: requested Monday at 4 PM"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "class_cancelled", recipientName: "Little", templateData: { classDescription: "mathematics", originalDateTime: "Tuesday at 4 PM", referenceCode: "AB12CD" } }).bodyParameters, ["Little", "mathematics", "Tuesday at 4 PM", "AB12CD"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "class_rescheduled", recipientName: "Little", templateData: { classDescription: "mathematics", originalDateTime: "Tuesday at 4 PM", replacementDateTime: "Wednesday at 5 PM", referenceCode: "AB12CD" } }).bodyParameters, ["Little", "mathematics", "Tuesday at 4 PM", "Wednesday at 5 PM", "AB12CD"]);
 });
 
 test("semantic scheduling builders reject missing, blank, and unknown fields", () => {
@@ -109,6 +111,21 @@ test("maps the internal Swati reschedule alert template", () => {
     name: "kitty_reschedule_alert",
     locale: "en_US",
   });
+});
+
+test("maps every isolated class-change template", () => {
+  const mapped = templateMapFromEnv({
+    WHATSAPP_TEMPLATE_CLASS_CHANGE_REQUEST: "kitty_change_request",
+    WHATSAPP_TEMPLATE_CLASS_CHANGE_PROPOSAL: "kitty_change_proposal",
+    WHATSAPP_TEMPLATE_CLASS_CANCELLED: "kitty_class_cancelled",
+    WHATSAPP_TEMPLATE_CLASS_RESCHEDULED: "kitty_class_rescheduled",
+    WHATSAPP_TEMPLATE_CLASS_CHANGE_REJECTED: "kitty_change_rejected",
+  });
+  assert.equal(mapped.class_change_request.name, "kitty_change_request");
+  assert.equal(mapped.class_change_proposal.name, "kitty_change_proposal");
+  assert.equal(mapped.class_cancelled.name, "kitty_class_cancelled");
+  assert.equal(mapped.class_rescheduled.name, "kitty_class_rescheduled");
+  assert.equal(mapped.class_change_rejected.name, "kitty_change_rejected");
 });
 
 test("builds the Utility-compatible Swati reschedule alert body", () => {

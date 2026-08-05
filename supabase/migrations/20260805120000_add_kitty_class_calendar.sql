@@ -252,7 +252,7 @@ create function public.request_kitty_class_change(
   p_proposed_ends_at timestamptz, p_proposed_timezone text, p_payload_digest text
 ) returns public.kitty_class_change_requests
 language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_occurrence public.kitty_class_occurrences; v_request public.kitty_class_change_requests;
+declare v_occurrence public.kitty_class_occurrences; v_request public.kitty_class_change_requests; v_intent text;
 begin
   select * into v_occurrence from public.kitty_class_occurrences where id = p_occurrence_id for update;
   if not found or v_occurrence.status <> 'scheduled' then raise exception 'occurrence_unavailable'; end if;
@@ -275,6 +275,16 @@ begin
     decision, payload_digest, source_channel, decided_at
   ) values (v_request.id, 1, p_requester_side, p_requested_by, 'approved', p_payload_digest, 'whatsapp', now());
   update public.kitty_class_occurrences set status = 'change_requested', version = version + 1 where id = p_occurrence_id;
+  v_intent := case when p_change_type = 'reschedule' and p_proposed_starts_at is not null then 'class_change_proposal' else 'class_change_request' end;
+  insert into public.kitty_class_notification_outbox(occurrence_id, change_request_id, contact_id, intent, payload, idempotency_key)
+    select v_occurrence.id, v_request.id, participant.contact_id, v_intent,
+      jsonb_build_object('occurrenceId', v_occurrence.id),
+      'kitty-class:' || v_request.id::text || ':' || participant.contact_id::text || ':' || v_intent
+    from public.kitty_class_participants participant
+    where participant.is_active and participant.receives_notifications
+      and participant.decision_side <> p_requester_side
+      and (participant.occurrence_id = v_occurrence.id or participant.series_id = v_occurrence.series_id)
+    on conflict (idempotency_key) do nothing;
   insert into public.kitty_class_audit_events(actor_type, actor_contact_id, event_type, entity_type, entity_id)
     values ('contact', p_requested_by, 'change_requested', 'change_request', v_request.id);
   return v_request;
@@ -303,6 +313,15 @@ begin
   if p_decision = 'rejected' then
     update public.kitty_class_change_requests set status = 'rejected', finalized_at = now() where id = v_request.id returning * into v_request;
     update public.kitty_class_occurrences set status = 'scheduled', version = version + 1 where id = v_request.occurrence_id;
+    insert into public.kitty_class_notification_outbox(occurrence_id, change_request_id, contact_id, intent, payload, idempotency_key)
+      select v_request.occurrence_id, v_request.id, participant.contact_id, 'class_change_rejected',
+        jsonb_build_object('occurrenceId', v_request.occurrence_id),
+        'kitty-class:' || v_request.id::text || ':' || participant.contact_id::text || ':class_change_rejected'
+      from public.kitty_class_participants participant
+      join public.kitty_class_occurrences occurrence on occurrence.id = v_request.occurrence_id
+      where participant.is_active and participant.receives_notifications
+        and (participant.occurrence_id = occurrence.id or participant.series_id = occurrence.series_id)
+      on conflict (idempotency_key) do nothing;
   else
     select count(distinct decision_side) into v_approved
     from public.kitty_class_change_confirmations

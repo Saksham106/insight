@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   const auth = secret ? verifyServiceRequest(request, rawBody, secret) : null;
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: { contactId?: string; caseId?: string; lessonCycleId?: string; settlementCycleId?: string; familyInvoiceId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; templateData?: Record<string, unknown>; idempotencyKey?: string; approvalId?: string };
+  let body: { contactId?: string; caseId?: string; occurrenceId?: string; classOutboxId?: string; lessonCycleId?: string; settlementCycleId?: string; familyInvoiceId?: string; intent?: WhatsAppIntent; text?: string; bodyParameters?: string[]; templateData?: Record<string, unknown>; idempotencyKey?: string; approvalId?: string };
   try { body = JSON.parse(rawBody); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.contactId || !body.intent || !body.idempotencyKey) return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
@@ -33,12 +33,30 @@ export async function POST(request: Request) {
   const recipientName = messagingName(contact);
 
   const financialIntents: WhatsAppIntent[] = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"];
+  const classChangeIntents: WhatsAppIntent[] = ["class_change_request", "class_change_proposal", "class_cancelled", "class_rescheduled", "class_change_rejected"];
   const isLessonReportRequest = body.intent === "lesson_report_request";
   const isFinancial = financialIntents.includes(body.intent);
+  const isClassChange = classChangeIntents.includes(body.intent);
   let approved = false;
   let lessonContent: { body: string; bodyParameters: string[] } | null = null;
   let financialContent: { body: string; bodyParameters: string[] } | null = null;
-  if (isLessonReportRequest) {
+  if (isClassChange) {
+    if (process.env.KITTY_CLASS_CALENDAR_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!body.classOutboxId || !body.occurrenceId || body.caseId || body.lessonCycleId || body.settlementCycleId || body.familyInvoiceId) return NextResponse.json({ error: "Class message requires one reserved outbox item" }, { status: 400 });
+    const { data: outbox } = await supabase.from("kitty_class_notification_outbox")
+      .select("id")
+      .eq("id", body.classOutboxId).eq("occurrence_id", body.occurrenceId).eq("contact_id", body.contactId)
+      .eq("intent", body.intent).eq("idempotency_key", body.idempotencyKey).eq("status", "sending").maybeSingle();
+    if (!outbox) return NextResponse.json({ error: "Class notification reservation unavailable" }, { status: 409 });
+    try {
+      if (!body.templateData || typeof body.templateData !== "object" || Array.isArray(body.templateData)) throw new Error("invalid_templateData");
+      const content = buildSchedulingMessageContent({ intent: body.intent, recipientName, templateData: body.templateData });
+      body.text = content.body;
+      body.bodyParameters = content.bodyParameters;
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "invalid_templateData" }, { status: 400 });
+    }
+  } else if (isLessonReportRequest) {
     if (process.env.HERMES_LESSON_LEDGER_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (!body.lessonCycleId || body.caseId || body.settlementCycleId || body.familyInvoiceId || contact.role !== "teacher") return NextResponse.json({ error: "Lesson report request requires one selected tutor and lesson cycle" }, { status: 403 });
     const [{ data: cycle }, { data: collection }] = await Promise.all([
