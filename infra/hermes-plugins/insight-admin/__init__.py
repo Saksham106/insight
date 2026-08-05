@@ -26,6 +26,11 @@ PAYLOAD_GUIDANCE = (
     "For class_reminder, use templateData={classDescription,scheduledDateTime}; Insight supplies the "
     "recipient name and exact approved template parameter order. bodyParameters is legacy-only. A corrected retry after "
     "a failed reserved send needs a new idempotencyKey. Do not claim delivery unless the tool reports it."
+    " Kitty Classes is separate from Academy sessions. Use preview_class before create_class. "
+    "create_class supports kind=weekly with recurrence={frequency:'weekly',weekdays,localTime,intervalWeeks:1} "
+    "or kind=one_off, plus participants with per-contact receivesNotifications, confirmsCancellation, "
+    "confirmsReschedule, and decisionSide. edit_class requires id, version, and scope=occurrence|this_and_future|entire_series. "
+    "override_class requires occurrenceId, changeType, and overrideReason."
 )
 
 

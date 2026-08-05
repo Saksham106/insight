@@ -40,7 +40,17 @@ ACTIONS = (
     "get_student_lessons",
     "confirm_lesson_cycle",
     "reopen_lesson_cycle",
+    "find_my_classes",
+    "confirm_class_selection",
+    "request_class_change",
+    "decide_class_change",
+    "propose_replacement_time",
 )
+
+CLASS_ACTIONS = frozenset((
+    "find_my_classes", "confirm_class_selection", "request_class_change",
+    "decide_class_change", "propose_replacement_time",
+))
 
 
 def _session_actor():
@@ -56,7 +66,11 @@ def _session_actor():
 def call_insight(action, payload):
     if action not in ACTIONS:
         return json.dumps({"error": "Unsupported scheduling action"})
-    url = os.environ.get("INSIGHT_HERMES_TOOL_URL", "")
+    url = (
+        os.environ.get("INSIGHT_KITTY_CLASS_TOOL_URL", "")
+        if action in CLASS_ACTIONS
+        else os.environ.get("INSIGHT_HERMES_TOOL_URL", "")
+    )
     secret = os.environ.get("HERMES_TOOL_SHARED_SECRET", "")
     actor = _session_actor()
     if not url or not secret:

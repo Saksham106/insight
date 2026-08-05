@@ -93,6 +93,13 @@ class PluginTests(unittest.TestCase):
         self.assertIn("notification", source)
         self.assertIn("Do not claim", source)
 
+    def test_exposes_confirmation_first_class_change_actions(self):
+        for action in ("find_my_classes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"):
+            self.assertIn(action, self.tools.ACTIONS)
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+        self.assertLess(source.index("find_my_classes"), source.index("confirm_class_selection"))
+        self.assertIn("exact occurrence", source)
+
     def test_request_signs_actor_and_payload_without_exposing_secret(self):
         with patch.dict(os.environ, {
             "INSIGHT_HERMES_TOOL_URL": "https://myinsightacademy.com/api/hermes/tools",

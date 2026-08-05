@@ -80,6 +80,18 @@ class PluginTests(unittest.TestCase):
         ):
             self.assertIn(action, self.tools.ACTIONS)
 
+    def test_exposes_isolated_kitty_class_actions(self):
+        for action in ("preview_class", "create_class", "list_classes", "get_class", "edit_class", "override_class"):
+            self.assertIn(action, self.tools.ACTIONS)
+
+    def test_class_actions_use_the_dedicated_endpoint(self):
+        with patch.dict(os.environ, {
+            "INSIGHT_KITTY_CLASS_TOOL_URL": "https://myinsightacademy.com/api/hermes/class-tools",
+            "HERMES_ADMIN_TOOL_SHARED_SECRET": "admin-secret",
+        }), patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            self.tools.call_insight("list_classes", {})
+        self.assertEqual(urlopen.call_args.args[0].full_url, "https://myinsightacademy.com/api/hermes/class-tools")
+
     def test_tool_schema_documents_direct_whatsapp_send_contract(self):
         source = (PLUGIN_DIR / "__init__.py").read_text()
 

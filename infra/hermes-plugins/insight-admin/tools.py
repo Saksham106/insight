@@ -46,7 +46,18 @@ ACTIONS = (
     "get_student_lessons",
     "confirm_lesson_cycle",
     "reopen_lesson_cycle",
+    "preview_class",
+    "create_class",
+    "list_classes",
+    "get_class",
+    "edit_class",
+    "override_class",
 )
+
+CLASS_ACTIONS = frozenset((
+    "preview_class", "create_class", "list_classes", "get_class",
+    "edit_class", "override_class",
+))
 
 
 def _session_actor():
@@ -69,7 +80,11 @@ def call_insight(action, payload):
         or actor["chatId"] != f'any;-;{actor["userId"]}'
     ):
         return json.dumps({"error": "This admin tool requires Swati's direct iMessage conversation"})
-    url = os.environ.get("INSIGHT_HERMES_ADMIN_TOOL_URL", "")
+    url = (
+        os.environ.get("INSIGHT_KITTY_CLASS_TOOL_URL", "")
+        if action in CLASS_ACTIONS
+        else os.environ.get("INSIGHT_HERMES_ADMIN_TOOL_URL", "")
+    )
     secret = os.environ.get("HERMES_ADMIN_TOOL_SHARED_SECRET", "")
     if not url or not secret:
         return json.dumps({"error": "Scheduling service is not configured"})
