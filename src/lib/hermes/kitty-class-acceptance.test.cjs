@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -46,6 +47,30 @@ test("the Kitty group-class foundation preserves legacy classes without guessing
   assert.match(migration, /participant_role = 'parent_guardian'/);
   assert.match(migration, /required_enrollment_ids uuid\[\] not null/);
   assert.match(migration, /unique \(change_request_id, request_version, enrollment_id\)/);
+});
+
+test("group RPCs snapshot approvals, teacher-finalize cancellation, and fan out through enrollments", () => {
+  const migration = read("supabase/migrations/20260805222827_add_kitty_group_classes.sql").toLowerCase();
+
+  assert.match(migration, /create or replace function public\.request_kitty_class_change/);
+  assert.match(migration, /v_request\.change_type = 'cancel'[\s\S]*v_teacher_approved/);
+  assert.match(migration, /not exists \([\s\S]*unnest\(v_request\.required_enrollment_ids\)/);
+  assert.match(migration, /join public\.kitty_class_enrollment_contacts enrollment_contact/);
+  assert.match(migration, /on conflict \(change_request_id, request_version, enrollment_id\)[\s\S]*where decision_side = 'student'/);
+  assert.doesNotMatch(migration, /if v_approved = 2 then/);
+});
+
+test("group RPC runtime behavior rejects cross-class enrollments and waits for every approval", {
+  skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
+}, () => {
+  const sql = read("src/lib/hermes/kitty-class-group-runtime-probe.sql");
+  const result = childProcess.spawnSync(
+    "docker",
+    ["exec", "-i", process.env.KITTY_SCHEMA_TEST_CONTAINER, "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres"],
+    { input: sql, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /kitty group runtime probe passed/);
 });
 
 test("rollout remains disabled until every template and staging probe is ready", () => {

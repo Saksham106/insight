@@ -411,3 +411,23 @@ test("Kitty group classes model enrollments, attendance, relays, and per-enrollm
   assert.match(migration, /create unique index kitty_class_enrollment_confirmation_unique[\s\S]*where decision_side = 'student' and enrollment_id is not null/);
   assert.match(migration, /revoke execute[\s\S]*from public, anon, authenticated/);
 });
+
+test("Kitty group migrations keep the existing RPCs safe for enrollment-scoped decisions", () => {
+  const migration = readMigration("_add_kitty_group_classes.sql");
+
+  for (const fn of [
+    "request_kitty_class_change",
+    "propose_kitty_class_replacement",
+    "decide_kitty_class_change",
+    "finalize_kitty_class_change",
+  ]) assert.match(migration, new RegExp(`create or replace function public\\.${fn}`));
+
+  assert.match(migration, /kitty_class_active_enrollment_ids\(p_occurrence_id\)/);
+  assert.match(migration, /required_enrollment_ids = public\.kitty_class_active_enrollment_ids/);
+  assert.match(migration, /unnest\(v_request\.required_enrollment_ids\)/);
+  assert.match(migration, /kitty_class_validate_enrollment_scope/);
+  assert.match(migration, /kitty_class_enrollment_applies_to_occurrence/);
+  assert.match(migration, /create constraint trigger enforce_kitty_class_active_enrollment/);
+  assert.match(migration, /participant\.is_active and participant\.participant_role = 'student'/);
+  assert.match(migration, /participant\.is_active and participant\.participant_role = 'teacher'/);
+});
