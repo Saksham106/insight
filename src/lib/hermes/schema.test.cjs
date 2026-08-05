@@ -346,3 +346,50 @@ test("contact route soft-deletes and restores without erasing history", () => {
   // Restore is the one path allowed to touch an already-deleted row.
   assert.match(source, /if \(!restoring\) query = query\.is\("deleted_at", null\)/);
 });
+
+test("Kitty class calendar is isolated, versioned, and server controlled", () => {
+  const sql = readMigration("_add_kitty_class_calendar.sql");
+  for (const table of [
+    "kitty_class_series",
+    "kitty_class_occurrences",
+    "kitty_class_participants",
+    "kitty_class_change_requests",
+    "kitty_class_change_confirmations",
+    "kitty_class_audit_events",
+    "kitty_class_notification_outbox",
+  ]) {
+    assert.match(sql, new RegExp(`create table public\\.${table}`));
+    assert.match(sql, new RegExp(`alter table public\\.${table} enable row level security`));
+    assert.match(sql, new RegExp(`revoke all on table public\\.${table} from anon`));
+    assert.match(sql, new RegExp(`grant all on table public\\.${table} to service_role`));
+  }
+
+  assert.match(sql, /frequency text not null default 'weekly'/);
+  assert.match(sql, /weekdays smallint\[\] not null/);
+  assert.match(sql, /expansion_horizon_days integer not null default 90/);
+  assert.match(sql, /version integer not null default 1/);
+  assert.match(sql, /create unique index kitty_one_active_change_per_occurrence/);
+  assert.match(sql, /where status in \('awaiting_requester_confirmation', 'awaiting_counterparty', 'collecting_alternatives', 'ready_to_finalize'\)/);
+  assert.match(sql, /payload_digest text not null/);
+  assert.match(sql, /idempotency_key text not null unique/);
+
+  for (const fn of [
+    "create_kitty_class_series",
+    "create_kitty_one_off_class",
+    "request_kitty_class_change",
+    "decide_kitty_class_change",
+    "finalize_kitty_class_change",
+    "override_kitty_class_occurrence",
+  ]) {
+    assert.match(sql, new RegExp(`create function public\\.${fn}`));
+    assert.match(sql, new RegExp(`revoke execute on function public\\.${fn}`));
+    assert.match(sql, new RegExp(`grant execute on function public\\.${fn}[^;]+to service_role`));
+  }
+
+  assert.match(sql, /for update/);
+  assert.match(sql, /payload_digest <>/);
+  assert.match(sql, /insert into public\.kitty_class_notification_outbox/);
+  assert.match(sql, /insert into public\.kitty_class_audit_events/);
+  assert.doesNotMatch(sql, /references public\.(?:sessions|teacher_student_assignments)/);
+  assert.doesNotMatch(sql, /(?:insert into|update|delete from) public\.(?:sessions|teacher_student_assignments)/);
+});
