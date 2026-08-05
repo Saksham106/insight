@@ -384,3 +384,20 @@ test("Kitty class calendar is isolated, versioned, and server controlled", () =>
   assert.doesNotMatch(sql, /references public\.(?:sessions|teacher_student_assignments)/);
   assert.doesNotMatch(sql, /(?:insert into|update|delete from) public\.(?:sessions|teacher_student_assignments)/);
 });
+
+test("Kitty group classes model enrollments, attendance, relays, and per-enrollment approvals", () => {
+  const migration = readMigration("_add_kitty_group_classes.sql");
+
+  for (const table of [
+    "kitty_class_enrollments",
+    "kitty_class_enrollment_contacts",
+    "kitty_class_attendance_updates",
+    "kitty_class_operational_relays",
+  ]) assert.match(migration, new RegExp(`create table public\\.${table}`));
+
+  assert.match(migration, /scope text not null[\s\S]*individual_attendance[\s\S]*whole_occurrence/);
+  assert.match(migration, /unique \(change_request_id, request_version, enrollment_id\)/);
+  assert.match(migration, /create unique index kitty_class_teacher_confirmation_unique[\s\S]*where decision_side = 'teacher' and enrollment_id is null/);
+  assert.match(migration, /create unique index kitty_class_enrollment_confirmation_unique[\s\S]*where decision_side = 'student' and enrollment_id is not null/);
+  assert.match(migration, /revoke execute[\s\S]*from public, anon, authenticated/);
+});
