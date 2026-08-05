@@ -162,6 +162,20 @@ class AcademyProfileTests(unittest.TestCase):
         self.assertIn("tool_calls", handler)
         self.assertNotIn('"reasoning":', handler)
 
+    def test_class_changes_confirm_the_exact_occurrence_before_notification(self):
+        agents = (PROFILE_DIR / "AGENTS.md").read_text()
+        skill = (PROFILE_DIR.parents[1] / "hermes-skills" / "kitty-classes" / "SKILL.md").read_text()
+        combined = f"{agents}\n{skill}"
+        for required in (
+            "find_my_classes", "confirm_class_selection", "request_class_change",
+            "decide_class_change", "propose_replacement_time",
+        ):
+            self.assertIn(required, combined)
+        self.assertIn("exact occurrence", combined)
+        self.assertIn("before any counterparty notification", combined)
+        self.assertIn("cannot create", combined)
+        self.assertIn("notification", combined)
+
 
 if __name__ == "__main__":
     unittest.main()

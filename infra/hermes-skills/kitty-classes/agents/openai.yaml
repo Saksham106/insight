@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kitty Classes"
+  short_description: "Coordinate recurring and one-off classes"
+  default_prompt: "Use $kitty-classes to coordinate an exact class occurrence safely."
