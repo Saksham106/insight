@@ -64,6 +64,10 @@ begin
       )
     group by occurrence.id
   loop
+    if v_class.student_count <> 1 then
+      raise exception 'legacy Kitty class % % must have exactly one legacy student in total; found %',
+        v_class.class_kind, v_class.class_id, v_class.student_count;
+    end if;
     if v_class.active_teacher_count <> 1 then
       raise exception 'legacy Kitty class % % must have exactly one active legacy teacher; found %',
         v_class.class_kind, v_class.class_id, v_class.active_teacher_count;
@@ -71,10 +75,6 @@ begin
     if v_class.active_student_count <> 1 then
       raise exception 'legacy Kitty class % % must have exactly one active legacy student; found %',
         v_class.class_kind, v_class.class_id, v_class.active_student_count;
-    end if;
-    if v_class.student_count > 1 and v_class.parent_count > 0 then
-      raise exception 'legacy Kitty class % % has ambiguous legacy parent relationships',
-        v_class.class_kind, v_class.class_id;
     end if;
   end loop;
 end;
@@ -164,61 +164,116 @@ language sql stable security invoker set search_path = public, pg_temp as $$
   )
 $$;
 
-create function public.enforce_kitty_class_active_enrollment()
-returns trigger
-language plpgsql security invoker set search_path = public, pg_temp as $$
+create function public.assert_kitty_class_roster(
+  p_series_id uuid,
+  p_occurrence_id uuid
+) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
 declare
-  v_series_id uuid;
-  v_occurrence_id uuid;
+  v_active_teacher_count integer;
 begin
-  for v_series_id in
-    select distinct target_id
-    from unnest(array[
-      case when tg_op <> 'INSERT' then old.series_id end,
-      case when tg_op <> 'DELETE' then new.series_id end
-    ]) target_id
-    where target_id is not null
-  loop
-    if exists (select 1 from public.kitty_class_series where id = v_series_id)
-      and not exists (
-        select 1 from public.kitty_class_enrollments enrollment
-        where enrollment.series_id = v_series_id
-          and enrollment.is_active
-          and (enrollment.active_until is null or enrollment.active_until >= current_date)
-      )
-    then
+  if p_series_id is not null
+    and exists (select 1 from public.kitty_class_series where id = p_series_id)
+  then
+    select count(*) into v_active_teacher_count
+    from public.kitty_class_participants participant
+    where participant.series_id = p_series_id
+      and participant.is_active
+      and participant.participant_role = 'teacher';
+    if v_active_teacher_count <> 1 then
+      raise exception 'kitty_class_requires_exactly_one_active_teacher' using errcode = '23514';
+    end if;
+    if not exists (
+      select 1 from public.kitty_class_enrollments enrollment
+      where enrollment.series_id = p_series_id
+        and enrollment.is_active
+        and (enrollment.active_until is null or enrollment.active_until >= current_date)
+    ) then
       raise exception 'kitty_class_requires_active_enrollment' using errcode = '23514';
     end if;
-  end loop;
+  end if;
 
-  for v_occurrence_id in
-    select distinct target_id
-    from unnest(array[
-      case when tg_op <> 'INSERT' then old.occurrence_id end,
-      case when tg_op <> 'DELETE' then new.occurrence_id end
-    ]) target_id
-    where target_id is not null
-  loop
-    if exists (select 1 from public.kitty_class_occurrences where id = v_occurrence_id)
-      and not exists (
-        select 1 from public.kitty_class_enrollments enrollment
-        where enrollment.occurrence_id = v_occurrence_id
-          and enrollment.is_active
-          and (enrollment.active_until is null or enrollment.active_until >= current_date)
-      )
-    then
+  if p_occurrence_id is not null
+    and exists (
+      select 1 from public.kitty_class_occurrences occurrence
+      where occurrence.id = p_occurrence_id and occurrence.series_id is null
+    )
+  then
+    select count(*) into v_active_teacher_count
+    from public.kitty_class_participants participant
+    where participant.occurrence_id = p_occurrence_id
+      and participant.is_active
+      and participant.participant_role = 'teacher';
+    if v_active_teacher_count <> 1 then
+      raise exception 'kitty_class_requires_exactly_one_active_teacher' using errcode = '23514';
+    end if;
+    if not exists (
+      select 1 from public.kitty_class_enrollments enrollment
+      where enrollment.occurrence_id = p_occurrence_id
+        and enrollment.is_active
+        and (enrollment.active_until is null or enrollment.active_until >= current_date)
+    ) then
       raise exception 'kitty_class_requires_active_enrollment' using errcode = '23514';
     end if;
-  end loop;
+  end if;
+end;
+$$;
 
+create function public.enforce_kitty_class_roster_invariant()
+returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_old jsonb := case when tg_op = 'INSERT' then '{}'::jsonb else to_jsonb(old) end;
+  v_new jsonb := case when tg_op = 'DELETE' then '{}'::jsonb else to_jsonb(new) end;
+begin
+  if tg_table_name = 'kitty_class_series' then
+    perform public.assert_kitty_class_roster(
+      nullif(v_old->>'id', '')::uuid,
+      null
+    );
+    perform public.assert_kitty_class_roster(
+      nullif(v_new->>'id', '')::uuid,
+      null
+    );
+  elsif tg_table_name = 'kitty_class_occurrences' then
+    perform public.assert_kitty_class_roster(
+      null,
+      nullif(v_old->>'id', '')::uuid
+    );
+    perform public.assert_kitty_class_roster(
+      null,
+      nullif(v_new->>'id', '')::uuid
+    );
+  else
+    perform public.assert_kitty_class_roster(
+      nullif(v_old->>'series_id', '')::uuid,
+      nullif(v_old->>'occurrence_id', '')::uuid
+    );
+    perform public.assert_kitty_class_roster(
+      nullif(v_new->>'series_id', '')::uuid,
+      nullif(v_new->>'occurrence_id', '')::uuid
+    );
+  end if;
   return null;
 end;
 $$;
 
-create constraint trigger enforce_kitty_class_active_enrollment
+create constraint trigger enforce_kitty_class_roster_on_series
+  after insert or update or delete on public.kitty_class_series
+  deferrable initially deferred
+  for each row execute function public.enforce_kitty_class_roster_invariant();
+create constraint trigger enforce_kitty_class_roster_on_occurrences
+  after insert or update or delete on public.kitty_class_occurrences
+  deferrable initially deferred
+  for each row execute function public.enforce_kitty_class_roster_invariant();
+create constraint trigger enforce_kitty_class_roster_on_participants
+  after insert or update or delete on public.kitty_class_participants
+  deferrable initially deferred
+  for each row execute function public.enforce_kitty_class_roster_invariant();
+create constraint trigger enforce_kitty_class_roster_on_enrollments
   after insert or update or delete on public.kitty_class_enrollments
   deferrable initially deferred
-  for each row execute function public.enforce_kitty_class_active_enrollment();
+  for each row execute function public.enforce_kitty_class_roster_invariant();
 
 create table public.kitty_class_attendance_updates (
   id uuid primary key default gen_random_uuid(),
@@ -500,6 +555,142 @@ create trigger set_kitty_class_attendance_updated_at
   before update on public.kitty_class_attendance_updates
   for each row execute function public.set_updated_at();
 
+create function public.bridge_kitty_class_legacy_roster(
+  p_series_id uuid,
+  p_occurrence_id uuid,
+  p_active_from date,
+  p_participants jsonb
+) returns uuid
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_enrollment_id uuid;
+  v_student_contact_id uuid;
+begin
+  select (item->>'contactId')::uuid into v_student_contact_id
+  from jsonb_array_elements(p_participants) item
+  where item->>'role' = 'student';
+
+  insert into public.kitty_class_enrollments(
+    series_id, occurrence_id, student_contact_id, active_from
+  ) values (
+    p_series_id, p_occurrence_id, v_student_contact_id, p_active_from
+  ) returning id into v_enrollment_id;
+
+  insert into public.kitty_class_enrollment_contacts(
+    enrollment_id, contact_id, contact_role, receives_notifications,
+    confirms_cancellation, confirms_reschedule
+  )
+  select v_enrollment_id, (item->>'contactId')::uuid, item->>'role',
+    coalesce((item->>'receivesNotifications')::boolean, true),
+    coalesce((item->>'confirmsCancellation')::boolean, false),
+    coalesce((item->>'confirmsReschedule')::boolean, false)
+  from jsonb_array_elements(p_participants) item
+  where item->>'role' = 'student'
+    or (item->>'role' = 'parent_guardian' and item->>'decisionSide' = 'student');
+
+  return v_enrollment_id;
+end;
+$$;
+
+create or replace function public.create_kitty_class_series(
+  p_title text, p_subject text, p_timezone text, p_local_time time,
+  p_duration_minutes integer, p_weekdays smallint[], p_effective_start date,
+  p_effective_end date, p_origin_channel text, p_created_by uuid, p_participants jsonb
+) returns public.kitty_class_series
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_series public.kitty_class_series;
+begin
+  if jsonb_typeof(p_participants) <> 'array' or jsonb_array_length(p_participants) < 2 then
+    raise exception 'participants_required';
+  end if;
+  if (select count(*) from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher') <> 1
+    or (select count(*) from jsonb_array_elements(p_participants) item where item->>'role' = 'student') <> 1
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and item->>'decisionSide' = 'teacher')
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student' and coalesce((item->>'confirmsCancellation')::boolean, false))
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student' and coalesce((item->>'confirmsReschedule')::boolean, false))
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and coalesce((item->>'receivesNotifications')::boolean, true) and coalesce((item->>'confirmsCancellation')::boolean, false) and coalesce((item->>'confirmsReschedule')::boolean, false))
+  then
+    raise exception 'participant_sides_required';
+  end if;
+
+  insert into public.kitty_class_series(
+    title, subject, timezone, local_time, duration_minutes, weekdays,
+    effective_start, effective_end, origin_channel, created_by_profile_id
+  ) values (
+    btrim(p_title), nullif(btrim(p_subject), ''), p_timezone, p_local_time,
+    p_duration_minutes, p_weekdays, p_effective_start, p_effective_end,
+    p_origin_channel, p_created_by
+  ) returning * into v_series;
+  insert into public.kitty_class_participants(
+    series_id, contact_id, participant_role, receives_notifications,
+    confirms_cancellation, confirms_reschedule, decision_side
+  )
+  select v_series.id, (item->>'contactId')::uuid, item->>'role',
+    coalesce((item->>'receivesNotifications')::boolean, true),
+    coalesce((item->>'confirmsCancellation')::boolean, false),
+    coalesce((item->>'confirmsReschedule')::boolean, false),
+    nullif(item->>'decisionSide', '')
+  from jsonb_array_elements(p_participants) item;
+  perform public.bridge_kitty_class_legacy_roster(
+    v_series.id, null, p_effective_start, p_participants
+  );
+  insert into public.kitty_class_audit_events(
+    actor_type, actor_profile_id, event_type, entity_type, entity_id
+  ) values ('admin', p_created_by, 'series_created', 'series', v_series.id);
+  return v_series;
+end;
+$$;
+
+create or replace function public.create_kitty_one_off_class(
+  p_title text, p_subject text, p_starts_at timestamptz, p_ends_at timestamptz,
+  p_local_date date, p_timezone text, p_origin_channel text, p_created_by uuid,
+  p_occurrence_key text, p_participants jsonb
+) returns public.kitty_class_occurrences
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_occurrence public.kitty_class_occurrences;
+begin
+  if jsonb_typeof(p_participants) <> 'array' or jsonb_array_length(p_participants) < 2 then
+    raise exception 'participants_required';
+  end if;
+  if (select count(*) from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher') <> 1
+    or (select count(*) from jsonb_array_elements(p_participants) item where item->>'role' = 'student') <> 1
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and item->>'decisionSide' = 'teacher')
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student' and coalesce((item->>'confirmsCancellation')::boolean, false))
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' in ('student', 'parent_guardian') and item->>'decisionSide' = 'student' and coalesce((item->>'confirmsReschedule')::boolean, false))
+    or not exists (select 1 from jsonb_array_elements(p_participants) item where item->>'role' = 'teacher' and coalesce((item->>'receivesNotifications')::boolean, true) and coalesce((item->>'confirmsCancellation')::boolean, false) and coalesce((item->>'confirmsReschedule')::boolean, false))
+  then
+    raise exception 'participant_sides_required';
+  end if;
+
+  insert into public.kitty_class_occurrences(
+    occurrence_key, title, subject, starts_at, ends_at, local_date, timezone,
+    origin_channel, created_by_profile_id
+  ) values (
+    p_occurrence_key, btrim(p_title), nullif(btrim(p_subject), ''), p_starts_at,
+    p_ends_at, p_local_date, p_timezone, p_origin_channel, p_created_by
+  ) returning * into v_occurrence;
+  insert into public.kitty_class_participants(
+    occurrence_id, contact_id, participant_role, receives_notifications,
+    confirms_cancellation, confirms_reschedule, decision_side
+  )
+  select v_occurrence.id, (item->>'contactId')::uuid, item->>'role',
+    coalesce((item->>'receivesNotifications')::boolean, true),
+    coalesce((item->>'confirmsCancellation')::boolean, false),
+    coalesce((item->>'confirmsReschedule')::boolean, false),
+    nullif(item->>'decisionSide', '')
+  from jsonb_array_elements(p_participants) item;
+  perform public.bridge_kitty_class_legacy_roster(
+    null, v_occurrence.id, p_local_date, p_participants
+  );
+  insert into public.kitty_class_audit_events(
+    actor_type, actor_profile_id, event_type, entity_type, entity_id
+  ) values ('admin', p_created_by, 'occurrence_created', 'occurrence', v_occurrence.id);
+  return v_occurrence;
+end;
+$$;
+
 create function public.kitty_class_resolve_decision_actor(
   p_occurrence_id uuid,
   p_contact_id uuid,
@@ -552,10 +743,10 @@ begin
     raise exception 'decision_actor_ambiguous';
   elsif v_is_teacher then
     return query select 'teacher'::text, null::uuid;
-  elsif cardinality(v_enrollment_ids) = 1 then
-    return query select 'student'::text, v_enrollment_ids[1];
-  elsif cardinality(v_enrollment_ids) > 1 then
-    raise exception 'enrollment_scope_ambiguous';
+  elsif cardinality(v_enrollment_ids) > 0 then
+    return query
+      select 'student'::text, represented_enrollment_id
+      from unnest(v_enrollment_ids) represented_enrollment_id;
   else
     raise exception 'participant_required';
   end if;
@@ -613,7 +804,7 @@ declare
   v_occurrence public.kitty_class_occurrences;
   v_request public.kitty_class_change_requests;
   v_side text;
-  v_enrollment_id uuid;
+  v_actor_enrollment_ids uuid[];
   v_required_enrollment_ids uuid[];
   v_intent text;
 begin
@@ -636,8 +827,10 @@ begin
     raise exception 'replacement_time_required';
   end if;
 
-  select actor.decision_side, actor.enrollment_id
-    into v_side, v_enrollment_id
+  select min(actor.decision_side),
+    coalesce(array_agg(actor.enrollment_id order by actor.enrollment_id)
+      filter (where actor.enrollment_id is not null), '{}'::uuid[])
+    into v_side, v_actor_enrollment_ids
   from public.kitty_class_resolve_decision_actor(
     p_occurrence_id, p_requested_by, p_change_type
   ) actor;
@@ -678,13 +871,17 @@ begin
       p_requested_by, 'approved', p_payload_digest, 'whatsapp', now()
     );
   elsif p_change_type = 'reschedule' then
+    if not v_actor_enrollment_ids && v_required_enrollment_ids then
+      raise exception 'kitty_class_confirmation_not_in_request_snapshot';
+    end if;
     insert into public.kitty_class_change_confirmations(
       change_request_id, request_version, decision_side, enrollment_id,
       decided_by_contact_id, decision, payload_digest, source_channel, decided_at
-    ) values (
-      v_request.id, v_request.version, 'student', v_enrollment_id,
+    )
+    select v_request.id, v_request.version, 'student', actor_enrollment_id,
       p_requested_by, 'approved', p_payload_digest, 'whatsapp', now()
-    );
+    from unnest(v_actor_enrollment_ids) actor_enrollment_id
+    where actor_enrollment_id = any(v_required_enrollment_ids);
   end if;
 
   update public.kitty_class_occurrences
@@ -725,7 +922,7 @@ declare
   v_request public.kitty_class_change_requests;
   v_occurrence public.kitty_class_occurrences;
   v_side text;
-  v_enrollment_id uuid;
+  v_actor_enrollment_ids uuid[];
 begin
   select * into v_request
   from public.kitty_class_change_requests
@@ -748,8 +945,10 @@ begin
   where id = v_request.occurrence_id
   for update;
 
-  select actor.decision_side, actor.enrollment_id
-    into v_side, v_enrollment_id
+  select min(actor.decision_side),
+    coalesce(array_agg(actor.enrollment_id order by actor.enrollment_id)
+      filter (where actor.enrollment_id is not null), '{}'::uuid[])
+    into v_side, v_actor_enrollment_ids
   from public.kitty_class_resolve_decision_actor(
     v_request.occurrence_id, p_proposed_by, 'reschedule'
   ) actor;
@@ -777,16 +976,17 @@ begin
       p_proposed_by, 'approved', p_new_payload_digest, 'whatsapp', now()
     );
   else
-    if not v_enrollment_id = any(v_request.required_enrollment_ids) then
+    if not v_actor_enrollment_ids && v_request.required_enrollment_ids then
       raise exception 'kitty_class_confirmation_not_in_request_snapshot';
     end if;
     insert into public.kitty_class_change_confirmations(
       change_request_id, request_version, decision_side, enrollment_id,
       decided_by_contact_id, decision, payload_digest, source_channel, decided_at
-    ) values (
-      v_request.id, v_request.version, 'student', v_enrollment_id,
+    )
+    select v_request.id, v_request.version, 'student', actor_enrollment_id,
       p_proposed_by, 'approved', p_new_payload_digest, 'whatsapp', now()
-    );
+    from unnest(v_actor_enrollment_ids) actor_enrollment_id
+    where actor_enrollment_id = any(v_request.required_enrollment_ids);
   end if;
 
   perform public.reserve_kitty_class_group_notifications(
@@ -810,7 +1010,7 @@ declare
   v_request public.kitty_class_change_requests;
   v_occurrence public.kitty_class_occurrences;
   v_side text;
-  v_enrollment_id uuid;
+  v_actor_enrollment_ids uuid[];
   v_teacher_approved boolean;
   v_all_enrollments_approved boolean;
 begin
@@ -833,8 +1033,10 @@ begin
   from public.kitty_class_occurrences
   where id = v_request.occurrence_id
   for update;
-  select actor.decision_side, actor.enrollment_id
-    into v_side, v_enrollment_id
+  select min(actor.decision_side),
+    coalesce(array_agg(actor.enrollment_id order by actor.enrollment_id)
+      filter (where actor.enrollment_id is not null), '{}'::uuid[])
+    into v_side, v_actor_enrollment_ids
   from public.kitty_class_resolve_decision_actor(
     v_request.occurrence_id, p_decided_by, v_request.change_type
   ) actor;
@@ -858,17 +1060,20 @@ begin
       provider_message_id = excluded.provider_message_id,
       decided_at = now(), updated_at = now();
   else
-    if not v_enrollment_id = any(v_request.required_enrollment_ids) then
+    if not v_actor_enrollment_ids && v_request.required_enrollment_ids then
       raise exception 'kitty_class_confirmation_not_in_request_snapshot';
     end if;
     insert into public.kitty_class_change_confirmations(
       change_request_id, request_version, decision_side, enrollment_id,
       decided_by_contact_id, decision, payload_digest, source_channel,
       provider_message_id, decided_at
-    ) values (
-      v_request.id, v_request.version, 'student', v_enrollment_id, p_decided_by,
-      p_decision, p_payload_digest, 'whatsapp', p_provider_message_id, now()
-    ) on conflict (change_request_id, request_version, enrollment_id)
+    )
+    select v_request.id, v_request.version, 'student', actor_enrollment_id,
+      p_decided_by, p_decision, p_payload_digest, 'whatsapp',
+      p_provider_message_id, now()
+    from unnest(v_actor_enrollment_ids) actor_enrollment_id
+    where actor_enrollment_id = any(v_request.required_enrollment_ids)
+    on conflict (change_request_id, request_version, enrollment_id)
       where decision_side = 'student' and enrollment_id is not null
     do update set decided_by_contact_id = excluded.decided_by_contact_id,
       decision = excluded.decision, payload_digest = excluded.payload_digest,
@@ -962,6 +1167,9 @@ begin
   for update;
   if not found or v_request.status <> 'ready_to_finalize' then
     raise exception 'request_not_finalizable';
+  end if;
+  if v_request.expires_at <= now() then
+    raise exception 'request_expired';
   end if;
   if v_request.version <> p_request_version or v_request.payload_digest <> p_payload_digest then
     raise exception 'stale_change_request';
@@ -1092,8 +1300,10 @@ revoke execute on function public.find_my_pending_kitty_class_changes(uuid, text
 revoke execute on function public.retry_kitty_class_notification(uuid, uuid) from public, anon, authenticated;
 revoke execute on function public.kitty_class_active_enrollment_ids(uuid) from public, anon, authenticated;
 revoke execute on function public.kitty_class_enrollment_applies_to_occurrence(uuid, uuid) from public, anon, authenticated;
-revoke execute on function public.enforce_kitty_class_active_enrollment() from public, anon, authenticated;
+revoke execute on function public.assert_kitty_class_roster(uuid, uuid) from public, anon, authenticated;
+revoke execute on function public.enforce_kitty_class_roster_invariant() from public, anon, authenticated;
 revoke execute on function public.kitty_class_validate_enrollment_scope() from public, anon, authenticated;
+revoke execute on function public.bridge_kitty_class_legacy_roster(uuid, uuid, date, jsonb) from public, anon, authenticated;
 revoke execute on function public.kitty_class_resolve_decision_actor(uuid, uuid, text) from public, anon, authenticated;
 revoke execute on function public.reserve_kitty_class_group_notifications(uuid, uuid, text, jsonb, text, uuid) from public, anon, authenticated;
 

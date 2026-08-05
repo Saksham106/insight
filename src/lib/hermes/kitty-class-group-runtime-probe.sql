@@ -1,9 +1,76 @@
 do $$
 declare
   v_request public.kitty_class_change_requests;
+  v_expired_request public.kitty_class_change_requests;
+  v_legacy_occurrence public.kitty_class_occurrences;
   v_series_enrollment uuid;
   v_occurrence_enrollment uuid;
 begin
+  select * into v_legacy_occurrence
+  from public.create_kitty_one_off_class(
+    'Runtime legacy bridge', 'Math',
+    '2026-08-20 10:00+00', '2026-08-20 11:00+00', '2026-08-20',
+    'UTC', 'dashboard', null, 'runtime-legacy-create',
+    jsonb_build_array(
+      jsonb_build_object(
+        'contactId', '00000000-0000-0000-0000-000000000201', 'role', 'teacher',
+        'decisionSide', 'teacher', 'confirmsCancellation', true,
+        'confirmsReschedule', true, 'receivesNotifications', true
+      ),
+      jsonb_build_object(
+        'contactId', '00000000-0000-0000-0000-000000000202', 'role', 'student',
+        'decisionSide', 'student', 'confirmsCancellation', true,
+        'confirmsReschedule', true, 'receivesNotifications', true
+      ),
+      jsonb_build_object(
+        'contactId', '00000000-0000-0000-0000-000000000203', 'role', 'parent_guardian',
+        'decisionSide', 'student', 'confirmsCancellation', true,
+        'confirmsReschedule', true, 'receivesNotifications', true
+      )
+    )
+  );
+  if (
+    select count(*) from public.kitty_class_enrollments enrollment
+    where enrollment.occurrence_id = v_legacy_occurrence.id
+  ) <> 1 or (
+    select count(*)
+    from public.kitty_class_enrollments enrollment
+    join public.kitty_class_enrollment_contacts enrollment_contact
+      on enrollment_contact.enrollment_id = enrollment.id
+    where enrollment.occurrence_id = v_legacy_occurrence.id
+  ) <> 2 then
+    raise exception 'legacy create did not bridge one enrollment and its family contacts';
+  end if;
+
+  begin
+    insert into public.kitty_class_occurrences(
+      id, occurrence_key, title, starts_at, ends_at, local_date, timezone, origin_channel
+    ) values (
+      '00000000-0000-0000-0000-000000000810', 'runtime-empty-roster', 'Empty roster',
+      '2026-08-21 10:00+00', '2026-08-21 11:00+00', '2026-08-21', 'UTC', 'dashboard'
+    );
+    insert into public.kitty_class_participants(
+      occurrence_id, contact_id, participant_role, decision_side,
+      confirms_cancellation, confirms_reschedule
+    ) values (
+      '00000000-0000-0000-0000-000000000810',
+      '00000000-0000-0000-0000-000000000201', 'teacher', 'teacher', true, true
+    );
+    set constraints all immediate;
+    raise exception 'zero-enrollment occurrence was accepted';
+  exception when check_violation then null;
+  end;
+
+  begin
+    update public.kitty_class_participants
+    set is_active = false
+    where occurrence_id = v_legacy_occurrence.id
+      and participant_role = 'teacher';
+    set constraints all immediate;
+    raise exception 'active teacher removal was accepted';
+  exception when check_violation then null;
+  end;
+
   select id into v_series_enrollment
   from public.kitty_class_enrollments
   where series_id = '00000000-0000-0000-0000-000000000301'
@@ -28,7 +95,8 @@ begin
     enrollment_id, contact_id, contact_role, confirms_cancellation, confirms_reschedule
   ) values
     ('00000000-0000-0000-0000-000000000602', '00000000-0000-0000-0000-000000000104', 'student', true, true),
-    ('00000000-0000-0000-0000-000000000602', '00000000-0000-0000-0000-000000000105', 'parent_guardian', true, true);
+    ('00000000-0000-0000-0000-000000000602', '00000000-0000-0000-0000-000000000105', 'parent_guardian', true, true),
+    ('00000000-0000-0000-0000-000000000602', '00000000-0000-0000-0000-000000000103', 'parent_guardian', true, true);
 
   select * into v_request
   from public.request_kitty_class_change(
@@ -45,36 +113,27 @@ begin
   select * into v_request
   from public.propose_kitty_class_replacement(
     v_request.id, v_request.version, v_request.payload_digest,
-    '00000000-0000-0000-0000-000000000101',
+    '00000000-0000-0000-0000-000000000103',
     '2026-08-12 10:00+00', '2026-08-12 11:00+00', 'UTC', repeat('b', 64)
   );
   if v_request.version <> 2 or cardinality(v_request.required_enrollment_ids) <> 2 then
     raise exception 'versioned proposal did not refresh its enrollment snapshot';
   end if;
-  if not exists (
-    select 1 from public.kitty_class_change_confirmations confirmation
+  if (
+    select count(*) from public.kitty_class_change_confirmations confirmation
     where confirmation.change_request_id = v_request.id
       and confirmation.request_version = 2
-      and confirmation.decision_side = 'teacher'
-      and confirmation.enrollment_id is null
+      and confirmation.decision_side = 'student'
       and confirmation.decision = 'approved'
-  ) then
-    raise exception 'versioned teacher proposal did not store teacher confirmation';
+      and confirmation.decided_by_contact_id = '00000000-0000-0000-0000-000000000103'
+  ) <> 2 then
+    raise exception 'shared guardian proposal did not approve both represented enrollments';
   end if;
 
   select * into v_request
   from public.decide_kitty_class_change(
     v_request.id, v_request.version, v_request.payload_digest,
-    '00000000-0000-0000-0000-000000000103', 'approved', 'runtime-family-one'
-  );
-  if v_request.status = 'finalized' then
-    raise exception 'reschedule finalized before every enrollment approved';
-  end if;
-
-  select * into v_request
-  from public.decide_kitty_class_change(
-    v_request.id, v_request.version, v_request.payload_digest,
-    '00000000-0000-0000-0000-000000000104', 'approved', 'runtime-family-two'
+    '00000000-0000-0000-0000-000000000101', 'approved', 'runtime-teacher'
   );
   if v_request.status <> 'finalized' then
     raise exception 'reschedule did not finalize after teacher and exact enrollment snapshot approved';
@@ -157,6 +216,33 @@ begin
   exception when check_violation then null;
   end;
 
+  insert into public.kitty_class_change_requests(
+    occurrence_id, change_type, requested_by_contact_id, requester_side,
+    status, payload_digest, required_enrollment_ids, expires_at
+  ) values (
+    v_legacy_occurrence.id, 'cancel',
+    '00000000-0000-0000-0000-000000000201', 'teacher',
+    'ready_to_finalize', repeat('e', 64), '{}'::uuid[], now() - interval '1 minute'
+  ) returning * into v_expired_request;
+  insert into public.kitty_class_change_confirmations(
+    change_request_id, request_version, decision_side, enrollment_id,
+    decided_by_contact_id, decision, payload_digest, source_channel, decided_at
+  ) values (
+    v_expired_request.id, v_expired_request.version, 'teacher', null,
+    '00000000-0000-0000-0000-000000000201', 'approved', repeat('e', 64),
+    'dashboard', now()
+  );
+  begin
+    perform public.finalize_kitty_class_change(
+      v_expired_request.id, v_expired_request.version, v_expired_request.payload_digest
+    );
+    raise exception 'expired ready request was finalized';
+  exception when others then
+    if sqlerrm <> 'request_expired' then
+      raise;
+    end if;
+  end;
+
   begin
     insert into public.kitty_class_operational_relays(
       occurrence_id, enrollment_id, sent_by_contact_id, intent, client_request_id
@@ -211,7 +297,7 @@ begin
     update public.kitty_class_enrollments
     set is_active = false
     where series_id = '00000000-0000-0000-0000-000000000301';
-    set constraints enforce_kitty_class_active_enrollment immediate;
+    set constraints enforce_kitty_class_roster_on_enrollments immediate;
     raise exception 'all enrollments were deactivated';
   exception when check_violation then null;
   end;

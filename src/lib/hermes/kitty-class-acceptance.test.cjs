@@ -60,6 +60,16 @@ test("group RPCs snapshot approvals, teacher-finalize cancellation, and fan out 
   assert.doesNotMatch(migration, /if v_approved = 2 then/);
 });
 
+test("legacy creators bridge one enrollment and shared guardians approve every represented enrollment", () => {
+  const migration = read("supabase/migrations/20260805222827_add_kitty_group_classes.sql").toLowerCase();
+
+  assert.match(migration, /create or replace function public\.create_kitty_class_series/);
+  assert.match(migration, /create or replace function public\.create_kitty_one_off_class/);
+  assert.match(migration, /jsonb_array_elements\(p_participants\)[\s\S]*kitty_class_enrollment_contacts/);
+  assert.match(migration, /insert into public\.kitty_class_change_confirmations[\s\S]*select[\s\S]*actor\.enrollment_id/);
+  assert.match(migration, /request_expired/);
+});
+
 test("group RPC runtime behavior rejects cross-class enrollments and waits for every approval", {
   skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
 }, () => {
