@@ -427,7 +427,25 @@ test("Kitty group migrations keep the existing RPCs safe for enrollment-scoped d
   assert.match(migration, /unnest\(v_request\.required_enrollment_ids\)/);
   assert.match(migration, /kitty_class_validate_enrollment_scope/);
   assert.match(migration, /kitty_class_enrollment_applies_to_occurrence/);
-  assert.match(migration, /create constraint trigger enforce_kitty_class_active_enrollment/);
+  assert.match(migration, /create constraint trigger enforce_kitty_class_roster_on_enrollments/);
   assert.match(migration, /participant\.is_active and participant\.participant_role = 'student'/);
   assert.match(migration, /participant\.is_active and participant\.participant_role = 'teacher'/);
+});
+
+test("Kitty group rosters are transactionally complete and legacy create RPCs bridge enrollments", () => {
+  const migration = readMigration("_add_kitty_group_classes.sql");
+
+  assert.match(migration, /if v_class\.student_count <> 1 then/);
+  for (const table of [
+    "kitty_class_series",
+    "kitty_class_occurrences",
+    "kitty_class_participants",
+    "kitty_class_enrollments",
+  ]) assert.match(migration, new RegExp(`create constraint trigger enforce_kitty_class_roster_on_[\\s\\S]*on public\\.${table}`));
+  assert.match(migration, /create or replace function public\.create_kitty_class_series/);
+  assert.match(migration, /create or replace function public\.create_kitty_one_off_class/);
+  assert.match(migration, /insert into public\.kitty_class_enrollments/);
+  assert.match(migration, /insert into public\.kitty_class_enrollment_contacts/);
+  assert.match(migration, /from public\.kitty_class_resolve_decision_actor[\s\S]*actor_enrollment_id = any/);
+  assert.match(migration, /v_request\.expires_at <= now\(\)/);
 });
