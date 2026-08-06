@@ -1,22 +1,24 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { matchKittyOccurrences } from "./kitty-classes";
+import { validateKittyEnrollments, type KittyEnrollmentInput } from "./kitty-class-enrollments";
 import {
+  addKittyClassEnrollment,
   beginKittyClassChange,
   confirmKittyClassSelection,
   createKittyClass,
   decideKittyClassChange,
   editKittyClass,
+  endKittyClassEnrollment,
   findMyPendingKittyChanges,
   getKittyClassOccurrence,
   listKittyClasses,
   overrideKittyClass,
   proposeKittyClassReplacement,
   type KittyClassActor,
-  type KittyClassParticipantInput,
 } from "./kitty-class-service";
 
-export const ADMIN_CLASS_ACTIONS = ["preview_class", "create_class", "list_classes", "get_class", "edit_class", "override_class"] as const;
+export const ADMIN_CLASS_ACTIONS = ["preview_class", "create_class", "list_classes", "get_class", "edit_class", "override_class", "add_enrollment", "end_enrollment"] as const;
 export const CONTACT_CLASS_ACTIONS = ["find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"] as const;
 export type KittyClassToolAction = (typeof ADMIN_CLASS_ACTIONS)[number] | (typeof CONTACT_CLASS_ACTIONS)[number];
 
@@ -39,7 +41,8 @@ function number(payload: Payload, key: string) {
 }
 
 function adminCreateInput(payload: Payload) {
-  if (!Array.isArray(payload.participants)) throw new Error("invalid_payload");
+  if ("participants" in payload || !Array.isArray(payload.enrollments)) throw new Error("invalid_payload");
+  const enrollments = validateKittyEnrollments(payload.enrollments as KittyEnrollmentInput[]);
   return {
     kind: payload.kind === "weekly" ? "weekly" as const : "one_off" as const,
     title: text(payload, "title"), subject: typeof payload.subject === "string" ? payload.subject : null,
@@ -50,7 +53,9 @@ function adminCreateInput(payload: Payload) {
     durationMinutes: typeof payload.durationMinutes === "number" ? payload.durationMinutes : undefined,
     effectiveStart: typeof payload.effectiveStart === "string" ? payload.effectiveStart : undefined,
     effectiveEnd: typeof payload.effectiveEnd === "string" ? payload.effectiveEnd : null,
-    participants: payload.participants as KittyClassParticipantInput[],
+    teacherContactId: text(payload, "teacherContactId"),
+    enrollments,
+    clientRequestId: text(payload, "clientRequestId"),
   };
 }
 
@@ -77,6 +82,17 @@ export async function executeKittyClassTool(client: SupabaseClient, actor: Kitty
       occurrenceId: text(payload, "occurrenceId"), changeType: payload.changeType === "reschedule" ? "reschedule" : "cancel",
       reason: text(payload, "overrideReason"), startsAt: typeof payload.startsAt === "string" ? payload.startsAt : undefined,
       endsAt: typeof payload.endsAt === "string" ? payload.endsAt : undefined, timezone: typeof payload.timezone === "string" ? payload.timezone : undefined,
+    }) };
+    case "add_enrollment": {
+      if (!payload.enrollment || typeof payload.enrollment !== "object" || Array.isArray(payload.enrollment)) throw new Error("invalid_payload");
+      return { class: await addKittyClassEnrollment(client, actor, {
+        occurrenceId: text(payload, "occurrenceId"), version: number(payload, "version"),
+        effectiveDate: text(payload, "effectiveDate"), enrollment: payload.enrollment as KittyEnrollmentInput,
+      }) };
+    }
+    case "end_enrollment": return { class: await endKittyClassEnrollment(client, actor, {
+      occurrenceId: text(payload, "occurrenceId"), enrollmentId: text(payload, "enrollmentId"),
+      version: number(payload, "version"), effectiveDate: text(payload, "effectiveDate"),
     }) };
     case "find_my_classes": {
       const classes = await listKittyClasses(client, actor, { view: "upcoming", limit: 100 });

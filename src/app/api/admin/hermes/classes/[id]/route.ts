@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
-import { editKittyClass, getKittyClassOccurrence, overrideKittyClass } from "@/lib/hermes/kitty-class-service";
+import type { KittyEnrollmentInput } from "@/lib/hermes/kitty-class-enrollments";
+import { addKittyClassEnrollment, editKittyClass, endKittyClassEnrollment, getKittyClassOccurrence, overrideKittyClass } from "@/lib/hermes/kitty-class-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ id: string }> };
@@ -34,6 +35,25 @@ export async function PATCH(request: Request, route: Context) {
   try {
     const body = await request.json() as Record<string, unknown>;
     const actor = { kind: "admin" as const, profileId: auth.profile.id, channel: "dashboard" as const };
+    if (body.action === "add_enrollment") {
+      if (!body.enrollment || typeof body.enrollment !== "object" || Array.isArray(body.enrollment)) throw new Error("invalid_action");
+      const item = await addKittyClassEnrollment(auth.client, actor, {
+        occurrenceId: id,
+        version: Number(body.version),
+        effectiveDate: String(body.effectiveDate ?? ""),
+        enrollment: body.enrollment as KittyEnrollmentInput,
+      });
+      return NextResponse.json({ class: item });
+    }
+    if (body.action === "end_enrollment") {
+      const item = await endKittyClassEnrollment(auth.client, actor, {
+        occurrenceId: id,
+        enrollmentId: String(body.enrollmentId ?? ""),
+        version: Number(body.version),
+        effectiveDate: String(body.effectiveDate ?? ""),
+      });
+      return NextResponse.json({ class: item });
+    }
     if (body.action === "override") {
       const overrideReason = String(body.overrideReason ?? "").trim();
       const item = await overrideKittyClass(auth.client, actor, {
@@ -60,4 +80,3 @@ export async function PATCH(request: Request, route: Context) {
     return NextResponse.json({ error: conflict ? "This class changed. Refresh and try again." : "Could not update the class." }, { status: conflict ? 409 : 400 });
   }
 }
-
