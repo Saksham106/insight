@@ -31,6 +31,19 @@ export function isInboundContactEligible(contact: {
     && contact.communicationPolicy === "direct";
 }
 
+export type InboundContactDisposition = "create" | "deleted" | "active";
+
+/**
+ * What to do with the contact an inbound message came from. A removed contact
+ * is kept removed: reviving it silently would undo a deliberate deletion.
+ */
+export function inboundContactDisposition(
+  contact: { deleted_at: string | null } | null,
+): InboundContactDisposition {
+  if (!contact) return "create";
+  return contact.deleted_at === null ? "active" : "deleted";
+}
+
 function timestampToIso(value: unknown) {
   const seconds = Number(value);
   return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
