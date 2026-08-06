@@ -89,4 +89,4 @@ for select
 using (
   public.is_parent()
   and public.parent_can_access_teacher(public.profiles.id)
-);
+);;

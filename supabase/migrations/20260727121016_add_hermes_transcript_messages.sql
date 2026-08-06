@@ -68,4 +68,4 @@ revoke all on public.hermes_admin_conversation_messages
 revoke all on public.hermes_admin_conversation_summaries
   from public, anon, authenticated;
 grant select on public.hermes_admin_conversation_messages to service_role;
-grant select on public.hermes_admin_conversation_summaries to service_role;
+grant select on public.hermes_admin_conversation_summaries to service_role;;

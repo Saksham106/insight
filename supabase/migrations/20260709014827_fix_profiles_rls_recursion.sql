@@ -95,4 +95,4 @@ using (
     where l.parent_id = auth.uid()
       and a.id = public.sessions.assignment_id
   )
-);
+);;

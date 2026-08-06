@@ -12,3 +12,4 @@ create index if not exists hermes_cases_created_by_idx on public.hermes_scheduli
 create index if not exists hermes_cases_assignment_idx on public.hermes_scheduling_cases(insight_assignment_id);
 create index if not exists hermes_cases_session_idx on public.hermes_scheduling_cases(insight_session_id);
 create index if not exists hermes_cases_requested_by_idx on public.hermes_scheduling_cases(requested_by_contact_id);
+;

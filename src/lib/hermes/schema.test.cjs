@@ -48,7 +48,10 @@ test("Hermes contacts enforce phone, role, policy, and optional portal linking",
 });
 
 test("Hermes tables use admin-only browser policies and no anon grants", () => {
-  const sql = readHermesMigration();
+  const sql = [
+    readHermesMigration(),
+    readMigration("_harden_hermes_anon_grants.sql"),
+  ].join("\n");
   assert.doesNotMatch(sql, /grant [^;]+ to anon/);
   for (const table of ["hermes_import_batches", "hermes_contacts", "hermes_contact_relationships", "hermes_scheduling_cases", "hermes_case_participants", "hermes_approvals"]) {
     assert.match(sql, new RegExp(`revoke all on table public\\.${table} from anon`));
@@ -60,7 +63,10 @@ test("Hermes tables use admin-only browser policies and no anon grants", () => {
 });
 
 test("Hermes migration indexes case, message, and attention access paths", () => {
-  const sql = readHermesMigration();
+  const sql = [
+    readHermesMigration(),
+    readMigration("_add_hermes_fk_indexes.sql"),
+  ].join("\n");
   assert.match(sql, /create index.*hermes_contacts_attention/);
   assert.match(sql, /create index.*hermes_cases_status/);
   assert.match(sql, /create index.*hermes_messages_contact_created/);

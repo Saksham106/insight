@@ -1,16 +1,13 @@
 alter table public.hermes_scheduling_cases
   add column if not exists tutor_kind text not null default 'academy_tutor';
-
 alter table public.hermes_scheduling_cases
   drop constraint if exists hermes_scheduling_cases_tutor_kind_check,
   add constraint hermes_scheduling_cases_tutor_kind_check
     check (tutor_kind in ('swati', 'academy_tutor'));
-
 alter table public.hermes_workspace_jobs
   drop constraint if exists hermes_workspace_jobs_job_type_check,
   add constraint hermes_workspace_jobs_job_type_check
     check (job_type in ('calendar_freebusy', 'calendar_create_event'));
-
 create table public.hermes_calendar_links (
   id uuid primary key default gen_random_uuid(),
   case_id uuid not null unique references public.hermes_scheduling_cases(id) on delete cascade,
@@ -21,13 +18,10 @@ create table public.hermes_calendar_links (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 alter table public.hermes_calendar_links enable row level security;
 revoke all on table public.hermes_calendar_links from anon, authenticated;
 grant all on table public.hermes_calendar_links to service_role;
-
 drop function if exists public.complete_hermes_workspace_job(uuid, text, text, jsonb, text);
-
 create function public.complete_hermes_workspace_job(
   p_job_id uuid,
   p_worker_id text,
@@ -126,6 +120,5 @@ begin
   return v_job;
 end;
 $$;
-
 revoke execute on function public.complete_hermes_workspace_job(uuid, text, text, text, jsonb, text) from public, anon, authenticated;
 grant execute on function public.complete_hermes_workspace_job(uuid, text, text, text, jsonb, text) to service_role;
