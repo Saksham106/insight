@@ -46,6 +46,7 @@ export async function PATCH(request: Request, route: Context) {
       return NextResponse.json({ class: item });
     }
     if (body.action === "end_enrollment") {
+      if (body.scope !== "enrollment") throw new Error("invalid_action");
       const item = await endKittyClassEnrollment(auth.client, actor, {
         occurrenceId: id,
         enrollmentId: String(body.enrollmentId ?? ""),

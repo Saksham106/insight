@@ -177,7 +177,7 @@ export function HermesAssistantDashboard({
 
       {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} /> : null}
 
-      {tab === "classes" ? <HermesClassesPanel classes={classOccurrences} series={classSeries} contacts={contacts} notificationIssues={classNotificationIssues} enabled={classCalendarEnabled} /> : null}
+      {tab === "classes" ? <HermesClassesPanel classes={classOccurrences} series={classSeries} contacts={directoryContacts} notificationIssues={classNotificationIssues} enabled={classCalendarEnabled} /> : null}
     </div>
   );
 }

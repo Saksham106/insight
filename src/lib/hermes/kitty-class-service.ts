@@ -182,6 +182,73 @@ function projectCurrentChangeRequest(
   };
 }
 
+function projectAdminChangeRequest(changeRequest: Record<string, unknown> | null) {
+  if (!changeRequest) return null;
+  const version = Number(changeRequest.version);
+  const payloadDigest = String(changeRequest.payload_digest ?? "");
+  const requiredEnrollmentIds = Array.isArray(changeRequest.required_enrollment_ids)
+    ? changeRequest.required_enrollment_ids.map(String)
+    : [];
+  const confirmations = Array.isArray(changeRequest.confirmations)
+    ? changeRequest.confirmations as Array<Record<string, unknown>>
+    : [];
+  const currentConfirmations = confirmations.filter((confirmation) =>
+    Number(confirmation.request_version) === version
+      && String(confirmation.payload_digest ?? "") === payloadDigest,
+  );
+  const enrollmentApprovals = requiredEnrollmentIds.map((enrollmentId) => {
+    const confirmation = currentConfirmations.find((item) =>
+      item.decision_side === "student" && String(item.enrollment_id) === enrollmentId,
+    );
+    return {
+      enrollmentId,
+      status: confirmation ? String(confirmation.decision) : "pending",
+      decidedAt: confirmation?.decided_at ? String(confirmation.decided_at) : null,
+    };
+  });
+  const teacherConfirmation = currentConfirmations.find((item) =>
+    item.decision_side === "teacher" && item.enrollment_id === null,
+  );
+  return {
+    id: String(changeRequest.id),
+    changeType: String(changeRequest.change_type),
+    scope: String(changeRequest.scope),
+    status: String(changeRequest.status),
+    version,
+    proposedStartsAt: changeRequest.proposed_starts_at ? String(changeRequest.proposed_starts_at) : null,
+    proposedEndsAt: changeRequest.proposed_ends_at ? String(changeRequest.proposed_ends_at) : null,
+    proposedTimezone: changeRequest.proposed_timezone ? String(changeRequest.proposed_timezone) : null,
+    requiredEnrollmentApprovals: requiredEnrollmentIds.length,
+    receivedEnrollmentApprovals: enrollmentApprovals.filter((item) => item.status === "approved").length,
+    teacherApprovalStatus: teacherConfirmation ? String(teacherConfirmation.decision) : "pending",
+    enrollmentApprovals,
+  };
+}
+
+function projectAdminAttendance(rows: Array<Record<string, unknown>>) {
+  const supersededIds = new Set(rows.flatMap((row) =>
+    row.supersedes_attendance_id ? [String(row.supersedes_attendance_id)] : [],
+  ));
+  const currentByEnrollment = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const enrollmentId = String(row.enrollment_id);
+    if (!supersededIds.has(String(row.id)) && !currentByEnrollment.has(enrollmentId)) {
+      currentByEnrollment.set(enrollmentId, row);
+    }
+  }
+  return [...currentByEnrollment.values()].map((row) => ({
+    id: String(row.id),
+    enrollmentId: String(row.enrollment_id),
+    status: String(row.status),
+    estimatedAt: row.estimated_at ? String(row.estimated_at) : null,
+    note: row.note ? String(row.note) : null,
+    version: Number(row.version),
+    isCorrection: Boolean(row.supersedes_attendance_id),
+    reportedByContactId: String(row.reported_by_contact_id),
+    createdAt: String(row.created_at),
+  }));
+}
+
 export async function listKittyClasses(client: Client, actor: KittyClassActor, options: {
   view?: "upcoming" | "attention" | "history";
   limit?: number;
@@ -253,15 +320,43 @@ export async function listKittyClasses(client: Client, actor: KittyClassActor, o
 
 export async function getKittyClassOccurrence(client: Client, actor: KittyClassActor, occurrenceId: string) {
   const data = await fetchOccurrence(client, occurrenceId);
-  const [roster, changeResult] = await Promise.all([
+  const adminOnly = actor.kind === "admin";
+  const changePromise = adminOnly
+    ? client.from("kitty_class_change_requests")
+        .select("id, change_type, scope, enrollment_id, proposed_starts_at, proposed_ends_at, proposed_timezone, status, payload_digest, version, required_enrollment_ids, replacement_occurrence_id, confirmations:kitty_class_change_confirmations(request_version, decision_side, enrollment_id, decision, payload_digest, decided_at)")
+        .eq("occurrence_id", occurrenceId)
+        .in("status", ["awaiting_requester_confirmation", "awaiting_counterparty", "collecting_alternatives", "ready_to_finalize"])
+        .maybeSingle()
+    : client.from("kitty_class_change_requests")
+        .select("id, change_type, scope, enrollment_id, proposed_starts_at, proposed_ends_at, proposed_timezone, status, version")
+        .eq("occurrence_id", occurrenceId)
+        .in("status", ["awaiting_requester_confirmation", "awaiting_counterparty", "collecting_alternatives", "ready_to_finalize"])
+        .maybeSingle();
+  const [roster, changeResult, attendanceResult, auditResult, notificationResult] = await Promise.all([
     loadOccurrenceRoster(client, data),
-    client.from("kitty_class_change_requests")
-      .select("id, change_type, scope, enrollment_id, requester_side, proposed_starts_at, proposed_ends_at, proposed_timezone, status, payload_digest, version, created_at")
-      .eq("occurrence_id", occurrenceId)
-      .in("status", ["awaiting_requester_confirmation", "awaiting_counterparty", "collecting_alternatives", "ready_to_finalize"])
-      .maybeSingle(),
+    changePromise,
+    adminOnly
+      ? client.from("kitty_class_attendance_updates")
+          .select("id, enrollment_id, reported_by_contact_id, status, estimated_at, note, version, supersedes_attendance_id, created_at")
+          .eq("occurrence_id", occurrenceId).order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    adminOnly
+      ? client.from("kitty_class_audit_events")
+          .select("id, actor_type, event_type, entity_type, created_at")
+          .eq("entity_type", "occurrence").eq("entity_id", occurrenceId)
+          .order("created_at", { ascending: false }).limit(30)
+      : Promise.resolve({ data: [], error: null }),
+    adminOnly
+      ? client.from("kitty_class_notification_outbox")
+          .select("id, contact_id, intent, status, attempt_count, last_error_code, hermes_message_id, updated_at")
+          .eq("occurrence_id", occurrenceId).in("status", ["failed", "blocked"])
+          .order("updated_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
   ]);
   dbError(changeResult.error);
+  dbError(attendanceResult.error);
+  dbError(auditResult.error);
+  dbError(notificationResult.error);
   if (actor.kind === "contact") contactMembership(roster, actor.contactId);
   const projectedEnrollments = projectKittyClassRoster(
     roster.enrollments,
@@ -271,10 +366,33 @@ export async function getKittyClassOccurrence(client: Client, actor: KittyClassA
     ...projectOccurrence(data),
     enrollments: projectedEnrollments,
     enrollmentCount: roster.enrollments.length,
-    currentChangeRequest: projectCurrentChangeRequest(changeResult.data, actor, roster),
+    currentChangeRequest: actor.kind === "admin"
+      ? projectAdminChangeRequest(changeResult.data)
+      : projectCurrentChangeRequest(changeResult.data, actor, roster),
   };
   return actor.kind === "admin"
-    ? { ...projected, teacherContactId: String(roster.teacher?.contact_id ?? "") }
+    ? {
+        ...projected,
+        teacherContactId: String(roster.teacher?.contact_id ?? ""),
+        attendance: projectAdminAttendance(attendanceResult.data ?? []),
+        auditEvents: (auditResult.data ?? []).map((event) => ({
+          id: String(event.id),
+          actorType: String(event.actor_type),
+          eventType: String(event.event_type),
+          entityType: String(event.entity_type),
+          createdAt: String(event.created_at),
+        })),
+        notificationFailures: (notificationResult.data ?? []).map((notification) => ({
+          id: String(notification.id),
+          contactId: String(notification.contact_id),
+          intent: String(notification.intent),
+          status: String(notification.status),
+          attemptCount: Number(notification.attempt_count),
+          errorCode: notification.last_error_code ? String(notification.last_error_code) : null,
+          messageId: notification.hermes_message_id ? String(notification.hermes_message_id) : null,
+          updatedAt: String(notification.updated_at),
+        })),
+      }
     : projected;
 }
 
