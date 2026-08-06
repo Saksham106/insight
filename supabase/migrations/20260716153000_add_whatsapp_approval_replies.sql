@@ -14,15 +14,12 @@ create table public.hermes_whatsapp_approval_bindings (
   check ((consumed_at is null and decision is null and decision_message_id is null)
     or (consumed_at is not null and decision is not null and decision_message_id is not null))
 );
-
 create index hermes_whatsapp_approval_bindings_active
   on public.hermes_whatsapp_approval_bindings(code, expires_at)
   where consumed_at is null;
-
 alter table public.hermes_whatsapp_approval_bindings enable row level security;
 revoke all on table public.hermes_whatsapp_approval_bindings from anon, authenticated;
 grant all on table public.hermes_whatsapp_approval_bindings to service_role;
-
 create function public.decide_hermes_approval_by_whatsapp(
   p_code text,
   p_decision text,
@@ -71,6 +68,5 @@ begin
   return v_approval;
 end;
 $$;
-
 revoke execute on function public.decide_hermes_approval_by_whatsapp(text, text, text) from public, anon, authenticated;
 grant execute on function public.decide_hermes_approval_by_whatsapp(text, text, text) to service_role;

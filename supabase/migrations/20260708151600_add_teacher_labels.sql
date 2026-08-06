@@ -1,6 +1,4 @@
--- Teacher labels: admins create arbitrary labels and assign them to teachers.
--- Purely additive.
-
+-- Teacher labels.
 create table if not exists public.labels (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
@@ -22,40 +20,26 @@ create index if not exists idx_teacher_labels_label_id on public.teacher_labels 
 alter table public.labels enable row level security;
 alter table public.teacher_labels enable row level security;
 
--- Admin full access on both tables.
 drop policy if exists labels_admin_all on public.labels;
 create policy labels_admin_all on public.labels
 for all
 using (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin' and p.is_active = true
-  )
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin' and p.is_active = true)
 )
 with check (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin' and p.is_active = true
-  )
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin' and p.is_active = true)
 );
 
 drop policy if exists teacher_labels_admin_all on public.teacher_labels;
 create policy teacher_labels_admin_all on public.teacher_labels
 for all
 using (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin' and p.is_active = true
-  )
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin' and p.is_active = true)
 )
 with check (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin' and p.is_active = true
-  )
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin' and p.is_active = true)
 );
 
--- Teachers can read their own label assignments and the referenced labels.
 drop policy if exists teacher_labels_select_own on public.teacher_labels;
 create policy teacher_labels_select_own on public.teacher_labels
 for select
@@ -67,7 +51,6 @@ for select
 using (
   exists (
     select 1 from public.teacher_labels tl
-    where tl.label_id = public.labels.id
-      and tl.teacher_id = auth.uid()
+    where tl.label_id = public.labels.id and tl.teacher_id = auth.uid()
   )
-);
+);;

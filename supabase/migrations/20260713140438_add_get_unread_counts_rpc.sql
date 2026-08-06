@@ -18,4 +18,4 @@ as $$
 $$;
 
 revoke execute on function public.get_unread_counts(jsonb) from public, anon;
-grant execute on function public.get_unread_counts(jsonb) to authenticated, service_role;
+grant execute on function public.get_unread_counts(jsonb) to authenticated, service_role;;

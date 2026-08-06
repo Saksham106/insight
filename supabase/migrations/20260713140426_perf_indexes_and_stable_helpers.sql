@@ -26,4 +26,4 @@ alter function public.parent_can_access_student(uuid) stable;
 alter function public.parent_can_access_teacher(uuid) stable;
 
 -- Advisor: pin search_path on the trigger function
-alter function public.set_updated_at() set search_path = public;
+alter function public.set_updated_at() set search_path = public;;

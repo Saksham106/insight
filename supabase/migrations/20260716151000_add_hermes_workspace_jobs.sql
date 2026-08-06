@@ -1,11 +1,9 @@
 alter table public.hermes_scheduling_cases
   add column if not exists workspace_state text not null default 'not_required';
-
 alter table public.hermes_scheduling_cases
   drop constraint if exists hermes_scheduling_cases_workspace_state_check,
   add constraint hermes_scheduling_cases_workspace_state_check
     check (workspace_state in ('not_required', 'pending', 'ready', 'failed', 'stale'));
-
 create table if not exists public.hermes_workspace_jobs (
   id uuid primary key default gen_random_uuid(),
   case_id uuid not null references public.hermes_scheduling_cases(id) on delete cascade,
@@ -30,16 +28,13 @@ create table if not exists public.hermes_workspace_jobs (
     or status <> 'leased'
   )
 );
-
 create index if not exists hermes_workspace_jobs_claim
   on public.hermes_workspace_jobs(status, available_at, created_at);
 create index if not exists hermes_workspace_jobs_case
   on public.hermes_workspace_jobs(case_id, created_at desc);
-
 alter table public.hermes_workspace_jobs enable row level security;
 revoke all on table public.hermes_workspace_jobs from anon, authenticated;
 grant all on table public.hermes_workspace_jobs to service_role;
-
 create or replace function public.claim_hermes_workspace_jobs(p_worker_id text, p_limit integer default 5)
 returns setof public.hermes_workspace_jobs
 language plpgsql
@@ -76,7 +71,6 @@ begin
   returning jobs.*;
 end;
 $$;
-
 create or replace function public.complete_hermes_workspace_job(
   p_job_id uuid,
   p_worker_id text,
@@ -137,7 +131,6 @@ begin
   return v_job;
 end;
 $$;
-
 revoke execute on function public.claim_hermes_workspace_jobs(text, integer) from public, anon, authenticated;
 revoke execute on function public.complete_hermes_workspace_job(uuid, text, text, jsonb, text) from public, anon, authenticated;
 grant execute on function public.claim_hermes_workspace_jobs(text, integer) to service_role;

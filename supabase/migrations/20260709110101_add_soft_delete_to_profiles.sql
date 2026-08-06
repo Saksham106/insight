@@ -16,3 +16,4 @@ alter table public.profiles
 create index if not exists idx_profiles_not_deleted
   on public.profiles (role, created_at desc)
   where deleted_at is null;
+;

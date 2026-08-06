@@ -1,5 +1,4 @@
 drop function if exists public.confirm_hermes_class(uuid, uuid, jsonb);
-
 create function public.confirm_hermes_class(
   p_case_id uuid,
   p_approval_id uuid,
@@ -73,6 +72,5 @@ begin
   return v_case;
 end;
 $$;
-
 revoke execute on function public.confirm_hermes_class(uuid, uuid, jsonb, boolean) from public, anon, authenticated;
 grant execute on function public.confirm_hermes_class(uuid, uuid, jsonb, boolean) to service_role;

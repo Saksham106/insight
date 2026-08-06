@@ -124,3 +124,4 @@ grant execute on function public.propose_hermes_times(uuid, jsonb) to service_ro
 grant execute on function public.request_hermes_approval(uuid, jsonb) to service_role;
 grant execute on function public.confirm_hermes_class(uuid, uuid, jsonb) to service_role;
 grant execute on function public.decide_hermes_approval(uuid, uuid, text, text) to service_role;
+;

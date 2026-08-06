@@ -1,4 +1,3 @@
--- Production migration version: 20260728120052.
 alter table public.hermes_contact_relationships
   add column if not exists is_active boolean not null default true;
 alter table public.hermes_contact_relationships
@@ -404,3 +403,4 @@ grant execute on function public.confirm_academy_lesson_report(uuid, uuid) to se
 grant execute on function public.resolve_academy_lesson_student(uuid, uuid) to service_role;
 grant execute on function public.confirm_academy_lesson_cycle(uuid) to service_role;
 grant execute on function public.reopen_academy_lesson_cycle(uuid) to service_role;
+;

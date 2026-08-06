@@ -10,15 +10,11 @@ CREATE TABLE IF NOT EXISTS public.join_interest_requests (
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT join_interest_requests_contact_check CHECK (email IS NOT NULL OR phone IS NOT NULL)
 );
-
 CREATE INDEX IF NOT EXISTS idx_join_interest_requests_created_at
   ON public.join_interest_requests (created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_join_interest_requests_status
   ON public.join_interest_requests (status);
-
 ALTER TABLE public.join_interest_requests ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY join_interest_requests_admin_select
 ON public.join_interest_requests
 FOR SELECT
@@ -31,7 +27,6 @@ USING (
       AND p.is_active = true
   )
 );
-
 CREATE POLICY join_interest_requests_admin_update
 ON public.join_interest_requests
 FOR UPDATE

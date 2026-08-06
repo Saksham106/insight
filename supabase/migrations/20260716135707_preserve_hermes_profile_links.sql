@@ -25,3 +25,4 @@ create trigger preserve_hermes_profile_link_on_reimport
 
 revoke execute on function public.preserve_hermes_profile_link_on_reimport() from public, anon, authenticated;
 grant execute on function public.preserve_hermes_profile_link_on_reimport() to service_role;
+;

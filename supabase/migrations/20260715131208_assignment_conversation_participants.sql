@@ -1,6 +1,5 @@
--- Fix: the assignment→conversation trigger created a conversation row but no
--- participant rows, so conversations for assignments created after the
--- group_conversations migration would be invisible under membership RLS.
+-- New assignment conversations must also seed the participants table, otherwise
+-- the membership-based RLS (added in group_conversations) never grants access.
 create or replace function public.create_conversation_for_assignment()
 returns trigger
 language plpgsql
@@ -21,4 +20,4 @@ begin
 
   return new;
 end;
-$function$;
+$function$;;

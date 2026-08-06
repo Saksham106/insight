@@ -13,7 +13,6 @@ create table public.academy_settlement_cycles (
   check (currency ~ '^[A-Z]{3}$'),
   check ((status = 'closed') = (closed_at is not null))
 );
-
 create table public.academy_tutor_reports (
   id uuid primary key default gen_random_uuid(),
   settlement_cycle_id uuid not null references public.academy_settlement_cycles(id) on delete cascade,
@@ -31,11 +30,9 @@ create table public.academy_tutor_reports (
   unique (settlement_cycle_id, tutor_contact_id, revision),
   check (supersedes_report_id is null or supersedes_report_id <> id)
 );
-
 create unique index academy_tutor_reports_one_active
   on public.academy_tutor_reports(settlement_cycle_id, tutor_contact_id)
   where status <> 'superseded';
-
 create table public.academy_tutor_report_lines (
   id uuid primary key default gen_random_uuid(),
   tutor_report_id uuid not null references public.academy_tutor_reports(id) on delete cascade,
@@ -54,7 +51,6 @@ create table public.academy_tutor_report_lines (
   check (resolution_status = 'unresolved' or student_contact_id is not null),
   check (resolution_status <> 'confirmed_by_swati' or billed_contact_id is not null)
 );
-
 create table public.academy_family_invoices (
   id uuid primary key default gen_random_uuid(),
   settlement_cycle_id uuid not null references public.academy_settlement_cycles(id) on delete restrict,
@@ -73,7 +69,6 @@ create table public.academy_family_invoices (
   check ((status = 'paid') = (paid_at is not null)),
   check (sent_at is null or status in ('sent', 'paid', 'void'))
 );
-
 create table public.academy_tutor_payouts (
   id uuid primary key default gen_random_uuid(),
   settlement_cycle_id uuid not null references public.academy_settlement_cycles(id) on delete restrict,
@@ -88,11 +83,9 @@ create table public.academy_tutor_payouts (
   updated_at timestamptz not null default now(),
   check ((status = 'paid') = (paid_at is not null))
 );
-
 alter table public.hermes_messages
   add column settlement_cycle_id uuid references public.academy_settlement_cycles(id) on delete set null,
   add column family_invoice_id uuid references public.academy_family_invoices(id) on delete set null;
-
 create index academy_tutor_reports_cycle_status on public.academy_tutor_reports(settlement_cycle_id, status);
 create index academy_tutor_reports_tutor_idx on public.academy_tutor_reports(tutor_contact_id);
 create index academy_tutor_reports_supersedes_idx on public.academy_tutor_reports(supersedes_report_id)
@@ -113,7 +106,6 @@ create index hermes_messages_settlement_cycle_idx on public.hermes_messages(sett
   where settlement_cycle_id is not null;
 create index hermes_messages_family_invoice_idx on public.hermes_messages(family_invoice_id)
   where family_invoice_id is not null;
-
 alter table public.hermes_approvals alter column case_id drop not null;
 alter table public.hermes_approvals
   add column settlement_cycle_id uuid references public.academy_settlement_cycles(id) on delete cascade;
@@ -122,20 +114,17 @@ alter table public.hermes_approvals
   check (num_nonnulls(case_id, settlement_cycle_id) = 1);
 create index hermes_approvals_settlement_cycle_idx on public.hermes_approvals(settlement_cycle_id)
   where settlement_cycle_id is not null;
-
 alter table public.hermes_whatsapp_approval_bindings
   add column decision_channel text
   check (decision_channel is null or decision_channel in ('whatsapp', 'imessage', 'dashboard'));
 update public.hermes_whatsapp_approval_bindings
   set decision_channel = 'whatsapp'
   where consumed_at is not null and decision_channel is null;
-
 alter table public.academy_settlement_cycles enable row level security;
 alter table public.academy_tutor_reports enable row level security;
 alter table public.academy_tutor_report_lines enable row level security;
 alter table public.academy_family_invoices enable row level security;
 alter table public.academy_tutor_payouts enable row level security;
-
 create policy academy_settlement_cycles_admin_all on public.academy_settlement_cycles
   for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 create policy academy_tutor_reports_admin_all on public.academy_tutor_reports
@@ -146,7 +135,6 @@ create policy academy_family_invoices_admin_all on public.academy_family_invoice
   for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 create policy academy_tutor_payouts_admin_all on public.academy_tutor_payouts
   for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
-
 revoke all on table public.academy_settlement_cycles from anon;
 revoke all on table public.academy_tutor_reports from anon;
 revoke all on table public.academy_tutor_report_lines from anon;
@@ -162,7 +150,6 @@ grant all on table public.academy_tutor_reports to service_role;
 grant all on table public.academy_tutor_report_lines to service_role;
 grant all on table public.academy_family_invoices to service_role;
 grant all on table public.academy_tutor_payouts to service_role;
-
 create trigger set_academy_settlement_cycles_updated_at before update on public.academy_settlement_cycles
   for each row execute function public.set_updated_at();
 create trigger set_academy_tutor_reports_updated_at before update on public.academy_tutor_reports
@@ -173,7 +160,6 @@ create trigger set_academy_family_invoices_updated_at before update on public.ac
   for each row execute function public.set_updated_at();
 create trigger set_academy_tutor_payouts_updated_at before update on public.academy_tutor_payouts
   for each row execute function public.set_updated_at();
-
 create function public.submit_academy_tutor_report(
   p_cycle_id uuid,
   p_tutor_contact_id uuid,
@@ -249,7 +235,6 @@ begin
   return v_report;
 end;
 $$;
-
 create function public.set_academy_family_charges(p_cycle_id uuid, p_charges jsonb)
 returns public.academy_settlement_cycles
 language plpgsql
@@ -318,7 +303,6 @@ begin
   return v_cycle;
 end;
 $$;
-
 create function public.build_academy_settlement_payload(p_cycle_id uuid)
 returns jsonb
 language plpgsql
@@ -376,7 +360,6 @@ begin
   );
 end;
 $$;
-
 create function public.request_academy_settlement_approval(p_cycle_id uuid)
 returns public.hermes_approvals
 language plpgsql
@@ -425,7 +408,6 @@ begin
   return v_approval;
 end;
 $$;
-
 create function public.decide_hermes_approval_by_channel(
   p_approval_id uuid,
   p_code text,
@@ -515,7 +497,6 @@ begin
   return v_approval;
 end;
 $$;
-
 create or replace function public.decide_hermes_approval_by_whatsapp(
   p_code text,
   p_decision text,
@@ -528,7 +509,6 @@ set search_path = public, pg_temp
 as $$
   select public.decide_hermes_approval_by_channel(null, p_code, null, p_decision, p_message_id, 'whatsapp');
 $$;
-
 create function public.finalize_academy_settlement(p_approval_id uuid)
 returns public.academy_settlement_cycles
 language plpgsql
@@ -581,7 +561,6 @@ begin
   return v_cycle;
 end;
 $$;
-
 create function public.record_academy_family_payment(p_invoice_id uuid)
 returns public.academy_family_invoices
 language plpgsql
@@ -612,7 +591,6 @@ begin
   return v_invoice;
 end;
 $$;
-
 create function public.record_academy_tutor_payout(p_payout_id uuid)
 returns public.academy_tutor_payouts
 language plpgsql
@@ -631,7 +609,6 @@ begin
   return v_payout;
 end;
 $$;
-
 revoke execute on function public.build_academy_settlement_payload(uuid) from public, anon, authenticated;
 revoke execute on function public.submit_academy_tutor_report(uuid, uuid, bigint, text, jsonb) from public, anon, authenticated;
 revoke execute on function public.set_academy_family_charges(uuid, jsonb) from public, anon, authenticated;

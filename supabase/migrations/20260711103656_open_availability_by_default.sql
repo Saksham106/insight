@@ -46,3 +46,4 @@ where exists (
   select 1 from public.teacher_availability_rules r
   where r.teacher_id = s.teacher_id and r.is_active = true
 );
+;
