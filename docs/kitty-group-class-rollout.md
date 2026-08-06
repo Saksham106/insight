@@ -8,7 +8,7 @@ Activation status: **blocked; feature remains disabled**
 
 ## Verified locally
 
-- `KITTY_CLASS_CALENDAR_ENABLED` remains false by default. No production or preview environment was changed.
+- `KITTY_CLASS_CALENDAR_ENABLED` remains false by default and is explicitly configured as `false` for Vercel Preview only. Production was not changed.
 - The complete Node suite passed with the disposable PostgreSQL probes enabled: 370 passed, 0 failed, 0 skipped.
 - The Academy profile and scheduling plugin suite passed: 26 passed, 0 failed.
 - `npx tsc --noEmit --incremental false` passed.
@@ -51,9 +51,13 @@ The reviewed PR head `d6f57ed39e207a7f3af5c0c6818e7d65ffc601d1` built successful
 
 The preview is protected by Vercel SSO. Unauthenticated GET `/`, POST `/api/hermes/class-tools`, and POST `/api/cron/kitty-classes` each returned HTTP 302 to the Vercel SSO endpoint, so application-level disabled responses could not be observed externally.
 
-Vercel CLI 54.21.1 initially reported `No existing credentials found` and started its device-login flow. While that read-only state check was being stopped, the already-authenticated device flow completed without a manually entered code and the CLI reported the account as `saksham106`. No deployment, environment, project-link, or production action was taken with the resulting session.
+Vercel CLI 54.21.1 initially reported `No existing credentials found` and started its device-login flow. While that read-only state check was being stopped, the already-authenticated device flow completed without a manually entered code and the CLI reported the account as `saksham106`.
 
-The existing local production-environment snapshot contains empty Supabase values and does not contain the Kitty flag, dedicated tool URL, or required Kitty template variables. It cannot support a realistic local disabled HTTP smoke test. The restored CLI session was intentionally not used to continue blocked environment or protected-preview inspection.
+Using that session, only `KITTY_CLASS_CALENDAR_ENABLED=false` was added to Preview. Production and all other variables were left unchanged. Redeploying reviewed head `b398e7357f7f73b98518947e26896269358f347d` created Preview deployment `dpl_3y1dixc8ocmjqobPeKxutDrTZVyi` at `https://insight-mct3av007-saksham-goels-projects-0ecf36cd.vercel.app`; Vercel reported target `preview` and status `Ready`, with the branch alias attached. The GitHub checks for the same head's source deployment remained successful.
+
+Authenticated protected-preview probes returned HTTP 200 for GET `/` and HTTP 404 with the safe `Not found` response for POST `/api/hermes/class-tools`, proving the feature flag is disabled in the application. An unsigned maintenance request returned HTTP 401 as designed because cron authentication precedes the feature gate. Preview has no `CRON_SECRET`, so the authenticated maintenance 404 cannot be tested without inventing a credential; none was added. The temporary environment file used to check name presence was deleted, and no value was printed. Vercel CLI generated its normal deployment-protection bypass token automatically for the project; the token value was not displayed or stored in the repository.
+
+The existing local production-environment snapshot contains empty Supabase values and does not contain the dedicated Kitty tool URL or required Kitty template variables. Those unknown values were not added.
 
 The required Kitty configuration names are:
 
@@ -78,8 +82,8 @@ There is no configured provider sandbox or explicitly selected safe contact in t
 ## Safe continuation order
 
 1. Reconcile Supabase migration history without discarding remote-only changes.
-2. Restore Vercel CLI authentication and inspect environment names without exposing values.
-3. Create a preview with `KITTY_CLASS_CALENDAR_ENABLED=false` and verify the disabled API and admin UI.
+2. Configure an existing approved Preview `CRON_SECRET` only when an exact value is available, then verify the authenticated maintenance route returns the disabled 404.
+3. Verify the protected admin UI with an approved Preview admin session; the public page and disabled class-tool API are already healthy.
 4. Dry-run and apply only the reviewed Kitty migrations while disabled.
 5. Configure approved Utility template names and the exact tool URL while keeping the flag false.
 6. Run the explicitly selected-contact pilot and verify provider delivery records.
