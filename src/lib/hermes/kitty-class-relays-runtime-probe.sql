@@ -7,12 +7,14 @@ declare
   v_teacher_relay public.kitty_class_operational_relays;
   v_replayed_relay public.kitty_class_operational_relays;
   v_family_relay public.kitty_class_operational_relays;
+  v_preparation_relay public.kitty_class_operational_relays;
   v_enrollment_a uuid;
   v_enrollment_b uuid;
   v_student_token text := repeat('a', 64);
   v_teacher_token text := repeat('b', 64);
   v_student_token_digest text;
   v_teacher_token_digest text;
+  v_open_ended_preparation text;
 begin
   if has_function_privilege(
     'anon',
@@ -271,13 +273,71 @@ begin
     perform public.create_kitty_class_operational_relay(
       v_occurrence.id, null,
       '10000000-0000-0000-0000-000000000001',
-      'preparation_note', null, null, null, 'Bring the medical diagnosis',
-      v_teacher_token, 'relay-runtime-sensitive'
+      'mode_changed', null, null, null, null,
+      v_teacher_token, 'relay-runtime-null-mode'
     );
-    raise exception 'sensitive preparation content was accepted';
+    raise exception 'mode change without a mode was accepted';
   exception when others then
     if sqlerrm <> 'invalid_relay' then raise; end if;
   end;
+  begin
+    insert into public.kitty_class_operational_relays(
+      occurrence_id, sent_by_contact_id, intent, structured_payload,
+      client_request_id, payload_digest
+    ) values (
+      v_occurrence.id, '10000000-0000-0000-0000-000000000001',
+      'mode_changed', '{}'::jsonb, 'relay-runtime-structural-null-mode', repeat('c', 64)
+    );
+    raise exception 'relay table accepted mode_changed without a structured mode';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.kitty_class_notification_outbox(
+      occurrence_id, contact_id, intent, payload, idempotency_key
+    ) values (
+      v_occurrence.id, '10000000-0000-0000-0000-000000000002',
+      'class_operational_update', '{}'::jsonb, 'relay-runtime-missing-summary'
+    );
+    raise exception 'relay outbox accepted a missing summary';
+  exception when check_violation then null;
+  end;
+
+  foreach v_open_ended_preparation in array array[
+    'Bring allergy medication and an EpiPen',
+    'Provide an ADHD accommodation',
+    'Bring the custody order'
+  ] loop
+    begin
+      perform public.create_kitty_class_operational_relay(
+        v_occurrence.id, null,
+        '10000000-0000-0000-0000-000000000001',
+        'preparation_note', null, null, null, v_open_ended_preparation,
+        v_teacher_token, 'relay-runtime-unsafe-preparation:' || v_open_ended_preparation
+      );
+      raise exception 'open-ended preparation content was accepted';
+    exception when others then
+      if sqlerrm <> 'invalid_relay' then raise; end if;
+    end;
+  end loop;
+
+  select * into v_preparation_relay
+  from public.create_kitty_class_operational_relay(
+    v_occurrence.id, null,
+    '10000000-0000-0000-0000-000000000001',
+    'preparation_note', null, null, null, 'review_prior_material',
+    v_teacher_token, 'relay-runtime-safe-preparation'
+  );
+  if exists (
+    select 1
+    from public.kitty_class_notification_outbox outbox
+    where outbox.idempotency_key like 'relay:' || v_preparation_relay.id::text || ':%'
+      and (
+        outbox.payload ? 'preparationCategory'
+        or outbox.payload::text not like '%Please review the previous class material before class.%'
+      )
+  ) then
+    raise exception 'preparation category or noncanonical text reached the outbox';
+  end if;
 
   if not exists (
     select 1

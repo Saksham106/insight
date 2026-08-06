@@ -73,9 +73,21 @@ test("attendance and relay fields reject unbounded, sensitive, and open-ended co
   const { normalizeKittyAttendance, normalizeKittyOperationalRelay } = require(relayPath);
   assert.throws(() => normalizeKittyAttendance({ status: "absent", note: "x".repeat(241) }), /attendance_note_too_long/);
   assert.throws(() => normalizeKittyAttendance({ status: "absent", note: "Medical diagnosis attached" }), /sensitive_relay_content/);
-  assert.throws(() => normalizeKittyOperationalRelay({ intent: "free_form", preparationNote: "Anything" }), /unsupported_relay_intent/);
-  assert.throws(() => normalizeKittyOperationalRelay({ intent: "preparation_note", preparationNote: "x".repeat(241) }), /preparation_note_too_long/);
-  assert.throws(() => normalizeKittyOperationalRelay({ intent: "preparation_note", preparationNote: "Bring the disciplinary report" }), /sensitive_relay_content/);
+  assert.throws(() => normalizeKittyOperationalRelay({ intent: "free_form", preparationCategory: "bring_materials" }), /unsupported_relay_intent/);
+  for (const openEnded of [
+    "Bring allergy medication and an EpiPen",
+    "Provide an ADHD accommodation",
+    "Bring the custody order",
+  ]) {
+    assert.throws(
+      () => normalizeKittyOperationalRelay({ intent: "preparation_note", preparationCategory: openEnded }),
+      /invalid_preparation_category/,
+    );
+  }
+  assert.deepEqual(
+    normalizeKittyOperationalRelay({ intent: "preparation_note", preparationCategory: "bring_materials" }),
+    { intent: "preparation_note", estimatedAt: null, mode: null, locationLabel: null, preparationCategory: "bring_materials" },
+  );
   assert.throws(() => normalizeKittyOperationalRelay({ intent: "mode_changed", mode: "somewhere_else" }), /invalid_relay_mode/);
 });
 
@@ -90,6 +102,9 @@ test("safe relay templates expose bounded summaries without identities or raw at
   assert.deepEqual(buildKittyRelayTemplateData({
     intent: "teacher_late", estimatedAt: "2026-08-12T20:15:00.000Z",
   }, "family"), { relaySummary: "The teacher expects to start at 8:15 PM UTC." });
+  assert.deepEqual(buildKittyRelayTemplateData({
+    intent: "preparation_note", preparationCategory: "review_prior_material",
+  }, "family"), { relaySummary: "Please review the previous class material before class." });
 });
 
 test("notification template projection ignores raw and attendance note fields", () => {
@@ -170,6 +185,9 @@ test("relay RPCs lock and derive membership, bind replay payloads, append correc
   assert.match(migration, /supersedes_attendance_id/);
   assert.match(migration, /attendance_corrected/);
   assert.match(migration, /prevent_kitty_class_attendance_mutation/);
+  assert.match(migration, /p_intent = 'mode_changed' and \(p_mode is null or p_mode not in \('online', 'in_person'\)\)/);
+  assert.match(migration, /preparationCategory[\s\S]*bring_materials[\s\S]*review_prior_material/);
+  assert.doesNotMatch(migration, /'Preparation for class:'\s*\|\|/);
   assert.match(migration, /insert into public\.kitty_class_notification_outbox/);
   const outboxStatements = [...migration.matchAll(/insert into public\.kitty_class_notification_outbox\([\s\S]*?;\n/g)]
     .map((match) => match[0]);

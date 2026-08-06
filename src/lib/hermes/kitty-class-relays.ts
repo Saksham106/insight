@@ -14,12 +14,18 @@ export type KittyRelayIntent =
 
 export type KittyRelayMode = "online" | "in_person";
 
+export type KittyPreparationCategory =
+  | "bring_materials"
+  | "complete_assigned_work"
+  | "review_prior_material"
+  | "bring_device";
+
 export type KittyOperationalRelayFields = {
   intent: KittyRelayIntent;
   estimatedAt?: string | null;
   mode?: KittyRelayMode | null;
   locationLabel?: string | null;
-  preparationNote?: string | null;
+  preparationCategory?: KittyPreparationCategory | null;
 };
 
 type RecipientRoster = {
@@ -39,6 +45,15 @@ const RELAY_INTENTS = new Set<KittyRelayIntent>([
 ]);
 const STUDENT_RELAY_INTENTS = new Set<KittyRelayIntent>(["student_absent", "student_late", "student_leaving_early"]);
 const FAMILY_REQUEST_INTENTS = new Set<KittyRelayIntent>(["meeting_link_requested", "class_status_requested"]);
+const PREPARATION_CATEGORIES = new Set<KittyPreparationCategory>([
+  "bring_materials", "complete_assigned_work", "review_prior_material", "bring_device",
+]);
+const PREPARATION_SUMMARIES: Record<KittyPreparationCategory, string> = {
+  bring_materials: "Please bring the usual class materials.",
+  complete_assigned_work: "Please complete the assigned work before class.",
+  review_prior_material: "Please review the previous class material before class.",
+  bring_device: "Please bring the device normally used for class.",
+};
 const SENSITIVE_CONTENT = /\b(?:diagnos(?:is|ed)|medical|medication|therapy|disab(?:ility|led)|grade|gpa|exam score|tuition|payment|invoice|debt|disciplin(?:e|ary)|suspension|expulsion|abuse|violence)\b/i;
 
 function optionalBoundedText(value: unknown, field: string, limit: number) {
@@ -74,7 +89,7 @@ export function normalizeKittyOperationalRelay(input: {
   estimatedAt?: unknown;
   mode?: unknown;
   locationLabel?: unknown;
-  preparationNote?: unknown;
+  preparationCategory?: unknown;
 }): KittyOperationalRelayFields {
   if (typeof input.intent !== "string" || !RELAY_INTENTS.has(input.intent as KittyRelayIntent)) throw new Error("unsupported_relay_intent");
   const intent = input.intent as KittyRelayIntent;
@@ -87,10 +102,22 @@ export function normalizeKittyOperationalRelay(input: {
   const locationLabel = optionalBoundedText(input.locationLabel, "location_label", 120);
   if (intent === "location_changed" && !locationLabel) throw new Error("location_label_required");
   if (intent !== "location_changed" && locationLabel) throw new Error("location_label_not_permitted");
-  const preparationNote = optionalBoundedText(input.preparationNote, "preparation_note", 240);
-  if (intent === "preparation_note" && !preparationNote) throw new Error("preparation_note_required");
-  if (intent !== "preparation_note" && preparationNote) throw new Error("preparation_note_not_permitted");
-  return { intent, estimatedAt, mode: mode as KittyRelayMode | null, locationLabel, preparationNote };
+  const preparationCategory = input.preparationCategory === undefined || input.preparationCategory === null || input.preparationCategory === ""
+    ? null
+    : input.preparationCategory;
+  if (preparationCategory !== null && (
+    typeof preparationCategory !== "string"
+    || !PREPARATION_CATEGORIES.has(preparationCategory as KittyPreparationCategory)
+  )) throw new Error("invalid_preparation_category");
+  if (intent === "preparation_note" && preparationCategory === null) throw new Error("preparation_category_required");
+  if (intent !== "preparation_note" && preparationCategory !== null) throw new Error("preparation_category_not_permitted");
+  return {
+    intent,
+    estimatedAt,
+    mode: mode as KittyRelayMode | null,
+    locationLabel,
+    preparationCategory: preparationCategory as KittyPreparationCategory | null,
+  };
 }
 
 export function selectKittyRelayRecipients(
@@ -155,7 +182,7 @@ export function buildKittyRelayTemplateData(
     case "meeting_link_requested": relaySummary = "A family has requested the configured meeting link."; break;
     case "class_status_requested": relaySummary = "A family has asked whether this class is still happening."; break;
     case "substitute_teacher": relaySummary = "A substitute teacher will lead this class."; break;
-    case "preparation_note": relaySummary = `Preparation for class: ${relay.preparationNote}`; break;
+    case "preparation_note": relaySummary = PREPARATION_SUMMARIES[relay.preparationCategory!]; break;
   }
   return { relaySummary };
 }
