@@ -3,6 +3,35 @@
 -- signed transport session before it reaches this boundary and is revalidated
 -- against the locked Kitty roster here.
 
+-- Supabase installs pgcrypto in the extensions schema, while some disposable
+-- PostgreSQL test images install it in public. Earlier Kitty functions call the
+-- fully qualified public.digest name. Add a service-only forwarding function
+-- only when pgcrypto itself is not already installed in public.
+do $migration$
+declare
+  v_pgcrypto_schema name;
+begin
+  select namespace.nspname into v_pgcrypto_schema
+  from pg_catalog.pg_extension extension
+  join pg_catalog.pg_namespace namespace on namespace.oid = extension.extnamespace
+  where extension.extname = 'pgcrypto';
+  if v_pgcrypto_schema is null then
+    raise exception 'pgcrypto_required';
+  end if;
+  if v_pgcrypto_schema <> 'public' then
+    execute pg_catalog.format(
+      $function$create function public.digest(p_data bytea, p_type text)
+        returns bytea language sql immutable strict parallel safe security invoker
+        set search_path = '' as 'select %I.digest(p_data, p_type)'$function$,
+      v_pgcrypto_schema
+    );
+  end if;
+end;
+$migration$;
+
+revoke execute on function public.digest(bytea, text) from public, anon, authenticated;
+grant execute on function public.digest(bytea, text) to service_role;
+
 alter table public.kitty_class_change_requests
   add column replacement_occurrence_id uuid
     references public.kitty_class_occurrences(id) on delete restrict;

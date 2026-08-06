@@ -145,6 +145,15 @@ test("legacy creators bridge one enrollment and shared guardians approve every r
   assert.match(migration, /request_expired/);
 });
 
+test("group change digest is portable across Supabase and disposable pgcrypto schemas", () => {
+  const migration = read("supabase/migrations/20260806020109_coordinate_kitty_group_class_changes.sql").toLowerCase();
+
+  assert.match(migration, /pg_extension[\s\S]*pgcrypto_required/);
+  assert.match(migration, /v_pgcrypto_schema <> 'public'[\s\S]*create function public\.digest/);
+  assert.match(migration, /revoke execute on function public\.digest\(bytea, text\) from public, anon, authenticated/);
+  assert.match(migration, /grant execute on function public\.digest\(bytea, text\) to service_role/);
+});
+
 test("admin hardening migration scopes roster edits, audit detail, and retry eligibility", () => {
   const migration = read("supabase/migrations/20260806040937_harden_kitty_class_admin.sql").toLowerCase();
   assert.match(migration, /create function public\.add_kitty_class_enrollment\([\s\S]*p_scope text/);
