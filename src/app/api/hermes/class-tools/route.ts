@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       actor,
       body.action,
       body.payload as JsonObject,
-      { clientRequestId: auth.requestId },
+      { clientRequestId: `class-create:${auth.requestId}` },
     );
     await supabase.from("kitty_class_audit_events").update({ event_type: "class_tool_completed" }).eq("id", auditId);
     return NextResponse.json(result);

@@ -75,8 +75,10 @@ function legacyGroupRoster(payload: Payload) {
 }
 
 export function normalizeKittyClassCreatePayload(payload: Payload, fallbackClientRequestId?: string) {
-  if (Array.isArray(payload.enrollments) && "participants" in payload) throw new Error("invalid_payload");
-  const native = Array.isArray(payload.enrollments) && !("participants" in payload);
+  const hasLegacyRoster = "participants" in payload;
+  const hasNativeRoster = "teacherContactId" in payload || "enrollments" in payload;
+  if (hasLegacyRoster && hasNativeRoster) throw new Error("invalid_payload");
+  const native = hasNativeRoster && !hasLegacyRoster;
   const roster = native
     ? { teacherContactId: text(payload, "teacherContactId"), enrollments: validateKittyEnrollments(payload.enrollments as KittyEnrollmentInput[]) }
     : legacyGroupRoster(payload);

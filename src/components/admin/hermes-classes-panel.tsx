@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CalendarDays, Plus } from "lucide-react";
 
 import { Empty, formatMessageTime, PanelCard } from "@/components/admin/hermes-dashboard-shared";
+import { createKittyClassDashboardSubmitter } from "@/lib/hermes/kitty-class-dashboard-submit";
 
 type ClassOccurrence = {
   id: string;
@@ -44,6 +45,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
   const [kind, setKind] = useState<"one_off" | "weekly">("weekly");
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const submitClass = useMemo(() => createKittyClassDashboardSubmitter(), []);
   const visible = useMemo(() => {
     if (view === "attention") return classes.filter((item) => item.status === "change_requested");
     if (view === "history") return classes.filter((item) => ["completed", "cancelled", "rescheduled"].includes(item.status));
@@ -107,7 +109,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
           durationMinutes,
           localDate: startsAt.slice(0, 10), participants,
         };
-    const response = await fetch("/api/admin/hermes/classes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const response = await submitClass(payload);
     const result = await response.json();
     setPending(false);
     if (!response.ok) return setMessage(result.error ?? "Could not create class.");
