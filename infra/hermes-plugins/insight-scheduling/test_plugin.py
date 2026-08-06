@@ -100,6 +100,38 @@ class PluginTests(unittest.TestCase):
         self.assertLess(source.index("find_my_classes"), source.index("confirm_class_selection"))
         self.assertIn("exact occurrence", source)
 
+    def test_exposes_group_class_attendance_and_bounded_relay_actions(self):
+        for action in (
+            "record_class_attendance",
+            "correct_class_attendance",
+            "relay_class_update",
+        ):
+            self.assertIn(action, self.tools.ACTIONS)
+            self.assertIn(action, self.tools.CLASS_ACTIONS)
+
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+        for required in (
+            "confirm the exact scope",
+            "individual student",
+            "whole class",
+            "selectionToken",
+            "enrollmentId",
+            "preparationCategory",
+        ):
+            self.assertIn(required, source)
+
+    def test_pending_change_decision_payloads_are_request_bound(self):
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+
+        self.assertIn(
+            "decide_class_change={requestId,requestVersion,payloadDigest,decision,providerMessageId?,clientRequestId?}",
+            source,
+        )
+        self.assertIn(
+            "propose_replacement_time={requestId,requestVersion,payloadDigest,proposedStartsAt,proposedEndsAt,proposedTimezone?,clientRequestId?}",
+            source,
+        )
+
     def test_request_signs_actor_and_payload_without_exposing_secret(self):
         with patch.dict(os.environ, {
             "INSIGHT_HERMES_TOOL_URL": "https://myinsightacademy.com/api/hermes/tools",
