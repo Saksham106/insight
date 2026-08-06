@@ -510,14 +510,7 @@ test("rollout remains disabled until every template and staging probe is ready",
   for (const name of [
     "KITTY_CLASS_CALENDAR_ENABLED=false",
     "INSIGHT_KITTY_CLASS_TOOL_URL=",
-    "WHATSAPP_TEMPLATE_CLASS_CHANGE_REQUEST=",
-    "WHATSAPP_TEMPLATE_CLASS_CHANGE_PROPOSAL=",
-    "WHATSAPP_TEMPLATE_CLASS_CANCELLED=",
-    "WHATSAPP_TEMPLATE_CLASS_RESCHEDULED=",
-    "WHATSAPP_TEMPLATE_CLASS_CHANGE_REJECTED=",
-    "WHATSAPP_TEMPLATE_CLASS_ATTENDANCE_UPDATE=",
-    "WHATSAPP_TEMPLATE_CLASS_TEACHER_DELAY=",
-    "WHATSAPP_TEMPLATE_CLASS_OPERATIONAL_UPDATE=",
+    "WHATSAPP_TEMPLATE_HUMAN_ATTENTION=",
   ]) assert.ok(env.includes(name), `missing ${name}`);
   for (const phrase of ["shadow pilot", "selected contacts", "rollback", "exact occurrence", "every active enrollment"]) {
     assert.ok(readme.toLowerCase().includes(phrase), `missing rollout phrase: ${phrase}`);

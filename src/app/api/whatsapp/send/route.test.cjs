@@ -121,6 +121,7 @@ test("every Kitty relay delivery uses a sending outbox reservation and quarantin
   const originalFetch = global.fetch;
   const previousEnv = { ...process.env };
   const providerResults = [];
+  const providerPayloads = [];
   let fetchCount = 0;
 
   Module._load = function load(request, parent, isMain) {
@@ -133,8 +134,9 @@ test("every Kitty relay delivery uses a sending outbox reservation and quarantin
     if (request === "@/lib/hermes/whatsapp-delivery-state") return originalLoad(deliveryStatePath, parent, isMain);
     return originalLoad(request, parent, isMain);
   };
-  global.fetch = async () => {
+  global.fetch = async (_url, init) => {
     fetchCount += 1;
+    providerPayloads.push(JSON.parse(init.body));
     const result = providerResults.shift();
     return { ok: true, status: 200, json: async () => result };
   };
@@ -143,9 +145,7 @@ test("every Kitty relay delivery uses a sending outbox reservation and quarantin
     WHATSAPP_CLOUD_PHONE_NUMBER_ID: "phone-1",
     WHATSAPP_CLOUD_ACCESS_TOKEN: "token-1",
     KITTY_CLASS_CALENDAR_ENABLED: "true",
-    WHATSAPP_TEMPLATE_CLASS_ATTENDANCE_UPDATE: "kitty_attendance",
-    WHATSAPP_TEMPLATE_CLASS_TEACHER_DELAY: "kitty_teacher_delay",
-    WHATSAPP_TEMPLATE_CLASS_OPERATIONAL_UPDATE: "kitty_operational_update",
+    WHATSAPP_TEMPLATE_HUMAN_ATTENTION: "class_human_attention",
   });
   delete require.cache[routePath];
 
@@ -164,6 +164,10 @@ test("every Kitty relay delivery uses a sending outbox reservation and quarantin
       assert.equal(response.status, 200, JSON.stringify(await response.json()));
     }
     assert.equal(fetchCount, 3);
+    for (const payload of providerPayloads) {
+      assert.equal(payload.template.name, "class_human_attention");
+      assert.equal(payload.template.components[0].parameters.length, 2);
+    }
     for (const intent of ["class_attendance_update", "class_teacher_delay", "class_operational_update"]) {
       assert.ok(database.outboxLookups.some((filters) => filters.some((filter) => filter[1] === "intent" && filter[2] === intent)
         && filters.some((filter) => filter[1] === "status" && filter[2] === "sending")));
@@ -211,4 +215,10 @@ test("every Kitty relay delivery uses a sending outbox reservation and quarantin
     process.env = previousEnv;
     delete require.cache[routePath];
   }
+});
+
+test("Kitty adapts notifications to the existing approved human-attention template", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/app/api/whatsapp/send/route.ts"), "utf8");
+  assert.match(source, /delivery\.parameterStyle === "human_attention"/);
+  assert.match(source, /buildHumanAttentionFallbackContent\(recipientName, body\.text/);
 });

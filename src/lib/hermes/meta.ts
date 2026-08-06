@@ -28,13 +28,14 @@ export type SchedulingWhatsAppIntent = Exclude<WhatsAppIntent, "lesson_report_re
 export interface TemplateConfig {
   name: string;
   locale: string;
+  parameterStyle?: "human_attention";
 }
 
 export type TemplateMap = Partial<Record<WhatsAppIntent, TemplateConfig>>;
 
 export type WhatsAppDelivery =
   | { kind: "free_form" }
-  | { kind: "template"; name: string; locale: string }
+  | { kind: "template"; name: string; locale: string; parameterStyle?: "human_attention" }
   | { kind: "blocked"; reason: "paused" | "guardian_only" | "approval_required" | "opted_out" | "template_unavailable" };
 
 const SCHEDULING_PARAMETER_COUNTS: Record<SchedulingWhatsAppIntent, number> = {
@@ -60,6 +61,17 @@ function requiredTemplateField(input: Record<string, unknown>, key: string) {
   const value = input[key];
   if (typeof value !== "string" || !value.trim() || value.length > 500) throw new Error(`invalid_${key}`);
   return value.trim();
+}
+
+export function buildHumanAttentionFallbackContent(recipientNameInput: unknown, bodyInput: unknown) {
+  const recipientName = requiredTemplateField({ recipientName: recipientNameInput }, "recipientName");
+  if (typeof bodyInput !== "string") throw new Error("invalid_matter");
+  const prefix = `Hi ${recipientName}, `;
+  const matter = (bodyInput.startsWith(prefix) ? bodyInput.slice(prefix.length) : bodyInput)
+    .trim()
+    .replace(/[.!?]$/, "");
+  if (!matter || matter.length > 500) throw new Error("invalid_matter");
+  return { bodyParameters: [recipientName, matter] };
 }
 
 export function buildLessonReportRequestContent(periodStart: unknown, recipientName: unknown): { body: string; bodyParameters: string[] } {
@@ -238,5 +250,19 @@ export function templateMapFromEnv(env: NodeJS.ProcessEnv): TemplateMap {
     ["class_teacher_delay", env.WHATSAPP_TEMPLATE_CLASS_TEACHER_DELAY],
     ["class_operational_update", env.WHATSAPP_TEMPLATE_CLASS_OPERATIONAL_UPDATE],
   ];
-  return Object.fromEntries(entries.filter((entry): entry is [WhatsAppIntent, string] => Boolean(entry[1])).map(([intent, name]) => [intent, { name, locale }]));
+  const templates = Object.fromEntries(
+    entries
+      .filter((entry): entry is [WhatsAppIntent, string] => Boolean(entry[1]))
+      .map(([intent, name]) => [intent, { name, locale }]),
+  ) as TemplateMap;
+  const humanAttention = env.WHATSAPP_TEMPLATE_HUMAN_ATTENTION;
+  if (humanAttention) {
+    for (const intent of [
+      "class_change_request", "class_change_proposal", "class_cancelled", "class_rescheduled",
+      "class_change_rejected", "class_attendance_update", "class_teacher_delay", "class_operational_update",
+    ] as const) {
+      templates[intent] ??= { name: humanAttention, locale, parameterStyle: "human_attention" };
+    }
+  }
+  return templates;
 }

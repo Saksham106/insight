@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 
 import { verifyServiceRequest } from "@/lib/hermes/auth";
 import { messagingName } from "@/lib/hermes/contact-name";
-import { buildGraphMessageRequest, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters, type WhatsAppIntent } from "@/lib/hermes/meta";
+import { buildGraphMessageRequest, buildHumanAttentionFallbackContent, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters, type WhatsAppIntent } from "@/lib/hermes/meta";
 import { buildSettlementMessageContent } from "@/lib/hermes/settlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { priorWhatsAppDisposition } from "@/lib/hermes/whatsapp-delivery-state";
@@ -171,6 +171,13 @@ export async function POST(request: Request) {
     serviceWindowExpiresAt: contact.service_window_expires_at,
   }, body.intent, new Date(), templateMapFromEnv(process.env), approved);
   if (delivery.kind === "blocked") return NextResponse.json({ error: delivery.reason, blocked: true }, { status: 409 });
+  if (isClassNotification && delivery.kind === "template" && delivery.parameterStyle === "human_attention") {
+    try {
+      body.bodyParameters = buildHumanAttentionFallbackContent(recipientName, body.text).bodyParameters;
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "invalid_matter" }, { status: 400 });
+    }
+  }
 
   const graphPayload = buildGraphMessageRequest({ to: contact.whatsapp_e164, delivery, body: body.text, bodyParameters: body.bodyParameters });
   const providerPayloadDigest = createHash("sha256").update(JSON.stringify(graphPayload)).digest("hex");

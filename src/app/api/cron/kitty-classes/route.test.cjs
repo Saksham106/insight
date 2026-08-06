@@ -22,4 +22,3 @@ test("Vercel runs the isolated maintenance route daily", () => {
   const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "vercel.json"), "utf8"));
   assert.deepEqual(config.crons.find((cron) => cron.path === "/api/cron/kitty-classes"), { path: "/api/cron/kitty-classes", schedule: "15 0 * * *" });
 });
-

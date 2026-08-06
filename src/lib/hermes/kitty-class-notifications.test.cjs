@@ -14,4 +14,3 @@ test("notification drain claims the isolated outbox and records delivery", () =>
   assert.match(source, /idempotency_key/);
   assert.doesNotMatch(source, /reason/);
 });
-

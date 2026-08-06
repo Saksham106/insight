@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { buildGraphMessageRequest, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters } = require(path.join(__dirname, "meta.ts"));
+const { buildGraphMessageRequest, buildHumanAttentionFallbackContent, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters } = require(path.join(__dirname, "meta.ts"));
 
 const templates = {
   availability_request: { name: "class_availability_request", locale: "en_US" },
@@ -144,6 +144,33 @@ test("maps and builds bounded Kitty relay templates", () => {
       templateData: { classDescription: "group piano", relaySummary: "The teacher is running late." },
     }).bodyParameters, ["Little", "group piano", "The teacher is running late."]);
   }
+});
+
+test("reuses the approved human-attention template for every Kitty notification", () => {
+  const mapped = templateMapFromEnv({
+    WHATSAPP_TEMPLATE_HUMAN_ATTENTION: "class_human_attention",
+  });
+  for (const intent of [
+    "class_change_request", "class_change_proposal", "class_cancelled", "class_rescheduled",
+    "class_change_rejected", "class_attendance_update", "class_teacher_delay", "class_operational_update",
+  ]) {
+    assert.deepEqual(mapped[intent], {
+      name: "class_human_attention",
+      locale: "en_US",
+      parameterStyle: "human_attention",
+    });
+  }
+});
+
+test("adapts a bounded Kitty message to the existing two-variable template", () => {
+  assert.deepEqual(
+    buildHumanAttentionFallbackContent("Little", "Hi Little, mathematics at Tuesday 4 PM has been cancelled. Reference AB12CD."),
+    { bodyParameters: ["Little", "mathematics at Tuesday 4 PM has been cancelled. Reference AB12CD"] },
+  );
+  assert.throws(
+    () => buildHumanAttentionFallbackContent("Little", `Hi Little, ${"x".repeat(501)}`),
+    /invalid_matter/,
+  );
 });
 
 test("builds the Utility-compatible Swati reschedule alert body", () => {
