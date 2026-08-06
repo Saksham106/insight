@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/kitty-classes",
-      "schedule": "15 0 * * *"
+      "schedule": "* * * * *"
     }
   ]
 }

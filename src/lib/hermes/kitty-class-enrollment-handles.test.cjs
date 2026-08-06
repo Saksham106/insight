@@ -209,17 +209,18 @@ test("shared guardian selects opaque represented-enrollment handles through each
 
   const attendance = await executeKittyClassTool(client, actor, "record_class_attendance", {
     occurrenceId: "occurrence-1", enrollmentHandle: ashaHandle, status: "absent", selectionToken,
-  }, { clientRequestId: "attendance-1" });
+    clientRequestId: "attendance-1",
+  });
   const relay = await executeKittyClassTool(client, actor, "relay_class_update", {
     occurrenceId: "occurrence-1", enrollmentHandle: minaHandle,
-    intent: "meeting_link_requested", selectionToken,
-  }, { clientRequestId: "relay-1" });
+    intent: "meeting_link_requested", selectionToken, clientRequestId: "relay-1",
+  });
   const replacement = await executeKittyClassTool(client, actor, "request_class_change", {
     occurrenceId: "occurrence-1", occurrenceVersion: 3, enrollmentHandle: minaHandle,
     scope: "individual_reschedule", changeType: "reschedule", selectionToken,
     proposedStartsAt: "2026-08-13T20:00:00.000Z", proposedEndsAt: "2026-08-13T21:00:00.000Z",
-    proposedTimezone: "America/New_York",
-  }, { clientRequestId: "replacement-1" });
+    proposedTimezone: "America/New_York", clientRequestId: "replacement-1",
+  });
 
   assert.deepEqual(client.rpcCalls.map((call) => call.payload.p_enrollment_id), [
     "enrollment-a", "enrollment-b", "enrollment-b",
@@ -262,8 +263,7 @@ test("forged, wrong-actor, wrong-occurrence, and expired enrollment handles fail
   const selectionToken = selected.confirmation.selectionToken;
   const attendance = (actor, occurrenceId, enrollmentHandle) => executeKittyClassTool(
     client, actor, "record_class_attendance",
-    { occurrenceId, enrollmentHandle, status: "absent", selectionToken },
-    { clientRequestId: `blocked-${client.rpcCalls.length}` },
+    { occurrenceId, enrollmentHandle, status: "absent", selectionToken, clientRequestId: `blocked-${client.rpcCalls.length}` },
   );
 
   await assert.rejects(() => attendance(guardian, "occurrence-1", undefined), /enrollment_selection_required/);
@@ -290,12 +290,12 @@ test("one represented enrollment derives automatically and raw enrollment IDs ar
   assert.equal(selected.confirmation.representedEnrollments[0].studentName, "Asha");
   await executeKittyClassTool(client, actor, "record_class_attendance", {
     occurrenceId: "occurrence-1", status: "late",
-    selectionToken: selected.confirmation.selectionToken,
-  }, { clientRequestId: "single-attendance" });
+    selectionToken: selected.confirmation.selectionToken, clientRequestId: "single-attendance",
+  });
   assert.equal(client.rpcCalls[0].payload.p_enrollment_id, "enrollment-a");
 
   await assert.rejects(() => executeKittyClassTool(client, actor, "record_class_attendance", {
     occurrenceId: "occurrence-1", enrollmentId: "enrollment-a", status: "absent",
-    selectionToken: selected.confirmation.selectionToken,
-  }, { clientRequestId: "raw-id" }), /invalid_payload/);
+    selectionToken: selected.confirmation.selectionToken, clientRequestId: "raw-id",
+  }), /invalid_payload/);
 });

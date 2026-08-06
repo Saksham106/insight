@@ -59,6 +59,8 @@ CLASS_ACTIONS = frozenset((
     "edit_class", "override_class",
 ))
 
+IDEMPOTENT_CLASS_MUTATIONS = frozenset(("preview_class", "create_class"))
+
 
 def _session_actor():
     from gateway.session_context import get_session_env
@@ -88,33 +90,38 @@ def call_insight(action, payload):
     secret = os.environ.get("HERMES_ADMIN_TOOL_SHARED_SECRET", "")
     if not url or not secret:
         return json.dumps({"error": "Scheduling service is not configured"})
+    if action in IDEMPOTENT_CLASS_MUTATIONS and not str((payload or {}).get("clientRequestId", "")).strip():
+        return json.dumps({"error": "clientRequestId is required for this class mutation"})
 
     body = json.dumps({"actor": actor, "action": action, "payload": payload or {}}, separators=(",", ":"))
-    timestamp = str(int(time.time() * 1000))
-    request_id = uuid.uuid4().hex
-    signature = hmac.new(secret.encode(), f"{timestamp}.{request_id}.{body}".encode(), hashlib.sha256).hexdigest()
-    request = urllib.request.Request(
-        url,
-        data=body.encode(),
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "X-Hermes-Timestamp": timestamp,
-            "X-Hermes-Request-Id": request_id,
-            "X-Hermes-Signature": signature,
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            return response.read().decode()
-    except urllib.error.HTTPError as error:
+    attempts = 2 if action in IDEMPOTENT_CLASS_MUTATIONS else 1
+    for attempt in range(attempts):
+        timestamp = str(int(time.time() * 1000))
+        request_id = uuid.uuid4().hex
+        signature = hmac.new(secret.encode(), f"{timestamp}.{request_id}.{body}".encode(), hashlib.sha256).hexdigest()
+        request = urllib.request.Request(
+            url, data=body.encode(), method="POST", headers={
+                "Content-Type": "application/json", "X-Hermes-Timestamp": timestamp,
+                "X-Hermes-Request-Id": request_id, "X-Hermes-Signature": signature,
+            },
+        )
         try:
-            safe = json.loads(error.read().decode())
-            return json.dumps({"error": safe.get("error", "Scheduling request rejected"), "status": error.code})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                return response.read().decode()
+        except urllib.error.HTTPError as error:
+            if attempt + 1 < attempts and error.code in (502, 503, 504):
+                continue
+            try:
+                safe = json.loads(error.read().decode())
+                return json.dumps({"error": safe.get("error", "Scheduling request rejected"), "status": error.code})
+            except Exception:
+                return json.dumps({"error": "Scheduling request rejected", "status": error.code})
+        except (urllib.error.URLError, TimeoutError):
+            if attempt + 1 < attempts:
+                continue
+            return json.dumps({"error": "Scheduling service is temporarily unavailable"})
         except Exception:
-            return json.dumps({"error": "Scheduling request rejected", "status": error.code})
-    except Exception:
-        return json.dumps({"error": "Scheduling service is temporarily unavailable"})
+            return json.dumps({"error": "Scheduling service is temporarily unavailable"})
 
 
 def handle_insight_admin(params, **kwargs):

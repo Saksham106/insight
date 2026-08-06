@@ -35,6 +35,8 @@ export async function POST(request: Request) {
   if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   if (!enabled()) return NextResponse.json({ error: "Kitty Classes is not enabled." }, { status: 503 });
   try {
+    const requestId = request.headers.get("idempotency-key")?.trim();
+    if (!requestId) throw new Error("invalid_idempotency_key");
     const body = await request.json() as Record<string, unknown>;
     const timezone = String(body.timezone ?? "");
     const localStartsAt = typeof body.localStartsAt === "string" ? body.localStartsAt : null;
@@ -48,7 +50,8 @@ export async function POST(request: Request) {
       endsAt,
       localDate: typeof body.localDate === "string" ? body.localDate : undefined,
       durationMinutes,
-    }, request.headers.get("idempotency-key") ?? crypto.randomUUID());
+      clientRequestId: requestId,
+    });
     const created = await createKittyClass(createAdminClient(), { kind: "admin", profileId: profile.id, channel: "dashboard" }, input);
     return NextResponse.json({ class: created }, { status: 201 });
   } catch (error) {

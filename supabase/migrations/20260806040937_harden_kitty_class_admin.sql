@@ -61,7 +61,7 @@ begin
 
   if not found then raise exception 'class_not_found'; end if;
   if v_occurrence.version <> p_expected_version then raise exception 'stale_class'; end if;
-  if v_occurrence.status not in ('scheduled', 'change_requested') then
+  if v_occurrence.status <> 'scheduled' then
     raise exception 'class_not_editable';
   end if;
 
@@ -190,7 +190,7 @@ begin
 
   if not found then raise exception 'class_not_found'; end if;
   if v_occurrence.version <> p_expected_version then raise exception 'stale_class'; end if;
-  if v_occurrence.status not in ('scheduled', 'change_requested') then
+  if v_occurrence.status <> 'scheduled' then
     raise exception 'class_not_editable';
   end if;
 

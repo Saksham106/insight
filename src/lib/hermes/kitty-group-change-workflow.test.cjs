@@ -262,16 +262,17 @@ test("contact tool requires explicit scope and passes one stable request identit
     changeType: "reschedule", selectionToken: token,
     proposedStartsAt: "2026-08-13T21:00:00.000Z",
     proposedEndsAt: "2026-08-13T22:00:00.000Z",
-  }, { clientRequestId: "transport-request:1" });
+    clientRequestId: "business-request:1",
+  });
 
   assertSafeProgress(result.changeRequest, 1, 1);
   assert.equal(calls[0].payload.p_scope, "individual_reschedule");
-  assert.equal(calls[0].payload.p_client_request_id, "transport-request:1");
+  assert.equal(calls[0].payload.p_client_request_id, "business-request:1");
 
   await assert.rejects(() => executeKittyClassTool(client, contact, "request_class_change", {
     occurrenceId: "occurrence-1", occurrenceVersion: 4,
-    changeType: "reschedule", selectionToken: token,
-  }, { clientRequestId: "transport-request:2" }), /invalid_payload/);
+    changeType: "reschedule", selectionToken: token, clientRequestId: "business-request:2",
+  }), /invalid_payload/);
 });
 
 test("teacher cancellation reports final notification reservation truthfully", async () => {
@@ -291,7 +292,8 @@ test("teacher cancellation reports final notification reservation truthfully", a
   }, "request_class_change", {
     occurrenceId: "occurrence-1", occurrenceVersion: 4,
     scope: "whole_occurrence", changeType: "cancel", selectionToken: token,
-  }, { clientRequestId: "cancel-transport:1" });
+    clientRequestId: "cancel-business:1",
+  });
 
   assert.equal(result.counterpartyNotificationReserved, false);
   assert.equal(result.finalNotificationsReserved, true);

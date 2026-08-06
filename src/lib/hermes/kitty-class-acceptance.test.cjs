@@ -149,6 +149,12 @@ test("admin hardening migration scopes roster edits, audit detail, and retry eli
   const migration = read("supabase/migrations/20260806040937_harden_kitty_class_admin.sql").toLowerCase();
   assert.match(migration, /create function public\.add_kitty_class_enrollment\([\s\S]*p_scope text/);
   assert.match(migration, /create function public\.end_kitty_class_enrollment\([\s\S]*p_scope text/);
+  assert.equal(
+    (migration.match(/v_occurrence\.status <> 'scheduled'/g) ?? []).length,
+    2,
+    "both roster mutation RPCs must reject a pending class change",
+  );
+  assert.doesNotMatch(migration, /status not in \('scheduled', 'change_requested'\)/);
   assert.match(migration, /status = 'failed'/);
   assert.doesNotMatch(migration, /status in \('failed', 'blocked'\)/);
   assert.match(migration, /get_kitty_class_admin_detail_events/);

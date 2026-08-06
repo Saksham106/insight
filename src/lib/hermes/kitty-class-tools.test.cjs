@@ -85,7 +85,7 @@ test("class preview consumes teacher, enrollments, and client request id without
   assert.equal("participants" in result.preview, false);
 });
 
-test("legacy one-student participant payload adapts to the native group contract", async () => {
+test("legacy one-student participant payload adapts with an explicit retry-stable request id", async () => {
   const { executeKittyClassTool } = require(toolsPath);
   const result = await executeKittyClassTool(
     {},
@@ -100,12 +100,12 @@ test("legacy one-student participant payload adapts to the native group contract
         { contactId: "student-1", role: "student", decisionSide: "student", receivesNotifications: true, confirmsCancellation: false, confirmsReschedule: true },
         { contactId: "parent-1", role: "parent_guardian", decisionSide: "student", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
       ],
+      clientRequestId: "message:legacy-1",
     },
-    { clientRequestId: "hermes-request-legacy-1" },
   );
 
   assert.equal(result.preview.teacherContactId, "teacher-1");
-  assert.equal(result.preview.clientRequestId, "hermes-request-legacy-1");
+  assert.equal(result.preview.clientRequestId, "message:legacy-1");
   assert.deepEqual(result.preview.enrollments, [{
     studentContactId: "student-1",
     contacts: [
@@ -114,6 +114,21 @@ test("legacy one-student participant payload adapts to the native group contract
     ],
   }]);
   assert.equal("participants" in result.preview, false);
+});
+
+test("mutations never fall back to a transport request id", async () => {
+  const { executeKittyClassTool } = require(toolsPath);
+  await assert.rejects(() => executeKittyClassTool(
+    {},
+    { kind: "admin", profileId: "profile-1", channel: "imessage" },
+    "preview_class",
+    {
+      kind: "one_off", title: "No stable id", timezone: "UTC",
+      startsAt: "2026-08-12T20:00:00.000Z", endsAt: "2026-08-12T21:00:00.000Z", localDate: "2026-08-12",
+      teacherContactId: "teacher-1", enrollments: [enrollment],
+    },
+    { clientRequestId: "fresh-hmac-request-id" },
+  ), /invalid_payload/);
 });
 
 test("create payload cannot mix native enrollments with legacy participants", async () => {
@@ -218,13 +233,14 @@ test("verified Kitty route supplies its stable request id to legacy creation", a
             { contactId: "teacher-1", role: "teacher", decisionSide: "teacher", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
             { contactId: "student-1", role: "student", decisionSide: "student", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
           ],
+          clientRequestId: "imessage:create:legacy-1",
         },
       }),
     }));
 
     assert.equal(response.status, 200);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].payload.p_client_request_id, "class-create:hermes-legacy-request-1");
+    assert.equal(calls[0].payload.p_client_request_id, "imessage:create:legacy-1");
     assert.equal(calls[0].payload.p_teacher_contact_id, "teacher-1");
     assert.equal(calls[0].payload.p_enrollments[0].studentContactId, "student-1");
   } finally {

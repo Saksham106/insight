@@ -52,13 +52,7 @@ export async function POST(request: Request) {
   });
   if (replayError) return response(replayError.code === "23505" ? "Replay rejected" : "Audit unavailable", replayError.code === "23505" ? 409 : 503);
   try {
-    const result = await executeKittyClassTool(
-      supabase,
-      actor,
-      body.action,
-      body.payload as JsonObject,
-      { clientRequestId: `class-create:${auth.requestId}` },
-    );
+    const result = await executeKittyClassTool(supabase, actor, body.action, body.payload as JsonObject);
     await supabase.from("kitty_class_audit_events").update({ event_type: "class_tool_completed" }).eq("id", auditId);
     return NextResponse.json(result);
   } catch (error) {

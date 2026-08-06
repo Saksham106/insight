@@ -53,6 +53,7 @@ async function maintain(request: Request) {
     sentNotifications: delivery.sent,
     failedNotifications: delivery.failed,
     blockedNotifications: delivery.blocked,
+    deliverySlaSeconds: 60,
   });
 }
 

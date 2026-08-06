@@ -27,8 +27,6 @@ export const CONTACT_CLASS_ACTIONS = ["find_my_classes", "find_my_pending_change
 export type KittyClassToolAction = (typeof ADMIN_CLASS_ACTIONS)[number] | (typeof CONTACT_CLASS_ACTIONS)[number];
 
 type Payload = Record<string, unknown>;
-type KittyClassToolContext = { clientRequestId?: string };
-
 export function isKittyClassToolAction(value: unknown): value is KittyClassToolAction {
   return typeof value === "string" && ([...ADMIN_CLASS_ACTIONS, ...CONTACT_CLASS_ACTIONS] as string[]).includes(value);
 }
@@ -50,10 +48,8 @@ function enrollmentScope(payload: Payload): "occurrence" | "this_and_future" {
   throw new Error("invalid_payload");
 }
 
-function clientRequestId(payload: Payload, fallback?: string) {
-  const value = typeof payload.clientRequestId === "string" && payload.clientRequestId.trim()
-    ? payload.clientRequestId.trim()
-    : fallback?.trim();
+function clientRequestId(payload: Payload) {
+  const value = typeof payload.clientRequestId === "string" ? payload.clientRequestId.trim() : "";
   if (!value || value.length > 200) throw new Error("invalid_payload");
   return value;
 }
@@ -91,7 +87,7 @@ function legacyGroupRoster(payload: Payload) {
   };
 }
 
-export function normalizeKittyClassCreatePayload(payload: Payload, fallbackClientRequestId?: string) {
+export function normalizeKittyClassCreatePayload(payload: Payload) {
   const hasLegacyRoster = "participants" in payload;
   const hasNativeRoster = "teacherContactId" in payload || "enrollments" in payload;
   if (hasLegacyRoster && hasNativeRoster) throw new Error("invalid_payload");
@@ -111,7 +107,7 @@ export function normalizeKittyClassCreatePayload(payload: Payload, fallbackClien
     effectiveEnd: typeof payload.effectiveEnd === "string" ? payload.effectiveEnd : null,
     teacherContactId: roster.teacherContactId,
     enrollments: roster.enrollments,
-    clientRequestId: clientRequestId(payload, fallbackClientRequestId),
+    clientRequestId: clientRequestId(payload),
   };
 }
 
@@ -120,7 +116,6 @@ export async function executeKittyClassTool(
   actor: KittyClassActor,
   action: KittyClassToolAction,
   payload: Payload,
-  context: KittyClassToolContext = {},
 ) {
   const isAdminAction = (ADMIN_CLASS_ACTIONS as readonly string[]).includes(action);
   const isContactAction = (CONTACT_CLASS_ACTIONS as readonly string[]).includes(action);
@@ -128,10 +123,10 @@ export async function executeKittyClassTool(
 
   switch (action) {
     case "preview_class": {
-      const input = normalizeKittyClassCreatePayload(payload, context.clientRequestId);
+      const input = normalizeKittyClassCreatePayload(payload);
       return { preview: input, requiresConfirmation: true, saved: false };
     }
-    case "create_class": return { class: await createKittyClass(client, actor, normalizeKittyClassCreatePayload(payload, context.clientRequestId)) };
+    case "create_class": return { class: await createKittyClass(client, actor, normalizeKittyClassCreatePayload(payload)) };
     case "list_classes": return { classes: await listKittyClasses(client, actor, { view: payload.view === "history" || payload.view === "attention" ? payload.view : "upcoming", limit: typeof payload.limit === "number" ? payload.limit : 50 }) };
     case "get_class": return { class: await getKittyClassOccurrence(client, actor, text(payload, "occurrenceId")) };
     case "edit_class": return { class: await editKittyClass(client, actor, {
@@ -167,14 +162,14 @@ export async function executeKittyClassTool(
     case "report_class_ambiguity": return { attention: await recordKittyClassAmbiguity(client, actor, {
       candidateOccurrenceIds: payload.candidateOccurrenceIds as string[],
       ambiguityKind: payload.ambiguityKind as "class" | "scope",
-      clientRequestId: clientRequestId(payload, context.clientRequestId),
+      clientRequestId: clientRequestId(payload),
     }) };
     case "record_class_attendance": return { attendance: await recordKittyAttendance(client, actor, {
       occurrenceId: text(payload, "occurrenceId"), enrollmentHandle: contactEnrollmentHandle(payload),
       status: payload.status as Parameters<typeof recordKittyAttendance>[2]["status"],
       estimatedAt: typeof payload.estimatedAt === "string" ? payload.estimatedAt : undefined,
       note: typeof payload.note === "string" ? payload.note : undefined,
-      selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload, context.clientRequestId),
+      selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload),
     }) };
     case "correct_class_attendance": return { attendance: await correctKittyAttendance(client, actor, {
       attendanceId: text(payload, "attendanceId"), occurrenceId: text(payload, "occurrenceId"),
@@ -182,7 +177,7 @@ export async function executeKittyClassTool(
       status: payload.status as Parameters<typeof correctKittyAttendance>[2]["status"],
       estimatedAt: typeof payload.estimatedAt === "string" ? payload.estimatedAt : undefined,
       note: typeof payload.note === "string" ? payload.note : undefined,
-      selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload, context.clientRequestId),
+      selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload),
     }) };
     case "relay_class_update": return { relay: await createKittyOperationalRelay(client, actor, {
       occurrenceId: text(payload, "occurrenceId"),
@@ -192,7 +187,7 @@ export async function executeKittyClassTool(
       mode: payload.mode as Parameters<typeof createKittyOperationalRelay>[2]["mode"],
       locationLabel: typeof payload.locationLabel === "string" ? payload.locationLabel : undefined,
       preparationCategory: payload.preparationCategory as Parameters<typeof createKittyOperationalRelay>[2]["preparationCategory"],
-      selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload, context.clientRequestId),
+      selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload),
     }) };
     case "request_class_change": {
       const occurrenceId = text(payload, "occurrenceId");
@@ -203,7 +198,7 @@ export async function executeKittyClassTool(
         occurrenceId, occurrenceVersion, changeType, scope: payload.scope,
         enrollmentHandle: contactEnrollmentHandle(payload),
         selectionToken: text(payload, "selectionToken"),
-        clientRequestId: clientRequestId(payload, context.clientRequestId),
+        clientRequestId: clientRequestId(payload),
         proposedStartsAt: typeof payload.proposedStartsAt === "string" ? payload.proposedStartsAt : undefined,
         proposedEndsAt: typeof payload.proposedEndsAt === "string" ? payload.proposedEndsAt : undefined,
         proposedTimezone: typeof payload.proposedTimezone === "string" ? payload.proposedTimezone : undefined,
@@ -219,7 +214,7 @@ export async function executeKittyClassTool(
       payloadDigest: text(payload, "payloadDigest"),
       proposedStartsAt: text(payload, "proposedStartsAt"), proposedEndsAt: text(payload, "proposedEndsAt"),
       proposedTimezone: typeof payload.proposedTimezone === "string" ? payload.proposedTimezone : undefined,
-      clientRequestId: clientRequestId(payload, context.clientRequestId),
+      clientRequestId: clientRequestId(payload),
     }), counterpartyNotificationReserved: true };
     case "decide_class_change": {
       const decided = await decideKittyClassChange(client, actor, {
@@ -227,7 +222,7 @@ export async function executeKittyClassTool(
         payloadDigest: text(payload, "payloadDigest"),
         decision: payload.decision === "approved" ? "approved" : "rejected",
         providerMessageId: typeof payload.providerMessageId === "string" ? payload.providerMessageId : undefined,
-        clientRequestId: clientRequestId(payload, context.clientRequestId),
+        clientRequestId: clientRequestId(payload),
       });
       return { changeRequest: decided, finalNotificationsReserved: decided.status === "finalized" };
     }
