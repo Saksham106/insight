@@ -3,6 +3,7 @@ import hmac
 import importlib.util
 import json
 import os
+import urllib.error
 from pathlib import Path
 import sys
 import types
@@ -80,6 +81,18 @@ class PluginTests(unittest.TestCase):
         ):
             self.assertIn(action, self.tools.ACTIONS)
 
+    def test_exposes_isolated_kitty_class_actions(self):
+        for action in ("preview_class", "create_class", "list_classes", "get_class", "edit_class", "override_class"):
+            self.assertIn(action, self.tools.ACTIONS)
+
+    def test_class_actions_use_the_dedicated_endpoint(self):
+        with patch.dict(os.environ, {
+            "INSIGHT_KITTY_CLASS_TOOL_URL": "https://myinsightacademy.com/api/hermes/class-tools",
+            "HERMES_ADMIN_TOOL_SHARED_SECRET": "admin-secret",
+        }), patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            self.tools.call_insight("list_classes", {})
+        self.assertEqual(urlopen.call_args.args[0].full_url, "https://myinsightacademy.com/api/hermes/class-tools")
+
     def test_tool_schema_documents_direct_whatsapp_send_contract(self):
         source = (PLUGIN_DIR / "__init__.py").read_text()
 
@@ -133,6 +146,35 @@ class PluginTests(unittest.TestCase):
             json.loads(self.tools.call_insight("search_contacts", {"query": "Asha"})),
             {"error": "This admin tool requires Swati's direct iMessage conversation"},
         )
+
+    def test_class_creation_retries_with_same_business_id_and_fresh_transport_id(self):
+        requests = []
+
+        def respond(request, timeout):
+            del timeout
+            requests.append(request)
+            if len(requests) == 1:
+                raise urllib.error.URLError("response lost")
+            return FakeResponse()
+
+        payload = {"title": "Maths", "clientRequestId": "imessage:create:42"}
+        with patch.dict(os.environ, {
+            "INSIGHT_KITTY_CLASS_TOOL_URL": "https://myinsightacademy.com/api/hermes/class-tools",
+            "HERMES_ADMIN_TOOL_SHARED_SECRET": "admin-secret",
+        }), patch("urllib.request.urlopen", side_effect=respond):
+            result = self.tools.call_insight("create_class", payload)
+
+        self.assertEqual(json.loads(result), {"ok": True})
+        self.assertEqual(requests[0].data, requests[1].data)
+        self.assertNotEqual(requests[0].headers["X-hermes-request-id"], requests[1].headers["X-hermes-request-id"])
+
+    def test_class_creation_requires_business_id(self):
+        with patch.dict(os.environ, {
+            "INSIGHT_KITTY_CLASS_TOOL_URL": "https://myinsightacademy.com/api/hermes/class-tools",
+            "HERMES_ADMIN_TOOL_SHARED_SECRET": "admin-secret",
+        }):
+            result = self.tools.call_insight("create_class", {"title": "Maths"})
+        self.assertEqual(json.loads(result), {"error": "clientRequestId is required for this class mutation"})
 
 
 if __name__ == "__main__":

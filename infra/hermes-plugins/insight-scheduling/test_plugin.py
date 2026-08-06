@@ -3,6 +3,7 @@ import hmac
 import importlib.util
 import json
 import os
+import urllib.error
 from pathlib import Path
 import sys
 import types
@@ -93,6 +94,55 @@ class PluginTests(unittest.TestCase):
         self.assertIn("notification", source)
         self.assertIn("Do not claim", source)
 
+    def test_exposes_confirmation_first_class_change_actions(self):
+        for action in ("find_my_classes", "find_my_pending_changes", "confirm_class_selection", "report_class_ambiguity", "request_class_change", "decide_class_change", "propose_replacement_time"):
+            self.assertIn(action, self.tools.ACTIONS)
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+        self.assertLess(source.index("find_my_classes"), source.index("confirm_class_selection"))
+        self.assertIn("exact occurrence", source)
+
+    def test_ambiguity_escalation_is_bounded_and_contains_no_free_text(self):
+        self.assertIn("report_class_ambiguity", self.tools.CLASS_ACTIONS)
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+        for required in ("1–5", "ambiguityKind", "class or scope", "Never include message text"):
+            self.assertIn(required, source)
+        self.assertNotIn("report_class_ambiguity={candidateOccurrenceIds,reason", source)
+
+    def test_exposes_group_class_attendance_and_bounded_relay_actions(self):
+        for action in (
+            "record_class_attendance",
+            "correct_class_attendance",
+            "relay_class_update",
+        ):
+            self.assertIn(action, self.tools.ACTIONS)
+            self.assertIn(action, self.tools.CLASS_ACTIONS)
+
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+        for required in (
+            "confirm the exact scope",
+            "individual student",
+            "whole class",
+            "selectionToken",
+            "enrollmentHandle",
+            "preparationCategory",
+        ):
+            self.assertIn(required, source)
+        self.assertNotIn("record_class_attendance={occurrenceId,enrollmentId", source)
+        self.assertNotIn("relay_class_update={occurrenceId,enrollmentId", source)
+
+    def test_pending_change_decision_payloads_are_request_bound(self):
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+
+        self.assertIn(
+            "decide_class_change={requestId,requestVersion,payloadDigest,decision,providerMessageId?,clientRequestId}",
+            source,
+        )
+        self.assertIn(
+            "propose_replacement_time={requestId,requestVersion,payloadDigest,proposedStartsAt,proposedEndsAt,proposedTimezone?,clientRequestId}",
+            source,
+        )
+        self.assertIn("Reuse that exact clientRequestId", source)
+
     def test_request_signs_actor_and_payload_without_exposing_secret(self):
         with patch.dict(os.environ, {
             "INSIGHT_HERMES_TOOL_URL": "https://myinsightacademy.com/api/hermes/tools",
@@ -110,6 +160,41 @@ class PluginTests(unittest.TestCase):
         signed = f'{request.headers["X-hermes-timestamp"]}.{request.headers["X-hermes-request-id"]}.{body}'
         expected = hmac.new(b"secret", signed.encode(), hashlib.sha256).hexdigest()
         self.assertEqual(request.headers["X-hermes-signature"], expected)
+
+    def test_class_mutation_retries_with_same_business_id_and_fresh_transport_id(self):
+        requests = []
+
+        def respond(request, timeout):
+            del timeout
+            requests.append(request)
+            if len(requests) == 1:
+                raise urllib.error.URLError("response lost")
+            return FakeResponse()
+
+        payload = {
+            "candidateOccurrenceIds": ["class-1"],
+            "ambiguityKind": "class",
+            "clientRequestId": "whatsapp-message-42:ambiguity",
+        }
+        with patch.dict(os.environ, {
+            "INSIGHT_KITTY_CLASS_TOOL_URL": "https://myinsightacademy.com/api/hermes/class-tools",
+            "HERMES_TOOL_SHARED_SECRET": "secret",
+        }), patch("urllib.request.urlopen", side_effect=respond):
+            result = self.tools.call_insight("report_class_ambiguity", payload)
+
+        self.assertEqual(json.loads(result), {"ok": True})
+        self.assertEqual(len(requests), 2)
+        self.assertEqual(requests[0].data, requests[1].data)
+        self.assertNotEqual(requests[0].headers["X-hermes-request-id"], requests[1].headers["X-hermes-request-id"])
+        self.assertEqual(json.loads(requests[0].data)["payload"]["clientRequestId"], payload["clientRequestId"])
+
+    def test_class_mutation_requires_business_id(self):
+        with patch.dict(os.environ, {
+            "INSIGHT_KITTY_CLASS_TOOL_URL": "https://myinsightacademy.com/api/hermes/class-tools",
+            "HERMES_TOOL_SHARED_SECRET": "secret",
+        }):
+            result = self.tools.call_insight("record_class_attendance", {"occurrenceId": "class-1"})
+        self.assertEqual(json.loads(result), {"error": "clientRequestId is required for this class mutation"})
 
 
 if __name__ == "__main__":

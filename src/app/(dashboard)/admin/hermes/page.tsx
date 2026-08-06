@@ -2,6 +2,7 @@ import { HermesAssistantDashboard } from "@/components/admin/hermes-assistant-da
 import { parseHermesTab } from "@/components/admin/hermes-dashboard-shared";
 import { requireRole } from "@/lib/auth/require-role";
 import { loadAdminLessonCycles } from "@/lib/hermes/lesson-ledger-admin";
+import { loadKittyAdminAttentionIssues } from "@/lib/hermes/kitty-class-admin";
 import {
   attachAndSortConversationSummaries,
   loadConversationSummaries,
@@ -35,6 +36,11 @@ export default async function HermesAdminPage({
     settlements,
     summaryResult,
     lessonResult,
+    classUpcomingOccurrences,
+    classHistoryOccurrences,
+    classSeries,
+    classNotificationIssues,
+    classAttentionResult,
   ] =
     await Promise.all([
       supabase
@@ -69,7 +75,51 @@ export default async function HermesAdminPage({
       loadAdminLessonCycles(supabase)
         .then((data) => ({ data, error: false }))
         .catch(() => ({ data: [], error: true })),
+      supabase
+        .from("kitty_class_occurrences")
+        .select("id, series_id, title, subject, starts_at, ends_at, timezone, status, version")
+        .in("status", ["scheduled", "change_requested"])
+        .gte("ends_at", new Date().toISOString())
+        .order("starts_at", { ascending: true })
+        .limit(200),
+      supabase
+        .from("kitty_class_occurrences")
+        .select("id, series_id, title, subject, starts_at, ends_at, timezone, status, version")
+        .in("status", ["completed", "cancelled", "rescheduled"])
+        .order("starts_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("kitty_class_series")
+        .select("id, title, weekdays, local_time, timezone, status")
+        .order("title"),
+      supabase
+        .from("kitty_class_notification_outbox")
+        .select("id, occurrence_id, status, last_error_code, updated_at")
+        .in("status", ["failed", "blocked"])
+        .order("updated_at", { ascending: false })
+        .limit(50),
+      loadKittyAdminAttentionIssues(supabase)
+        .then((data) => ({ data, error: false }))
+        .catch(() => ({ data: [], error: true })),
     ]);
+
+  const classAttentionIssues = classAttentionResult.data;
+  const primaryOccurrences = [
+    ...(classUpcomingOccurrences.data ?? []),
+    ...(classHistoryOccurrences.data ?? []),
+  ];
+  const primaryOccurrenceIds = new Set(primaryOccurrences.map((occurrence) => occurrence.id));
+  const attentionOccurrenceIds = [...new Set(classAttentionIssues.flatMap((issue: { occurrenceId: string | null }) =>
+    issue.occurrenceId && !primaryOccurrenceIds.has(issue.occurrenceId) ? [issue.occurrenceId] : [],
+  ))].slice(0, 200);
+  const classAttentionOccurrences = attentionOccurrenceIds.length
+    ? await supabase
+        .from("kitty_class_occurrences")
+        .select("id, series_id, title, subject, starts_at, ends_at, timezone, status, version")
+        .in("id", attentionOccurrenceIds)
+        .limit(200)
+    : { data: [], error: null };
+  const classOccurrences = [...primaryOccurrences, ...(classAttentionOccurrences.data ?? [])];
 
   // The query above returns active and removed contacts together so the
   // Contacts tab can offer restore. Every other consumer on this page
@@ -121,7 +171,12 @@ export default async function HermesAdminPage({
         lessonResult.error ? "Lesson ledger temporarily unavailable." : null
       }
       settlements={settlements.data ?? []}
-      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error ? "Some Kitty information could not be loaded." : null}
+      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error || classUpcomingOccurrences.error || classHistoryOccurrences.error || classSeries.error || classNotificationIssues.error || classAttentionResult.error || classAttentionOccurrences.error ? "Some Kitty information could not be loaded." : null}
+      classOccurrences={classOccurrences}
+      classSeries={classSeries.data ?? []}
+      classNotificationIssues={classNotificationIssues.data ?? []}
+      classAttentionIssues={classAttentionIssues}
+      classCalendarEnabled={process.env.KITTY_CLASS_CALENDAR_ENABLED === "true"}
     />
   );
 }

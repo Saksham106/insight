@@ -162,6 +162,63 @@ class AcademyProfileTests(unittest.TestCase):
         self.assertIn("tool_calls", handler)
         self.assertNotIn('"reasoning":', handler)
 
+    def test_class_changes_confirm_the_exact_occurrence_before_notification(self):
+        agents = (PROFILE_DIR / "AGENTS.md").read_text()
+        skill = (PROFILE_DIR.parents[1] / "hermes-skills" / "kitty-classes" / "SKILL.md").read_text()
+        combined = f"{agents}\n{skill}"
+        for required in (
+            "find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change",
+            "decide_class_change", "propose_replacement_time",
+        ):
+            self.assertIn(required, combined)
+        self.assertIn("exact occurrence", combined)
+        self.assertIn("before any counterparty notification", combined)
+        self.assertIn("cannot create", combined)
+        self.assertIn("notification", combined)
+
+    def test_group_class_policy_is_scope_explicit_and_enrollment_private(self):
+        agents = (PROFILE_DIR / "AGENTS.md").read_text().lower()
+        skill = (
+            PROFILE_DIR.parents[1] / "hermes-skills" / "kitty-classes" / "SKILL.md"
+        ).read_text().lower()
+        combined = f"{agents}\n{skill}"
+
+        for required in (
+            "record_class_attendance",
+            "correct_class_attendance",
+            "relay_class_update",
+            "individual student",
+            "whole class",
+            "confirm the exact scope",
+            "do not identify an absent student to other families",
+            "shared guardian",
+            "open-ended",
+            "bring_materials",
+            "complete_assigned_work",
+            "review_prior_material",
+            "bring_device",
+            "never forward raw inbound text",
+            "enrollmenthandle",
+            "never accept a raw enrollment id",
+            "report_class_ambiguity",
+            "1–5 candidate occurrence ids",
+            "never include message text",
+            "resolves the structured attention item",
+        ):
+            self.assertIn(required, combined)
+
+    def test_kitty_maintenance_uses_hermes_no_agent_cron(self):
+        readme = (PROFILE_DIR / "README.md").read_text()
+        script = (PROFILE_DIR / "scripts" / "kitty-class-maintenance.py").read_text()
+        for required in (
+            'cron create "every 5m"', "--no-agent", "kitty-class-maintenance.py",
+            "HERMES_TOOL_SHARED_SECRET", "INSIGHT_KITTY_MAINTENANCE_URL",
+        ):
+            self.assertIn(required, readme)
+        self.assertIn('method="POST"', script)
+        self.assertIn('headers={"Authorization": f"Bearer {secret}"}', script)
+        self.assertNotIn("response.read", script)
+
 
 if __name__ == "__main__":
     unittest.main()

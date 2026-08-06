@@ -346,3 +346,108 @@ test("contact route soft-deletes and restores without erasing history", () => {
   // Restore is the one path allowed to touch an already-deleted row.
   assert.match(source, /if \(!restoring\) query = query\.is\("deleted_at", null\)/);
 });
+
+test("Kitty class calendar is isolated, versioned, and server controlled", () => {
+  const sql = readMigration("_add_kitty_class_calendar.sql");
+  for (const table of [
+    "kitty_class_series",
+    "kitty_class_occurrences",
+    "kitty_class_participants",
+    "kitty_class_change_requests",
+    "kitty_class_change_confirmations",
+    "kitty_class_audit_events",
+    "kitty_class_notification_outbox",
+  ]) {
+    assert.match(sql, new RegExp(`create table public\\.${table}`));
+    assert.match(sql, new RegExp(`alter table public\\.${table} enable row level security`));
+    assert.match(sql, new RegExp(`revoke all on table public\\.${table} from anon`));
+    assert.match(sql, new RegExp(`grant all on table public\\.${table} to service_role`));
+  }
+
+  assert.match(sql, /frequency text not null default 'weekly'/);
+  assert.match(sql, /weekdays smallint\[\] not null/);
+  assert.match(sql, /expansion_horizon_days integer not null default 90/);
+  assert.match(sql, /version integer not null default 1/);
+  assert.match(sql, /create unique index kitty_one_active_change_per_occurrence/);
+  assert.match(sql, /where status in \('awaiting_requester_confirmation', 'awaiting_counterparty', 'collecting_alternatives', 'ready_to_finalize'\)/);
+  assert.match(sql, /payload_digest text not null/);
+  assert.match(sql, /idempotency_key text not null unique/);
+
+  for (const fn of [
+    "create_kitty_class_series",
+    "create_kitty_one_off_class",
+    "request_kitty_class_change",
+    "propose_kitty_class_replacement",
+    "decide_kitty_class_change",
+    "finalize_kitty_class_change",
+    "override_kitty_class_occurrence",
+  ]) {
+    assert.match(sql, new RegExp(`create function public\\.${fn}`));
+    assert.match(sql, new RegExp(`revoke execute on function public\\.${fn}`));
+    assert.match(sql, new RegExp(`grant execute on function public\\.${fn}[^;]+to service_role`));
+  }
+
+  assert.match(sql, /for update/);
+  assert.match(sql, /payload_digest <>/);
+  assert.match(sql, /insert into public\.kitty_class_notification_outbox/);
+  assert.match(sql, /insert into public\.kitty_class_audit_events/);
+  assert.doesNotMatch(sql, /references public\.(?:sessions|teacher_student_assignments)/);
+  assert.doesNotMatch(sql, /(?:insert into|update|delete from) public\.(?:sessions|teacher_student_assignments)/);
+});
+
+test("Kitty group classes model enrollments, attendance, relays, and per-enrollment approvals", () => {
+  const migration = readMigration("_add_kitty_group_classes.sql");
+
+  for (const table of [
+    "kitty_class_enrollments",
+    "kitty_class_enrollment_contacts",
+    "kitty_class_attendance_updates",
+    "kitty_class_operational_relays",
+  ]) assert.match(migration, new RegExp(`create table public\\.${table}`));
+
+  assert.match(migration, /scope text not null[\s\S]*individual_attendance[\s\S]*whole_occurrence/);
+  assert.match(migration, /unique \(change_request_id, request_version, enrollment_id\)/);
+  assert.match(migration, /create unique index kitty_class_teacher_confirmation_unique[\s\S]*where decision_side = 'teacher' and enrollment_id is null/);
+  assert.match(migration, /create unique index kitty_class_enrollment_confirmation_unique[\s\S]*where decision_side = 'student' and enrollment_id is not null/);
+  assert.match(migration, /revoke execute[\s\S]*from public, anon, authenticated/);
+});
+
+test("Kitty group migrations keep the existing RPCs safe for enrollment-scoped decisions", () => {
+  const migration = readMigration("_add_kitty_group_classes.sql");
+
+  for (const fn of [
+    "request_kitty_class_change",
+    "propose_kitty_class_replacement",
+    "decide_kitty_class_change",
+    "finalize_kitty_class_change",
+  ]) assert.match(migration, new RegExp(`create or replace function public\\.${fn}`));
+
+  assert.match(migration, /kitty_class_active_enrollment_ids\(p_occurrence_id\)/);
+  assert.match(migration, /required_enrollment_ids = public\.kitty_class_active_enrollment_ids/);
+  assert.match(migration, /unnest\(v_request\.required_enrollment_ids\)/);
+  assert.match(migration, /kitty_class_validate_enrollment_scope/);
+  assert.match(migration, /kitty_class_enrollment_applies_to_occurrence/);
+  assert.match(migration, /create constraint trigger enforce_kitty_class_roster_on_enrollments/);
+  assert.match(migration, /participant\.is_active and participant\.participant_role = 'student'/);
+  assert.match(migration, /participant\.is_active and participant\.participant_role = 'teacher'/);
+});
+
+test("Kitty group rosters are transactionally complete and legacy create RPCs bridge enrollments", () => {
+  const migration = readMigration("_add_kitty_group_classes.sql");
+
+  assert.match(migration, /if v_class\.student_count <> 1 then/);
+  for (const table of [
+    "kitty_class_series",
+    "kitty_class_occurrences",
+    "kitty_class_participants",
+    "kitty_class_enrollments",
+  ]) assert.match(migration, new RegExp(`create constraint trigger enforce_kitty_class_roster_on_[\\s\\S]*on public\\.${table}`));
+  assert.match(migration, /create or replace function public\.create_kitty_class_series/);
+  assert.match(migration, /create or replace function public\.create_kitty_one_off_class/);
+  assert.match(migration, /insert into public\.kitty_class_enrollments/);
+  assert.match(migration, /insert into public\.kitty_class_enrollment_contacts/);
+  assert.match(migration, /if v_class\.class_kind = 'occurrence' and v_class\.parent_series_id is not null then[\s\S]*if v_class\.active_teacher_count > 0 then[\s\S]*legacy kitty recurring occurrence[\s\S]*cannot have an active occurrence-scoped teacher/);
+  assert.match(migration, /v_occurrence_series_id is not null[\s\S]*participant\.occurrence_id = p_occurrence_id[\s\S]*participant\.participant_role = 'teacher'/);
+  assert.match(migration, /from public\.kitty_class_resolve_decision_actor[\s\S]*actor_enrollment_id = any/);
+  assert.match(migration, /v_request\.expires_at <= now\(\)/);
+});

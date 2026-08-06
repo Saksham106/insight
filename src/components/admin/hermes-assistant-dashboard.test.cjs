@@ -43,7 +43,7 @@ test("every section stays reachable from the tab bar", () => {
 
   // Conversations is the landing view when no tab is requested.
   assert.match(shared, /DEFAULT_HERMES_TAB: HermesTab = "conversations"/);
-  for (const id of ["conversations", "attention", "scheduling", "ledger", "contacts"]) {
+  for (const id of ["conversations", "attention", "scheduling", "ledger", "contacts", "classes"]) {
     assert.ok(shared.includes(`"${id}"`), `missing tab id ${id}`);
     assert.ok(shell.includes(`tab === "${id}"`), `tab ${id} renders no panel`);
   }
@@ -203,7 +203,7 @@ test("tab bar leads with the sections Swati opens most", () => {
     .match(/export const HERMES_TABS = \[([\s\S]*?)\] as const;/)[1]
     .match(/"([a-z]+)"/g)
     .map((quoted) => quoted.replaceAll('"', ""));
-  assert.deepEqual(order, ["conversations", "ledger", "contacts", "scheduling", "attention"]);
+  assert.deepEqual(order, ["conversations", "ledger", "contacts", "classes", "scheduling", "attention"]);
 
   const shell = read("src/components/admin/hermes-assistant-dashboard.tsx");
   const rendered = [...shell.matchAll(/\{ id: "([a-z]+)", label:/g)].map((match) => match[1]);

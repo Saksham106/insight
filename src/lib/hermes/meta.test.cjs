@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { buildGraphMessageRequest, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters } = require(path.join(__dirname, "meta.ts"));
+const { buildGraphMessageRequest, buildHumanAttentionFallbackContent, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters } = require(path.join(__dirname, "meta.ts"));
 
 const templates = {
   availability_request: { name: "class_availability_request", locale: "en_US" },
@@ -91,6 +91,8 @@ test("builds exact semantic parameters for approved scheduling templates", () =>
   assert.deepEqual(buildSchedulingMessageContent({ intent: "class_reminder", recipientName: "Little", templateData: { classDescription: "mathematics class", scheduledDateTime: "Monday at 3 PM Eastern Time" } }).bodyParameters, ["Little", "mathematics class", "Monday at 3 PM Eastern Time"]);
   assert.deepEqual(buildSchedulingMessageContent({ intent: "human_attention", recipientName: "Little", templateData: { matter: "your mathematics schedule" } }).bodyParameters, ["Little", "your mathematics schedule"]);
   assert.deepEqual(buildSchedulingMessageContent({ intent: "admin_reschedule_alert", recipientName: "Swati", templateData: { requesterName: "Little", caseSummary: "mathematics class: requested Monday at 4 PM" } }).bodyParameters, ["Swati", "Little", "mathematics class: requested Monday at 4 PM"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "class_cancelled", recipientName: "Little", templateData: { classDescription: "mathematics", originalDateTime: "Tuesday at 4 PM", referenceCode: "AB12CD" } }).bodyParameters, ["Little", "mathematics", "Tuesday at 4 PM", "AB12CD"]);
+  assert.deepEqual(buildSchedulingMessageContent({ intent: "class_rescheduled", recipientName: "Little", templateData: { classDescription: "mathematics", originalDateTime: "Tuesday at 4 PM", replacementDateTime: "Wednesday at 5 PM", referenceCode: "AB12CD" } }).bodyParameters, ["Little", "mathematics", "Tuesday at 4 PM", "Wednesday at 5 PM", "AB12CD"]);
 });
 
 test("semantic scheduling builders reject missing, blank, and unknown fields", () => {
@@ -109,6 +111,66 @@ test("maps the internal Swati reschedule alert template", () => {
     name: "kitty_reschedule_alert",
     locale: "en_US",
   });
+});
+
+test("maps every isolated class-change template", () => {
+  const mapped = templateMapFromEnv({
+    WHATSAPP_TEMPLATE_CLASS_CHANGE_REQUEST: "kitty_change_request",
+    WHATSAPP_TEMPLATE_CLASS_CHANGE_PROPOSAL: "kitty_change_proposal",
+    WHATSAPP_TEMPLATE_CLASS_CANCELLED: "kitty_class_cancelled",
+    WHATSAPP_TEMPLATE_CLASS_RESCHEDULED: "kitty_class_rescheduled",
+    WHATSAPP_TEMPLATE_CLASS_CHANGE_REJECTED: "kitty_change_rejected",
+  });
+  assert.equal(mapped.class_change_request.name, "kitty_change_request");
+  assert.equal(mapped.class_change_proposal.name, "kitty_change_proposal");
+  assert.equal(mapped.class_cancelled.name, "kitty_class_cancelled");
+  assert.equal(mapped.class_rescheduled.name, "kitty_class_rescheduled");
+  assert.equal(mapped.class_change_rejected.name, "kitty_change_rejected");
+});
+
+test("maps and builds bounded Kitty relay templates", () => {
+  const mapped = templateMapFromEnv({
+    WHATSAPP_TEMPLATE_CLASS_ATTENDANCE_UPDATE: "kitty_attendance",
+    WHATSAPP_TEMPLATE_CLASS_TEACHER_DELAY: "kitty_teacher_delay",
+    WHATSAPP_TEMPLATE_CLASS_OPERATIONAL_UPDATE: "kitty_operational_update",
+  });
+  assert.equal(mapped.class_attendance_update.name, "kitty_attendance");
+  assert.equal(mapped.class_teacher_delay.name, "kitty_teacher_delay");
+  assert.equal(mapped.class_operational_update.name, "kitty_operational_update");
+  for (const intent of ["class_attendance_update", "class_teacher_delay", "class_operational_update"]) {
+    assert.deepEqual(buildSchedulingMessageContent({
+      intent,
+      recipientName: "Little",
+      templateData: { classDescription: "group piano", relaySummary: "The teacher is running late." },
+    }).bodyParameters, ["Little", "group piano", "The teacher is running late."]);
+  }
+});
+
+test("reuses the approved human-attention template for every Kitty notification", () => {
+  const mapped = templateMapFromEnv({
+    WHATSAPP_TEMPLATE_HUMAN_ATTENTION: "class_human_attention",
+  });
+  for (const intent of [
+    "class_change_request", "class_change_proposal", "class_cancelled", "class_rescheduled",
+    "class_change_rejected", "class_attendance_update", "class_teacher_delay", "class_operational_update",
+  ]) {
+    assert.deepEqual(mapped[intent], {
+      name: "class_human_attention",
+      locale: "en_US",
+      parameterStyle: "human_attention",
+    });
+  }
+});
+
+test("adapts a bounded Kitty message to the existing two-variable template", () => {
+  assert.deepEqual(
+    buildHumanAttentionFallbackContent("Little", "Hi Little, mathematics at Tuesday 4 PM has been cancelled. Reference AB12CD."),
+    { bodyParameters: ["Little", "mathematics at Tuesday 4 PM has been cancelled. Reference AB12CD"] },
+  );
+  assert.throws(
+    () => buildHumanAttentionFallbackContent("Little", `Hi Little, ${"x".repeat(501)}`),
+    /invalid_matter/,
+  );
 });
 
 test("builds the Utility-compatible Swati reschedule alert body", () => {

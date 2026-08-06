@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { AlertCircle, Banknote, Bot, Clock3, Contact, Users } from "lucide-react";
+import { AlertCircle, Banknote, Bot, CalendarDays, Clock3, Contact, Users } from "lucide-react";
 
 import { HermesAttentionPanel } from "@/components/admin/hermes-attention-panel";
 import { HermesContactsPanel } from "@/components/admin/hermes-contacts-panel";
 import { HermesConversationsPanel } from "@/components/admin/hermes-conversations-panel";
+import { HermesClassesPanel } from "@/components/admin/hermes-classes-panel";
 import {
   DEFAULT_HERMES_TAB,
   hermesTabHref,
@@ -19,6 +20,7 @@ import {
 import { HermesSchedulingPanel } from "@/components/admin/hermes-scheduling-panel";
 import { HermesSettlementsPanel } from "@/components/admin/hermes-settlements-panel";
 import type { AdminLessonCycle } from "@/lib/hermes/lesson-ledger-admin";
+import type { KittyAdminAttentionIssue } from "@/lib/hermes/kitty-class-admin";
 
 interface HermesAssistantDashboardProps {
   tab: HermesTab;
@@ -35,6 +37,11 @@ interface HermesAssistantDashboardProps {
   lessonLedgerError: string | null;
   settlements: HermesSettlementCycle[];
   loadError: string | null;
+  classOccurrences: Array<{ id: string; series_id: string | null; title: string; subject: string | null; starts_at: string; ends_at: string; timezone: string; status: string; version: number }>;
+  classSeries: Array<{ id: string; title: string; weekdays: number[]; local_time: string; timezone: string; status: string }>;
+  classNotificationIssues: Array<{ id: string; occurrence_id: string; status: string; last_error_code: string | null; updated_at: string }>;
+  classAttentionIssues: KittyAdminAttentionIssue[];
+  classCalendarEnabled: boolean;
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
@@ -59,6 +66,11 @@ export function HermesAssistantDashboard({
   lessonLedgerError,
   settlements,
   loadError,
+  classOccurrences,
+  classSeries,
+  classNotificationIssues,
+  classAttentionIssues,
+  classCalendarEnabled,
 }: HermesAssistantDashboardProps) {
   const attentionContacts = contacts.filter((contact) =>
     contact.role === "unclassified" || contact.profile_link_status === "suggested" || contact.communication_policy !== "direct",
@@ -69,6 +81,7 @@ export function HermesAssistantDashboard({
     { id: "conversations", label: "Conversations", icon: <Users size={16} />, count: contacts.length },
     { id: "ledger", label: "Ledger", icon: <Banknote size={16} />, count: lessonCycles.length + settlements.length },
     { id: "contacts", label: "Contacts", icon: <Contact size={16} /> },
+    { id: "classes", label: "Classes", icon: <CalendarDays size={16} />, count: classOccurrences.filter((item) => item.status === "scheduled" || item.status === "change_requested").length },
     { id: "scheduling", label: "Scheduling", icon: <Clock3 size={16} />, count: cases.length },
     { id: "attention", label: "Needs attention", icon: <AlertCircle size={16} />, count: attentionCount },
   ];
@@ -166,6 +179,8 @@ export function HermesAssistantDashboard({
       ) : null}
 
       {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} /> : null}
+
+      {tab === "classes" ? <HermesClassesPanel classes={classOccurrences} series={classSeries} contacts={directoryContacts} notificationIssues={classNotificationIssues} attentionIssues={classAttentionIssues} enabled={classCalendarEnabled} /> : null}
     </div>
   );
 }
