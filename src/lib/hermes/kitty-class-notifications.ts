@@ -22,6 +22,29 @@ function displayTime(value: string, timezone: string) {
   }).format(new Date(value));
 }
 
+export function buildKittyClassNotificationTemplateData(input: {
+  occurrence: { title: string; subject: string | null; starts_at: string; timezone: string };
+  outboxId: string;
+  changeRequestId: string | null;
+  payload: Record<string, unknown>;
+  replacementOccurrence?: { starts_at: string; timezone: string } | null;
+}) {
+  const referenceCode = String(input.changeRequestId ?? input.outboxId).replaceAll("-", "").slice(0, 6).toUpperCase();
+  const templateData: Record<string, string> = {
+    classDescription: input.occurrence.subject || input.occurrence.title,
+    originalDateTime: displayTime(input.occurrence.starts_at, input.occurrence.timezone),
+    referenceCode,
+  };
+  if (input.replacementOccurrence) {
+    templateData.replacementDateTime = displayTime(input.replacementOccurrence.starts_at, input.replacementOccurrence.timezone);
+  }
+  const relaySummary = input.payload.relaySummary;
+  if (typeof relaySummary === "string" && relaySummary.trim() && relaySummary.trim().length <= 500) {
+    templateData.relaySummary = relaySummary.trim();
+  }
+  return templateData;
+}
+
 export async function drainKittyClassNotifications(client: SupabaseClient, sender: KittyNotificationSend, limit = 20) {
   const { data: pending, error } = await client.from("kitty_class_notification_outbox")
     .select("id, occurrence_id, change_request_id, contact_id, intent, payload, idempotency_key, attempt_count")
@@ -49,13 +72,18 @@ export async function drainKittyClassNotifications(client: SupabaseClient, sende
       blocked += 1;
       continue;
     }
-    const referenceCode = String(row.change_request_id ?? row.id).replaceAll("-", "").slice(0, 6).toUpperCase();
-    const templateData: Record<string, string> = {
-      classDescription: occurrence.subject || occurrence.title,
-      originalDateTime: displayTime(occurrence.starts_at, occurrence.timezone),
-      referenceCode,
-    };
-    if (replacementResult.data) templateData.replacementDateTime = displayTime(replacementResult.data.starts_at, replacementResult.data.timezone);
+    const templateData = buildKittyClassNotificationTemplateData({
+      occurrence,
+      outboxId: row.id,
+      changeRequestId: row.change_request_id,
+      payload,
+      replacementOccurrence: replacementResult.data,
+    });
+    if (["class_attendance_update", "class_teacher_delay", "class_operational_update"].includes(row.intent) && !templateData.relaySummary) {
+      await client.from("kitty_class_notification_outbox").update({ status: "blocked", last_error_code: "relay_payload_unavailable" }).eq("id", row.id);
+      blocked += 1;
+      continue;
+    }
     const result = await sender({
       outboxId: row.id, contactId: row.contact_id, occurrenceId: row.occurrence_id,
       intent: row.intent as WhatsAppIntent, templateData, idempotencyKey: row.idempotency_key,
@@ -71,4 +99,3 @@ export async function drainKittyClassNotifications(client: SupabaseClient, sende
   }
   return { sent, failed, blocked };
 }
-

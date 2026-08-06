@@ -321,6 +321,42 @@ $$;
   }
 });
 
+test("attendance and relay RPCs preserve privacy, idempotency, and append-only history", {
+  skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
+  timeout: 30_000,
+}, () => {
+  const container = process.env.KITTY_SCHEMA_TEST_CONTAINER;
+  const database = `kitty_group_relay_probe_${process.pid}`;
+  const migrations = [
+    ["predecessor migration", read("supabase/migrations/20260805120000_add_kitty_class_calendar.sql")],
+    ["group foundation migration", read("supabase/migrations/20260805222827_add_kitty_group_classes.sql")],
+    ["group service migration", read("supabase/migrations/20260805235110_add_kitty_group_class_services.sql")],
+    ["attendance and relay migration", read("supabase/migrations/20260806005742_add_kitty_class_relays.sql")],
+  ];
+
+  const droppedBefore = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
+  assert.equal(droppedBefore.status, 0, `${droppedBefore.stdout}\n${droppedBefore.stderr}`);
+  const created = runContainerCommand([container, "createdb", "-U", "postgres", database]);
+  assert.equal(created.status, 0, `${created.stdout}\n${created.stderr}`);
+
+  try {
+    for (const [label, sql] of [["bootstrap", migrationProbeBootstrap], ...migrations]) {
+      const result = runProbeSql(container, database, sql);
+      assert.equal(result.status, 0, `${label} failed:\n${result.stdout}\n${result.stderr}`);
+    }
+    const result = runProbeSql(
+      container,
+      database,
+      read("src/lib/hermes/kitty-class-relays-runtime-probe.sql"),
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /kitty class relays runtime probe passed/);
+  } finally {
+    const droppedAfter = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
+    assert.equal(droppedAfter.status, 0, `${droppedAfter.stdout}\n${droppedAfter.stderr}`);
+  }
+});
+
 test("rollout remains disabled until every template and staging probe is ready", () => {
   const env = read(".env.example");
   const readme = read("infra/hermes-profiles/academy/README.md");

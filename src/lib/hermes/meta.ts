@@ -18,7 +18,10 @@ export type WhatsAppIntent =
   | "class_change_proposal"
   | "class_cancelled"
   | "class_rescheduled"
-  | "class_change_rejected";
+  | "class_change_rejected"
+  | "class_attendance_update"
+  | "class_teacher_delay"
+  | "class_operational_update";
 
 export type SchedulingWhatsAppIntent = Exclude<WhatsAppIntent, "lesson_report_request" | "tutor_report_request" | "family_invoice" | "payment_reminder" | "payment_received">;
 
@@ -48,6 +51,9 @@ const SCHEDULING_PARAMETER_COUNTS: Record<SchedulingWhatsAppIntent, number> = {
   class_cancelled: 4,
   class_rescheduled: 5,
   class_change_rejected: 4,
+  class_attendance_update: 3,
+  class_teacher_delay: 3,
+  class_operational_update: 3,
 };
 
 function requiredTemplateField(input: Record<string, unknown>, key: string) {
@@ -145,6 +151,13 @@ export function buildSchedulingMessageContent(input: {
       const referenceCode = requiredTemplateField(data, "referenceCode");
       return { body: `Hi ${recipientName}, the requested change to ${classDescription} at ${originalDateTime} was not agreed. The original class remains. Reference ${referenceCode}.`, bodyParameters: [recipientName, classDescription, originalDateTime, referenceCode] };
     }
+    case "class_attendance_update":
+    case "class_teacher_delay":
+    case "class_operational_update": {
+      const classDescription = requiredTemplateField(data, "classDescription");
+      const relaySummary = requiredTemplateField(data, "relaySummary");
+      return { body: `Hi ${recipientName}, update for ${classDescription}: ${relaySummary}`, bodyParameters: [recipientName, classDescription, relaySummary] };
+    }
   }
 }
 
@@ -221,6 +234,9 @@ export function templateMapFromEnv(env: NodeJS.ProcessEnv): TemplateMap {
     ["class_cancelled", env.WHATSAPP_TEMPLATE_CLASS_CANCELLED],
     ["class_rescheduled", env.WHATSAPP_TEMPLATE_CLASS_RESCHEDULED],
     ["class_change_rejected", env.WHATSAPP_TEMPLATE_CLASS_CHANGE_REJECTED],
+    ["class_attendance_update", env.WHATSAPP_TEMPLATE_CLASS_ATTENDANCE_UPDATE],
+    ["class_teacher_delay", env.WHATSAPP_TEMPLATE_CLASS_TEACHER_DELAY],
+    ["class_operational_update", env.WHATSAPP_TEMPLATE_CLASS_OPERATIONAL_UPDATE],
   ];
   return Object.fromEntries(entries.filter((entry): entry is [WhatsAppIntent, string] => Boolean(entry[1])).map(([intent, name]) => [intent, { name, locale }]));
 }

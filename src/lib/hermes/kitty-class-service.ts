@@ -8,6 +8,13 @@ import {
   type KittyEnrollmentInput,
   type KittyEnrollmentProjection,
 } from "./kitty-class-enrollments";
+import {
+  normalizeKittyAttendance,
+  normalizeKittyOperationalRelay,
+  type KittyAttendanceStatus,
+  type KittyRelayIntent,
+  type KittyRelayMode,
+} from "./kitty-class-relays";
 
 export type KittyClassActor =
   | { kind: "admin"; profileId: string | null; channel: "dashboard" | "imessage" }
@@ -22,6 +29,10 @@ function assertAdmin(actor: KittyClassActor): asserts actor is Extract<KittyClas
 function dbError(error: { message?: string } | null) {
   if (!error) return;
   if (error.message?.includes("stale_class")) throw new Error("stale_class");
+  for (const code of [
+    "selection_confirmation_required", "client_request_payload_mismatch", "attendance_not_found",
+    "stale_attendance", "relay_not_permitted", "attendance_not_permitted",
+  ]) if (error.message?.includes(code)) throw new Error(code);
   throw new Error("kitty_class_operation_failed");
 }
 
@@ -364,6 +375,105 @@ export async function confirmKittyClassSelection(client: Client, actor: KittyCla
   });
   dbError(error);
   return { occurrence, selectionToken, expiresAt };
+}
+
+function assertContactRelayInput(actor: KittyClassActor, input: {
+  occurrenceId: string;
+  enrollmentId?: string | null;
+  selectionToken: string;
+  clientRequestId: string;
+}): asserts actor is Extract<KittyClassActor, { kind: "contact" }> {
+  if (actor.kind !== "contact") throw new Error("contact_required");
+  if (!nonEmpty(input.occurrenceId)
+    || !/^[a-f0-9]{64}$/.test(input.selectionToken)
+    || !nonEmpty(input.clientRequestId)
+    || input.clientRequestId.trim().length > 200
+    || (input.enrollmentId !== undefined && input.enrollmentId !== null && !nonEmpty(input.enrollmentId))) {
+    throw new Error("invalid_payload");
+  }
+}
+
+export async function recordKittyAttendance(client: Client, actor: KittyClassActor, input: {
+  occurrenceId: string;
+  enrollmentId: string;
+  status: KittyAttendanceStatus;
+  estimatedAt?: string | null;
+  note?: string | null;
+  selectionToken: string;
+  clientRequestId: string;
+}) {
+  assertContactRelayInput(actor, input);
+  if (!nonEmpty(input.enrollmentId)) throw new Error("invalid_payload");
+  const normalized = normalizeKittyAttendance(input);
+  const { data, error } = await client.rpc("record_kitty_class_attendance", {
+    p_occurrence_id: input.occurrenceId,
+    p_enrollment_id: input.enrollmentId,
+    p_actor_contact_id: actor.contactId,
+    p_status: normalized.status,
+    p_estimated_at: normalized.estimatedAt,
+    p_note: normalized.note,
+    p_selection_token: input.selectionToken,
+    p_client_request_id: input.clientRequestId.trim(),
+  });
+  dbError(error);
+  return Array.isArray(data) ? data[0] : data;
+}
+
+export async function correctKittyAttendance(client: Client, actor: KittyClassActor, input: {
+  attendanceId: string;
+  occurrenceId: string;
+  enrollmentId: string;
+  status: KittyAttendanceStatus;
+  estimatedAt?: string | null;
+  note?: string | null;
+  selectionToken: string;
+  clientRequestId: string;
+}) {
+  assertContactRelayInput(actor, input);
+  if (!nonEmpty(input.attendanceId) || !nonEmpty(input.enrollmentId)) throw new Error("invalid_payload");
+  const normalized = normalizeKittyAttendance(input);
+  const { data, error } = await client.rpc("correct_kitty_class_attendance", {
+    p_supersedes_attendance_id: input.attendanceId,
+    p_occurrence_id: input.occurrenceId,
+    p_enrollment_id: input.enrollmentId,
+    p_actor_contact_id: actor.contactId,
+    p_status: normalized.status,
+    p_estimated_at: normalized.estimatedAt,
+    p_note: normalized.note,
+    p_selection_token: input.selectionToken,
+    p_client_request_id: input.clientRequestId.trim(),
+  });
+  dbError(error);
+  return Array.isArray(data) ? data[0] : data;
+}
+
+export async function createKittyOperationalRelay(client: Client, actor: KittyClassActor, input: {
+  occurrenceId: string;
+  enrollmentId?: string | null;
+  intent: KittyRelayIntent;
+  estimatedAt?: string | null;
+  mode?: KittyRelayMode | null;
+  locationLabel?: string | null;
+  preparationNote?: string | null;
+  selectionToken: string;
+  clientRequestId: string;
+}) {
+  assertContactRelayInput(actor, input);
+  const normalized = normalizeKittyOperationalRelay(input);
+  const { data, error } = await client.rpc("create_kitty_class_operational_relay", {
+    p_occurrence_id: input.occurrenceId,
+    p_enrollment_id: input.enrollmentId ?? null,
+    p_actor_contact_id: actor.contactId,
+    p_intent: normalized.intent,
+    p_estimated_at: normalized.estimatedAt,
+    p_mode: normalized.mode,
+    p_location_label: normalized.locationLabel,
+    p_preparation_note: normalized.preparationNote,
+    p_selection_token: input.selectionToken,
+    p_client_request_id: input.clientRequestId.trim(),
+  });
+  dbError(error);
+  return Array.isArray(data) ? data[0] : data;
 }
 
 export async function beginKittyClassChange(client: Client, actor: KittyClassActor, input: {

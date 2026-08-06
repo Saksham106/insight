@@ -128,6 +128,24 @@ test("maps every isolated class-change template", () => {
   assert.equal(mapped.class_change_rejected.name, "kitty_change_rejected");
 });
 
+test("maps and builds bounded Kitty relay templates", () => {
+  const mapped = templateMapFromEnv({
+    WHATSAPP_TEMPLATE_CLASS_ATTENDANCE_UPDATE: "kitty_attendance",
+    WHATSAPP_TEMPLATE_CLASS_TEACHER_DELAY: "kitty_teacher_delay",
+    WHATSAPP_TEMPLATE_CLASS_OPERATIONAL_UPDATE: "kitty_operational_update",
+  });
+  assert.equal(mapped.class_attendance_update.name, "kitty_attendance");
+  assert.equal(mapped.class_teacher_delay.name, "kitty_teacher_delay");
+  assert.equal(mapped.class_operational_update.name, "kitty_operational_update");
+  for (const intent of ["class_attendance_update", "class_teacher_delay", "class_operational_update"]) {
+    assert.deepEqual(buildSchedulingMessageContent({
+      intent,
+      recipientName: "Little",
+      templateData: { classDescription: "group piano", relaySummary: "The teacher is running late." },
+    }).bodyParameters, ["Little", "group piano", "The teacher is running late."]);
+  }
+});
+
 test("builds the Utility-compatible Swati reschedule alert body", () => {
   assert.equal(
     buildSchedulingMessageContent({ intent: "admin_reschedule_alert", recipientName: "Swati", templateData: { requesterName: "Little", caseSummary: "mathematics class - requested Monday at 4 PM Eastern Time" } }).body,

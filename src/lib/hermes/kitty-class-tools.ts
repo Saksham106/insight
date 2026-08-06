@@ -6,7 +6,9 @@ import {
   addKittyClassEnrollment,
   beginKittyClassChange,
   confirmKittyClassSelection,
+  correctKittyAttendance,
   createKittyClass,
+  createKittyOperationalRelay,
   decideKittyClassChange,
   editKittyClass,
   endKittyClassEnrollment,
@@ -15,11 +17,12 @@ import {
   listKittyClasses,
   overrideKittyClass,
   proposeKittyClassReplacement,
+  recordKittyAttendance,
   type KittyClassActor,
 } from "./kitty-class-service";
 
 export const ADMIN_CLASS_ACTIONS = ["preview_class", "create_class", "list_classes", "get_class", "edit_class", "override_class", "add_enrollment", "end_enrollment"] as const;
-export const CONTACT_CLASS_ACTIONS = ["find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"] as const;
+export const CONTACT_CLASS_ACTIONS = ["find_my_classes", "find_my_pending_changes", "confirm_class_selection", "record_class_attendance", "correct_class_attendance", "relay_class_update", "request_class_change", "decide_class_change", "propose_replacement_time"] as const;
 export type KittyClassToolAction = (typeof ADMIN_CLASS_ACTIONS)[number] | (typeof CONTACT_CLASS_ACTIONS)[number];
 
 type Payload = Record<string, unknown>;
@@ -145,6 +148,31 @@ export async function executeKittyClassTool(
     }
     case "find_my_pending_changes": return { changeRequests: await findMyPendingKittyChanges(client, actor, typeof payload.referenceCode === "string" ? payload.referenceCode : undefined) };
     case "confirm_class_selection": return { confirmation: await confirmKittyClassSelection(client, actor, { occurrenceId: text(payload, "occurrenceId"), version: number(payload, "occurrenceVersion") }), confirmed: true };
+    case "record_class_attendance": return { attendance: await recordKittyAttendance(client, actor, {
+      occurrenceId: text(payload, "occurrenceId"), enrollmentId: text(payload, "enrollmentId"),
+      status: payload.status as Parameters<typeof recordKittyAttendance>[2]["status"],
+      estimatedAt: typeof payload.estimatedAt === "string" ? payload.estimatedAt : undefined,
+      note: typeof payload.note === "string" ? payload.note : undefined,
+      selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload, context.clientRequestId),
+    }) };
+    case "correct_class_attendance": return { attendance: await correctKittyAttendance(client, actor, {
+      attendanceId: text(payload, "attendanceId"), occurrenceId: text(payload, "occurrenceId"),
+      enrollmentId: text(payload, "enrollmentId"),
+      status: payload.status as Parameters<typeof correctKittyAttendance>[2]["status"],
+      estimatedAt: typeof payload.estimatedAt === "string" ? payload.estimatedAt : undefined,
+      note: typeof payload.note === "string" ? payload.note : undefined,
+      selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload, context.clientRequestId),
+    }) };
+    case "relay_class_update": return { relay: await createKittyOperationalRelay(client, actor, {
+      occurrenceId: text(payload, "occurrenceId"),
+      enrollmentId: typeof payload.enrollmentId === "string" ? payload.enrollmentId : undefined,
+      intent: payload.intent as Parameters<typeof createKittyOperationalRelay>[2]["intent"],
+      estimatedAt: typeof payload.estimatedAt === "string" ? payload.estimatedAt : undefined,
+      mode: payload.mode as Parameters<typeof createKittyOperationalRelay>[2]["mode"],
+      locationLabel: typeof payload.locationLabel === "string" ? payload.locationLabel : undefined,
+      preparationNote: typeof payload.preparationNote === "string" ? payload.preparationNote : undefined,
+      selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload, context.clientRequestId),
+    }) };
     case "request_class_change": {
       const occurrenceId = text(payload, "occurrenceId");
       const occurrenceVersion = number(payload, "occurrenceVersion");
