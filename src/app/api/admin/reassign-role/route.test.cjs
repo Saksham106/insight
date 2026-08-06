@@ -8,9 +8,18 @@ function read(relative) {
   return fs.readFileSync(path.join(process.cwd(), relative), "utf8");
 }
 
+function readMigration(suffix) {
+  const migrationsDirectory = path.join(process.cwd(), "supabase", "migrations");
+  const fileName = fs
+    .readdirSync(migrationsDirectory)
+    .find((candidate) => candidate.endsWith(suffix));
+  assert.ok(fileName, `${suffix} migration should exist`);
+  return fs.readFileSync(path.join(migrationsDirectory, fileName), "utf8");
+}
+
 test("role reassignment is one atomic database operation", () => {
   const route = read("src/app/api/admin/reassign-role/route.ts");
-  const migration = read("supabase/migrations/20260804015702_add_atomic_role_reassignment.sql").toLowerCase();
+  const migration = readMigration("_add_atomic_role_reassignment.sql").toLowerCase();
 
   assert.match(route, /\.rpc\("reassign_profile_role"/);
   assert.doesNotMatch(route, /\.from\("teacher_student_assignments"\)\.(?:update|delete)/s);

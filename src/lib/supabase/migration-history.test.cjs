@@ -27,3 +27,24 @@ test("active Supabase migrations contain executable SQL", () => {
 
   assert.deepEqual(emptyMigrations, []);
 });
+
+test("active Supabase migrations do not repeat SQL under different versions", () => {
+  const filesByNormalizedSql = new Map();
+
+  for (const fileName of migrationFiles) {
+    const sql = fs.readFileSync(path.join(migrationsDirectory, fileName), "utf8");
+    const normalizedSql = sql
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/;(?:\s*;)+$/, ";");
+    const matchingFiles = filesByNormalizedSql.get(normalizedSql) ?? [];
+    matchingFiles.push(fileName);
+    filesByNormalizedSql.set(normalizedSql, matchingFiles);
+  }
+
+  const duplicateMigrations = [...filesByNormalizedSql.values()].filter(
+    (fileNames) => fileNames.length > 1,
+  );
+
+  assert.deepEqual(duplicateMigrations, []);
+});
