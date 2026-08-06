@@ -2,9 +2,22 @@
 
 Date: 2026-08-06
 
-Branch: `codex/kitty-class-calendar`
+Branch: `main` (merged by PR #15 at `9e928376373be3ae284ae809e8a1405ed3bc4073`)
 
-Activation status: **blocked; feature remains disabled**
+Activation status: **production schema and application deployed; feature intentionally remains disabled**
+
+## Production outcome
+
+- All eight isolated Kitty migrations are applied to Supabase production. The linked migration list is paired through `20260806114049`, and a fresh `supabase db push --linked --dry-run` reports that production is up to date.
+- The first production push safely stopped after four migrations because production's `pgcrypto` extension is outside `public`. Migration `20260806020109` now installs a schema-aware, service-role-only `public.digest` forwarding function only where needed. The complete 387-test Node suite, including all PostgreSQL runtime probes, passed before the remaining four migrations were applied.
+- PR #15 merged to `main`. Production Vercel deployment `dpl_5qH9X2p3F13mF1sKUhoCpeUZEtmi` is Ready at `https://insight-j68tm5xhf-saksham-goels-projects-0ecf36cd.vercel.app` and its production aliases.
+- Protected production smoke checks returned the safe disabled `Not found` response from `/api/hermes/class-tools`; an unsigned `/api/cron/kitty-classes` request returned `Unauthorized` as designed.
+- Kitty reuses the existing approved `class_human_attention` template with the fixed two-variable adapter. No new Meta template approval is required.
+- Normal mutations drain notifications immediately. Vercel retains the plan-compatible daily recovery job. `infra/hermes-profiles/academy/scripts/kitty-class-maintenance.py` and the exact no-agent `every 5m` install command provide frequent recovery through Hermes's scheduler without LLM tokens.
+- Current production activation blockers are external configuration only: `WHATSAPP_CLOUD_ACCESS_TOKEN` and `WHATSAPP_CLOUD_PHONE_NUMBER_ID` are empty, and this workstation has no production `academy` Hermes profile in which to install the scheduled job. `KITTY_CLASS_CALENDAR_ENABLED` is unset/false and must remain so until those items and a selected-contact send pilot are complete.
+- Supabase advisors report no Kitty warning/error. Kitty-only notices are informational: RLS-enabled service-only tables intentionally have no browser policies, and newly created indexes are understandably unused before activation.
+
+## Historical pre-deployment evidence (superseded by the production outcome above)
 
 ## Verified locally
 
