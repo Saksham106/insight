@@ -272,7 +272,7 @@ test("contact class lists honor enrollment start and end dates", async () => {
   const client = { from(table) {
     const query = {
       select() { return query; }, eq() { return query; }, in() { return query; }, or() { return query; },
-      order() { return query; }, limit() { return query; },
+      order() { return query; }, gte() { return query; }, limit() { return query; },
       then(resolve, reject) { return Promise.resolve({ data: data[table], error: null }).then(resolve, reject); },
     };
     return query;
@@ -298,7 +298,7 @@ test("contact list applies membership dates before the requested limit", async (
     let filter = "";
     let queryLimit = 1000;
     const query = {
-      select() { return query; }, eq() { return query; }, in() { return query; }, order() { return query; },
+      select() { return query; }, eq() { return query; }, in() { return query; }, order() { return query; }, gte() { return query; },
       or(value) { filter = value; return query; },
       limit(value) { queryLimit = value; return query; },
       then(resolve, reject) {
@@ -326,6 +326,39 @@ test("contact list applies membership dates before the requested limit", async (
   );
 
   assert.deepEqual(classes.map((item) => item.id), ["visible"]);
+});
+
+test("upcoming class list filters stale rows before applying its limit", async () => {
+  const { listKittyClasses } = require(servicePath);
+  const stale = Array.from({ length: 101 }, (_, index) => ({
+    id: `stale-${index}`, series_id: null, title: "Old class", subject: null,
+    starts_at: "2026-07-01T10:00:00.000Z", ends_at: "2026-07-01T11:00:00.000Z",
+    local_date: "2026-07-01", timezone: "UTC", status: "scheduled", version: 1,
+  }));
+  const future = {
+    id: "future", series_id: null, title: "Future class", subject: null,
+    starts_at: "2099-08-20T20:00:00.000Z", ends_at: "2099-08-20T21:00:00.000Z",
+    local_date: "2099-08-20", timezone: "UTC", status: "scheduled", version: 1,
+  };
+  const client = { from() {
+    let minimumEnd = null;
+    let queryLimit = 1000;
+    const query = {
+      select() { return query; }, eq() { return query; }, in() { return query; }, or() { return query; },
+      order() { return query; }, gte(column, value) { if (column === "ends_at") minimumEnd = value; return query; },
+      limit(value) { queryLimit = value; return query; },
+      then(resolve, reject) {
+        const rows = [...stale, future]
+          .filter((row) => !minimumEnd || row.ends_at >= minimumEnd)
+          .slice(0, queryLimit);
+        return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+      },
+    };
+    return query;
+  } };
+
+  const classes = await listKittyClasses(client, admin, { view: "upcoming", limit: 1 });
+  assert.deepEqual(classes.map((item) => item.id), ["future"]);
 });
 
 test("enrollment membership mutations use optimistic atomic RPCs", async () => {
@@ -443,7 +476,84 @@ test("a contact can record a bounded structured ambiguity and exact confirmation
   } });
   assert.deepEqual(calls.at(-1), { name: "resolve_kitty_class_scope_ambiguities", payload: {
     p_actor_contact_id: "student-a", p_occurrence_id: occurrenceId,
+    p_ambiguity_kind: "class", p_resolution_scope: "occurrence_selection",
   } });
+});
+
+test("a successful explicit-scope attendance action resolves scope ambiguity only after mutation", async () => {
+  const { createHash } = require("node:crypto");
+  const { recordKittyAttendance } = require(servicePath);
+  const calls = [];
+  const selectionToken = "a".repeat(64);
+  const enrollmentHandle = "b".repeat(64);
+  const client = {
+    from(table) {
+      assert.equal(table, "kitty_class_audit_events");
+      const query = {
+        select() { return query; }, eq() { return query; },
+        maybeSingle: async () => ({ data: { metadata: {
+          expiresAt: "2099-08-20T20:00:00.000Z",
+          representedEnrollmentBindings: [{
+            enrollmentId: "enrollment-1",
+            enrollmentHandleDigest: createHash("sha256").update(enrollmentHandle).digest("hex"),
+          }],
+        } }, error: null }),
+      };
+      return query;
+    },
+    rpc: async (name, payload) => {
+      calls.push({ name, payload });
+      if (name === "record_kitty_class_attendance") {
+        return { data: { id: "attendance-1", status: "absent", version: 1 }, error: null };
+      }
+      if (name === "resolve_kitty_class_scope_ambiguities") return { data: 2, error: null };
+      throw new Error(`unexpected RPC ${name}`);
+    },
+  };
+  await recordKittyAttendance(client, { kind: "contact", contactId: "student-a", channel: "whatsapp" }, {
+    occurrenceId: "occurrence-1", enrollmentHandle, status: "absent",
+    selectionToken, clientRequestId: "message-attendance-1",
+  });
+  assert.deepEqual(calls.map((call) => call.name), [
+    "record_kitty_class_attendance", "resolve_kitty_class_scope_ambiguities",
+  ]);
+  assert.deepEqual(calls[1].payload, {
+    p_actor_contact_id: "student-a", p_occurrence_id: "occurrence-1",
+    p_ambiguity_kind: "scope", p_resolution_scope: "individual_attendance",
+  });
+});
+
+test("a failed explicit-scope action never clears scope ambiguity", async () => {
+  const { createHash } = require("node:crypto");
+  const { recordKittyAttendance } = require(servicePath);
+  const selectionToken = "a".repeat(64);
+  const enrollmentHandle = "b".repeat(64);
+  const calls = [];
+  const client = {
+    from() {
+      const query = {
+        select() { return query; }, eq() { return query; },
+        maybeSingle: async () => ({ data: { metadata: {
+          expiresAt: "2099-08-20T20:00:00.000Z",
+          representedEnrollmentBindings: [{
+            enrollmentId: "enrollment-1",
+            enrollmentHandleDigest: createHash("sha256").update(enrollmentHandle).digest("hex"),
+          }],
+        } }, error: null }),
+      };
+      return query;
+    },
+    rpc: async (name) => {
+      calls.push(name);
+      return { data: null, error: { message: "attendance_not_permitted" } };
+    },
+  };
+  await assert.rejects(() => recordKittyAttendance(
+    client,
+    { kind: "contact", contactId: "student-a", channel: "whatsapp" },
+    { occurrenceId: "occurrence-1", enrollmentHandle, status: "absent", selectionToken, clientRequestId: "forged" },
+  ));
+  assert.deepEqual(calls, ["record_kitty_class_attendance"]);
 });
 
 test("ambiguity reporting rejects duplicate, oversized, and non-contact inputs before RPC", async () => {

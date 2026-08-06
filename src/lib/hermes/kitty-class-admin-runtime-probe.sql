@@ -9,6 +9,9 @@ declare
   v_blocked_id uuid := '00000000-0000-0000-0000-000000000922';
   v_attendance_id uuid := '00000000-0000-0000-0000-000000000923';
   v_change_id uuid := '00000000-0000-0000-0000-000000000924';
+  v_open_series public.kitty_class_series;
+  v_covered_series public.kitty_class_series;
+  v_finite_series public.kitty_class_series;
   v_linked_count integer;
   v_third_enrollment jsonb := pg_catalog.jsonb_build_object(
     'studentContactId', '00000000-0000-0000-0000-000000000910',
@@ -59,7 +62,11 @@ begin
     ('00000000-0000-0000-0000-000000000910'),
     ('00000000-0000-0000-0000-000000000911'),
     ('00000000-0000-0000-0000-000000000912'),
-    ('00000000-0000-0000-0000-000000000913')
+    ('00000000-0000-0000-0000-000000000913'),
+    ('00000000-0000-0000-0000-000000000914'),
+    ('00000000-0000-0000-0000-000000000915'),
+    ('00000000-0000-0000-0000-000000000916'),
+    ('00000000-0000-0000-0000-000000000917')
   on conflict (id) do nothing;
 
   select audit.entity_id into strict v_series_id
@@ -138,6 +145,97 @@ begin
   ) then
     raise exception 'recurring enrollment last-active date was not inclusive';
   end if;
+
+  select * into v_open_series
+  from public.create_kitty_group_series(
+    'Open interval invariant', null, 'UTC', time '12:00', 60,
+    array[0,1,2,3,4,5,6]::smallint[], current_date, null,
+    'dashboard', null, '00000000-0000-0000-0000-000000000901',
+    pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+      'studentContactId', '00000000-0000-0000-0000-000000000914',
+      'contacts', pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+        'contactId', '00000000-0000-0000-0000-000000000914',
+        'role', 'student', 'receivesNotifications', true,
+        'confirmsCancellation', true, 'confirmsReschedule', true
+      ))
+    )), 'admin-probe-open-interval'
+  );
+  select occurrence.* into strict v_occurrence
+  from public.kitty_class_occurrences occurrence
+  where occurrence.series_id = v_open_series.id and occurrence.local_date = current_date + 30;
+  select enrollment.id into strict v_enrollment_id
+  from public.kitty_class_enrollments enrollment
+  where enrollment.series_id = v_open_series.id;
+  begin
+    perform public.end_kitty_class_enrollment(
+      v_occurrence.id, v_enrollment_id, v_occurrence.version,
+      current_date + 90, 'this_and_future', null
+    );
+    raise exception 'open-ended final coverage was ended at the expansion horizon';
+  exception when others then
+    if sqlerrm <> 'enrollment_required' then raise; end if;
+  end;
+
+  select * into v_covered_series
+  from public.create_kitty_group_series(
+    'Covered interval invariant', null, 'UTC', time '13:00', 60,
+    array[0,1,2,3,4,5,6]::smallint[], current_date, null,
+    'dashboard', null, '00000000-0000-0000-0000-000000000901',
+    pg_catalog.jsonb_build_array(
+      pg_catalog.jsonb_build_object(
+        'studentContactId', '00000000-0000-0000-0000-000000000915',
+        'contacts', pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+          'contactId', '00000000-0000-0000-0000-000000000915',
+          'role', 'student', 'receivesNotifications', true,
+          'confirmsCancellation', true, 'confirmsReschedule', true
+        ))
+      ),
+      pg_catalog.jsonb_build_object(
+        'studentContactId', '00000000-0000-0000-0000-000000000916',
+        'contacts', pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+          'contactId', '00000000-0000-0000-0000-000000000916',
+          'role', 'student', 'receivesNotifications', true,
+          'confirmsCancellation', true, 'confirmsReschedule', true
+        ))
+      )
+    ), 'admin-probe-covered-interval'
+  );
+  select occurrence.* into strict v_occurrence
+  from public.kitty_class_occurrences occurrence
+  where occurrence.series_id = v_covered_series.id and occurrence.local_date = current_date + 30;
+  select enrollment.id into strict v_enrollment_id
+  from public.kitty_class_enrollments enrollment
+  where enrollment.series_id = v_covered_series.id
+    and enrollment.student_contact_id = '00000000-0000-0000-0000-000000000915';
+  perform public.end_kitty_class_enrollment(
+    v_occurrence.id, v_enrollment_id, v_occurrence.version,
+    current_date + 90, 'this_and_future', null
+  );
+
+  select * into v_finite_series
+  from public.create_kitty_group_series(
+    'Finite interval invariant', null, 'UTC', time '14:00', 60,
+    array[0,1,2,3,4,5,6]::smallint[], current_date, current_date + 90,
+    'dashboard', null, '00000000-0000-0000-0000-000000000901',
+    pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+      'studentContactId', '00000000-0000-0000-0000-000000000917',
+      'contacts', pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+        'contactId', '00000000-0000-0000-0000-000000000917',
+        'role', 'student', 'receivesNotifications', true,
+        'confirmsCancellation', true, 'confirmsReschedule', true
+      ))
+    )), 'admin-probe-finite-interval'
+  );
+  select occurrence.* into strict v_occurrence
+  from public.kitty_class_occurrences occurrence
+  where occurrence.series_id = v_finite_series.id and occurrence.local_date = current_date + 30;
+  select enrollment.id into strict v_enrollment_id
+  from public.kitty_class_enrollments enrollment
+  where enrollment.series_id = v_finite_series.id;
+  perform public.end_kitty_class_enrollment(
+    v_occurrence.id, v_enrollment_id, v_occurrence.version,
+    current_date + 90, 'this_and_future', null
+  );
 
   select occurrence.* into strict v_one_off
   from public.kitty_class_occurrences occurrence

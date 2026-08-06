@@ -19,6 +19,7 @@ declare
   v_payload_digest text;
   v_request_scope_digest text;
   v_existing_digest text;
+  v_existing_status text;
 begin
   select pg_catalog.array_agg(candidate_id order by candidate_id)
   into v_candidate_ids
@@ -106,7 +107,8 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(v_request_scope_digest, 0)
   );
-  select audit.metadata->>'payloadDigest' into v_existing_digest
+  select audit.metadata->>'payloadDigest', audit.metadata->>'resultStatus'
+  into v_existing_digest, v_existing_status
   from public.kitty_class_audit_events audit
   where audit.actor_contact_id = p_actor_contact_id
     and audit.metadata->>'ambiguityRequestDigest' = v_request_scope_digest
@@ -117,7 +119,8 @@ begin
       raise exception 'client_request_payload_mismatch';
     end if;
     return pg_catalog.jsonb_build_object(
-      'status', 'duplicate', 'candidateCount', pg_catalog.cardinality(v_candidate_ids)
+      'status', coalesce(v_existing_status, 'opened'),
+      'candidateCount', pg_catalog.cardinality(v_candidate_ids)
     );
   end if;
 
@@ -129,6 +132,21 @@ begin
       and audit.metadata->>'payloadDigest' = v_payload_digest
       and audit.created_at >= pg_catalog.now() - interval '15 minutes'
   ) then
+    insert into public.kitty_class_audit_events(
+      actor_type, actor_contact_id, event_type, entity_type, entity_id,
+      request_id, metadata
+    ) values (
+      'contact', p_actor_contact_id, 'class_scope_ambiguity_suppressed',
+      'occurrence', v_candidate_ids[1],
+      'class-ambiguity:' || v_request_scope_digest || ':suppressed',
+      pg_catalog.jsonb_build_object(
+        'ambiguityKind', p_ambiguity_kind,
+        'ambiguityRequestDigest', v_request_scope_digest,
+        'payloadDigest', v_payload_digest,
+        'resultStatus', 'suppressed',
+        'candidateCount', pg_catalog.cardinality(v_candidate_ids)
+      )
+    );
     return pg_catalog.jsonb_build_object(
       'status', 'suppressed', 'candidateCount', pg_catalog.cardinality(v_candidate_ids)
     );
@@ -145,6 +163,7 @@ begin
       'ambiguityKind', p_ambiguity_kind,
       'ambiguityRequestDigest', v_request_scope_digest,
       'payloadDigest', v_payload_digest,
+      'resultStatus', 'duplicate',
       'expiresAt', pg_catalog.now() + interval '48 hours'
     )
   from pg_catalog.unnest(v_candidate_ids) candidate(occurrence_id);
@@ -157,7 +176,9 @@ $$;
 
 create function public.resolve_kitty_class_scope_ambiguities(
   p_actor_contact_id uuid,
-  p_occurrence_id uuid
+  p_occurrence_id uuid,
+  p_ambiguity_kind text,
+  p_resolution_scope text
 ) returns integer
 language plpgsql
 security definer
@@ -166,7 +187,22 @@ as $$
 declare
   v_resolved integer;
 begin
-  if p_actor_contact_id is null or p_occurrence_id is null then
+  if p_actor_contact_id is null
+    or p_occurrence_id is null
+    or p_ambiguity_kind not in ('class', 'scope')
+    or (
+      p_ambiguity_kind = 'class'
+      and p_resolution_scope <> 'occurrence_selection'
+    )
+    or (
+      p_ambiguity_kind = 'scope'
+      and p_resolution_scope not in (
+        'individual_attendance', 'individual_relay', 'whole_occurrence_relay',
+        'individual_reschedule', 'whole_occurrence',
+        'change_confirmation', 'replacement_proposal'
+      )
+    )
+  then
     raise exception 'invalid_ambiguity';
   end if;
 
@@ -175,6 +211,7 @@ begin
     from public.kitty_class_audit_events audit
     where audit.actor_contact_id = p_actor_contact_id
       and audit.event_type = 'class_scope_ambiguity_opened'
+      and audit.metadata->>'ambiguityKind' = p_ambiguity_kind
       and audit.entity_type = 'occurrence'
       and audit.entity_id = p_occurrence_id
       and audit.created_at >= pg_catalog.now() - interval '48 hours'
@@ -183,10 +220,14 @@ begin
     set event_type = 'class_scope_ambiguity_resolved',
       metadata = audit.metadata || pg_catalog.jsonb_build_object(
         'resolvedAt', pg_catalog.now(),
-        'resolvedOccurrenceId', p_occurrence_id
+        'resolvedOccurrenceId', p_occurrence_id,
+        'resolutionKind', case p_ambiguity_kind
+          when 'class' then 'class_selection' else 'scope_action' end,
+        'resolutionScope', p_resolution_scope
       )
     where audit.actor_contact_id = p_actor_contact_id
       and audit.event_type = 'class_scope_ambiguity_opened'
+      and audit.metadata->>'ambiguityKind' = p_ambiguity_kind
       and audit.metadata->>'ambiguityRequestDigest' in (
         select ambiguity_keys.request_digest from ambiguity_keys
       )
@@ -301,14 +342,14 @@ $$;
 
 revoke execute on function public.record_kitty_class_scope_ambiguity(uuid, uuid[], text, text)
   from public, anon, authenticated;
-revoke execute on function public.resolve_kitty_class_scope_ambiguities(uuid, uuid)
+revoke execute on function public.resolve_kitty_class_scope_ambiguities(uuid, uuid, text, text)
   from public, anon, authenticated;
 revoke execute on function public.get_kitty_class_admin_attention_issues(timestamptz, integer)
   from public, anon, authenticated;
 
 grant execute on function public.record_kitty_class_scope_ambiguity(uuid, uuid[], text, text)
   to service_role;
-grant execute on function public.resolve_kitty_class_scope_ambiguities(uuid, uuid)
+grant execute on function public.resolve_kitty_class_scope_ambiguities(uuid, uuid, text, text)
   to service_role;
 grant execute on function public.get_kitty_class_admin_attention_issues(timestamptz, integer)
   to service_role;

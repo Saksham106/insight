@@ -61,7 +61,21 @@ test("matches only the sender's actionable occurrences and prefers exact context
     { id: "math", title: "Maths", subject: "Mathematics", startsAt: "2026-08-05T14:00:00.000Z", endsAt: "2026-08-05T15:00:00.000Z", timezone: "UTC", status: "scheduled" },
     { id: "old", title: "Maths", subject: "Mathematics", startsAt: "2026-07-01T14:00:00.000Z", endsAt: "2026-07-01T15:00:00.000Z", timezone: "UTC", status: "completed" },
   ];
-  assert.deepEqual(matchKittyOccurrences({ candidates, referenceDate: "2026-08-05", query: "my maths class today" }).map((row) => row.id), ["math", "science"]);
+  assert.deepEqual(matchKittyOccurrences({
+    candidates, referenceDate: "2026-08-05", referenceAt: "2026-08-05T12:00:00.000Z",
+    query: "my maths class today",
+  }).map((row) => row.id), ["math", "science"]);
+});
+
+test("candidate matching rejects stale scheduled occurrences", () => {
+  const candidates = [
+    { id: "stale", title: "Maths", subject: "Mathematics", startsAt: "2026-08-05T10:00:00.000Z", endsAt: "2026-08-05T11:00:00.000Z", timezone: "UTC", status: "scheduled" },
+    { id: "live", title: "Maths", subject: "Mathematics", startsAt: "2026-08-05T13:00:00.000Z", endsAt: "2026-08-05T14:00:00.000Z", timezone: "UTC", status: "scheduled" },
+  ];
+  assert.deepEqual(matchKittyOccurrences({
+    candidates, referenceDate: "2026-08-05", referenceAt: "2026-08-05T12:00:00.000Z",
+    query: "maths class",
+  }).map((row) => row.id), ["live"]);
 });
 
 test("requires one teacher side and one configured student side", () => {

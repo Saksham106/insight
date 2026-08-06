@@ -88,7 +88,7 @@ test("whole-group reschedule is one locked scope-aware RPC", async () => {
   assert.equal(result.occurrenceId, "occurrence-1");
   assert.equal(result.changeType, "reschedule");
   assert.equal(result.payloadDigest, digest);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert.equal(calls[0].name, "request_kitty_group_class_change");
   assert.deepEqual(calls[0].payload, {
     p_occurrence_id: "occurrence-1",
@@ -102,6 +102,15 @@ test("whole-group reschedule is one locked scope-aware RPC", async () => {
     p_proposed_timezone: "America/New_York",
     p_selection_token: token,
     p_client_request_id: "change-request:1",
+  });
+  assert.deepEqual(calls[1], {
+    name: "resolve_kitty_class_scope_ambiguities",
+    payload: {
+      p_actor_contact_id: "family-a",
+      p_occurrence_id: "occurrence-1",
+      p_ambiguity_kind: "scope",
+      p_resolution_scope: "whole_occurrence",
+    },
   });
 });
 

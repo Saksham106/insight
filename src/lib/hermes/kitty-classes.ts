@@ -156,13 +156,17 @@ export function expandKittySeries(input: {
 export function matchKittyOccurrences(input: {
   candidates: KittyOccurrenceCandidate[];
   referenceDate: string;
+  referenceAt?: string;
   query?: string;
   limit?: number;
 }) {
   isoDate(input.referenceDate);
+  const referenceAt = input.referenceAt ? new Date(input.referenceAt).getTime() : Date.now();
+  if (!Number.isFinite(referenceAt)) throw new Error("invalid_reference_time");
   const words = (input.query ?? "").toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 2 && word !== "class" && word !== "today");
   const scored = input.candidates
-    .filter((candidate) => candidate.status === "scheduled" || candidate.status === "change_requested")
+    .filter((candidate) => (candidate.status === "scheduled" || candidate.status === "change_requested")
+      && new Date(candidate.endsAt).getTime() >= referenceAt)
     .map((candidate) => {
       const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: candidate.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(candidate.startsAt));
       const haystack = `${candidate.title} ${candidate.subject ?? ""}`.toLocaleLowerCase();

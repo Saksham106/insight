@@ -46,6 +46,22 @@ test("Needs Attention excludes ordinary scheduled classes without issues", () =>
   );
 });
 
+test("past scheduled attention rows never re-enter Upcoming", () => {
+  const { filterKittyClassesForView } = require(adminPath);
+  const rows = [
+    { id: "past-attention", series_id: null, status: "scheduled", ends_at: "2026-08-01T11:00:00.000Z" },
+    { id: "future", series_id: null, status: "scheduled", ends_at: "2026-08-10T11:00:00.000Z" },
+  ];
+  assert.deepEqual(
+    filterKittyClassesForView(rows, "upcoming", "2026-08-05T12:00:00.000Z").map((row) => row.id),
+    ["future"],
+  );
+  assert.deepEqual(
+    filterKittyClassesForView(rows, "attention", "2026-08-05T12:00:00.000Z").map((row) => row.id),
+    ["past-attention", "future"],
+  );
+});
+
 test("admin attention loader consumes only bounded structured issue rows", async () => {
   const { loadKittyAdminAttentionIssues } = require(adminPath);
   const calls = [];

@@ -6,6 +6,7 @@ export type KittyAdminAttentionIssue = {
 };
 
 type AttentionOccurrence = { id: string; series_id: string | null; status: string };
+type DatedOccurrence = AttentionOccurrence & { ends_at: string };
 type DeliveryIssue = { occurrence_id: string; status: string };
 
 export type KittyEnrollmentDraft = { id: number; parentIds: number[] };
@@ -52,6 +53,26 @@ export function filterKittyAttentionClasses<T extends AttentionOccurrence>(
 ) {
   return occurrences.filter((occurrence) =>
     kittyClassAttentionReasons(occurrence, deliveryIssues, workflowIssues).length > 0,
+  );
+}
+
+export function filterKittyClassesForView<T extends DatedOccurrence>(
+  occurrences: readonly T[],
+  view: "upcoming" | "attention" | "history" | "recurring",
+  referenceAt = new Date().toISOString(),
+) {
+  if (view === "attention") return [...occurrences];
+  if (view === "history") {
+    return occurrences.filter((occurrence) =>
+      ["completed", "cancelled", "rescheduled"].includes(occurrence.status),
+    );
+  }
+  if (view === "recurring") return [];
+  const referenceTime = new Date(referenceAt).getTime();
+  if (!Number.isFinite(referenceTime)) throw new Error("invalid_reference_time");
+  return occurrences.filter((occurrence) =>
+    ["scheduled", "change_requested"].includes(occurrence.status)
+      && new Date(occurrence.ends_at).getTime() >= referenceTime,
   );
 }
 

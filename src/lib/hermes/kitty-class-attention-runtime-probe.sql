@@ -17,6 +17,12 @@ begin
     'service_role',
     'public.record_kitty_class_scope_ambiguity(uuid,uuid[],text,text)', 'execute'
   ) or pg_catalog.has_function_privilege(
+    'authenticated',
+    'public.resolve_kitty_class_scope_ambiguities(uuid,uuid,text,text)', 'execute'
+  ) or not pg_catalog.has_function_privilege(
+    'service_role',
+    'public.resolve_kitty_class_scope_ambiguities(uuid,uuid,text,text)', 'execute'
+  ) or pg_catalog.has_function_privilege(
     'anon',
     'public.get_kitty_class_admin_attention_issues(timestamp with time zone,integer)', 'execute'
   ) or not pg_catalog.has_function_privilege(
@@ -55,6 +61,38 @@ begin
   );
   if v_result->>'status' <> 'suppressed' then
     raise exception 'equivalent recent ambiguity was not suppressed';
+  end if;
+  update public.kitty_class_audit_events audit
+  set created_at = pg_catalog.now() - interval '16 minutes'
+  where audit.actor_contact_id = v_actor_id
+    and audit.event_type in ('class_scope_ambiguity_opened', 'class_scope_ambiguity_suppressed');
+  v_result := public.record_kitty_class_scope_ambiguity(
+    v_actor_id, array[v_second_occurrence_id, v_first_occurrence_id],
+    'class', 'attention-runtime-ambiguity-2'
+  );
+  if v_result->>'status' <> 'suppressed' then
+    raise exception 'suppressed request replay did not retain its durable result';
+  end if;
+  begin
+    perform public.record_kitty_class_scope_ambiguity(
+      v_actor_id, array[v_first_occurrence_id],
+      'class', 'attention-runtime-ambiguity-2'
+    );
+    raise exception 'suppressed request replay accepted a mismatched payload';
+  exception when others then
+    if sqlerrm <> 'client_request_payload_mismatch' then raise; end if;
+  end;
+  if exists (
+    select 1
+    from public.get_kitty_class_admin_attention_issues(pg_catalog.now(), 500) issue
+    where issue.source_id in (
+      select audit.id
+      from public.kitty_class_audit_events audit
+      where audit.actor_contact_id = v_actor_id
+        and audit.event_type = 'class_scope_ambiguity_suppressed'
+    )
+  ) then
+    raise exception 'suppressed operation binding leaked into Needs Attention';
   end if;
 
   select pg_catalog.count(*) into v_count
@@ -97,17 +135,35 @@ begin
   ) then
     raise exception 'raw ambiguity request ID leaked into persistent audit data';
   end if;
+  v_result := public.record_kitty_class_scope_ambiguity(
+    v_actor_id, array[v_first_occurrence_id, v_second_occurrence_id],
+    'scope', 'attention-runtime-scope-1'
+  );
+  if v_result->>'status' <> 'opened' then
+    raise exception 'scope ambiguity did not open independently';
+  end if;
   if (
     select pg_catalog.count(*)
     from public.get_kitty_class_admin_attention_issues(pg_catalog.now(), 500) issue
     where issue.kind = 'ambiguous_scope'
       and issue.occurrence_id = any(array[v_first_occurrence_id, v_second_occurrence_id])
-  ) <> 4 then
+  ) <> 6 then
     raise exception 'open ambiguity was not visible to admin attention';
   end if;
 
-  if public.resolve_kitty_class_scope_ambiguities(v_actor_id, v_first_occurrence_id) <> 2 then
+  if public.resolve_kitty_class_scope_ambiguities(
+    v_actor_id, v_first_occurrence_id, 'class', 'occurrence_selection'
+  ) <> 2 then
     raise exception 'exact selection did not resolve the complete ambiguity group';
+  end if;
+  if (
+    select pg_catalog.count(*)
+    from public.kitty_class_audit_events audit
+    where audit.actor_contact_id = v_actor_id
+      and audit.event_type = 'class_scope_ambiguity_opened'
+      and audit.metadata->>'ambiguityKind' = 'scope'
+  ) <> 2 then
+    raise exception 'class confirmation incorrectly resolved a scope ambiguity';
   end if;
   if (
     select pg_catalog.count(*)
@@ -117,8 +173,27 @@ begin
   ) <> 2 then
     raise exception 'resolving one contact incorrectly resolved another contact ambiguity group';
   end if;
-  if public.resolve_kitty_class_scope_ambiguities(v_second_actor_id, v_first_occurrence_id) <> 2 then
+  if public.resolve_kitty_class_scope_ambiguities(
+    v_second_actor_id, v_first_occurrence_id, 'class', 'occurrence_selection'
+  ) <> 2 then
     raise exception 'second contact could not independently resolve its ambiguity group';
+  end if;
+  if public.resolve_kitty_class_scope_ambiguities(
+    v_actor_id, v_first_occurrence_id, 'scope', 'individual_attendance'
+  ) <> 2 then
+    raise exception 'successful explicit-scope action did not resolve the scope ambiguity';
+  end if;
+  if exists (
+    select 1 from public.kitty_class_audit_events audit
+    where audit.actor_contact_id = v_actor_id
+      and audit.event_type = 'class_scope_ambiguity_resolved'
+      and audit.metadata->>'ambiguityKind' = 'scope'
+      and (
+        audit.metadata->>'resolutionKind' <> 'scope_action'
+        or audit.metadata->>'resolutionScope' <> 'individual_attendance'
+      )
+  ) then
+    raise exception 'scope resolution did not retain its bounded structured scope';
   end if;
   if exists (
     select 1 from public.get_kitty_class_admin_attention_issues(pg_catalog.now(), 500) issue
