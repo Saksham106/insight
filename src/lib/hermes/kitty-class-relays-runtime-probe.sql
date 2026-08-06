@@ -17,6 +17,8 @@ declare
   v_open_ended_preparation text;
   v_task4_outbox_intent text;
   v_malformed_payload jsonb;
+  v_valid_estimate text;
+  v_invalid_estimate text;
 begin
   if has_function_privilege(
     'anon',
@@ -357,18 +359,40 @@ begin
     jsonb_build_object('existingClassChangeField', 'preserved'),
     'relay-runtime-existing-outbox-unaffected'
   );
-  begin
+  foreach v_invalid_estimate in array array[
+    '2026-08-10',
+    '16:10:00Z',
+    '2026-08-10T16:10:00',
+    '2026-02-30T16:10:00Z',
+    '2026-08-10T25:10:00Z',
+    'not-a-timestamp'
+  ] loop
+    begin
+      insert into public.kitty_class_operational_relays(
+        occurrence_id, enrollment_id, sent_by_contact_id, intent, structured_payload,
+        client_request_id, payload_digest
+      ) values (
+        v_occurrence.id, v_enrollment_a, '10000000-0000-0000-0000-000000000001',
+        'student_late', jsonb_build_object('estimatedAt', v_invalid_estimate),
+        'relay-runtime-invalid-estimate:' || md5(v_invalid_estimate), repeat('e', 64)
+      );
+      raise exception 'relay table accepted a non-instant estimatedAt: %', v_invalid_estimate;
+    exception when check_violation then null;
+    end;
+  end loop;
+  foreach v_valid_estimate in array array[
+    '2026-08-10T16:10:00Z',
+    '2026-08-10T21:40:00+05:30'
+  ] loop
     insert into public.kitty_class_operational_relays(
       occurrence_id, enrollment_id, sent_by_contact_id, intent, structured_payload,
       client_request_id, payload_digest
     ) values (
       v_occurrence.id, v_enrollment_a, '10000000-0000-0000-0000-000000000001',
-      'student_late', jsonb_build_object('estimatedAt', 'not-a-timestamp'),
-      'relay-runtime-invalid-estimate', repeat('e', 64)
+      'student_late', jsonb_build_object('estimatedAt', v_valid_estimate),
+      'relay-runtime-valid-estimate:' || md5(v_valid_estimate), repeat('e', 64)
     );
-    raise exception 'relay table accepted an invalid estimatedAt';
-  exception when check_violation then null;
-  end;
+  end loop;
   begin
     insert into public.kitty_class_operational_relays(
       occurrence_id, enrollment_id, sent_by_contact_id, intent, structured_payload,
