@@ -47,6 +47,7 @@ async function captureAdminPost(body, requestId) {
     if (request === "next/server") return { NextResponse: { json(value, init) { return new Response(JSON.stringify(value), { status: init?.status ?? 200, headers: { "content-type": "application/json" } }); } } };
     if (request === "@/lib/auth/get-user-profile") return { getUserProfile: async () => ({ id: "admin-1", role: "admin" }) };
     if (request === "@/lib/hermes/kitty-classes") return { kittyLocalDateTimeToUtc: () => "2026-08-12T20:00:00.000Z" };
+    if (request === "@/lib/hermes/kitty-class-delivery") return { deliverPendingKittyClassNotifications: async () => ({ sent: 0, failed: 0, blocked: 0, unavailable: false }) };
     if (request === "@/lib/hermes/kitty-class-tools") return originalLoad(toolsPath, parent, isMain);
     if (request === "@/lib/hermes/kitty-class-service") return {
       createKittyClass: async (_client, _actor, input) => { capturedInput = input; return { id: "class-1" }; },
@@ -135,6 +136,7 @@ test("enrollment routes preserve explicit add/end temporal scopes", async () => 
   Module._load = function load(request, parent, isMain) {
     if (request === "next/server") return { NextResponse: { json(value, init) { return new Response(JSON.stringify(value), { status: init?.status ?? 200, headers: { "content-type": "application/json" } }); } } };
     if (request === "@/lib/auth/get-user-profile") return { getUserProfile: async () => ({ id: "admin-1", role: "admin" }) };
+    if (request === "@/lib/hermes/kitty-class-delivery") return { deliverPendingKittyClassNotifications: async () => ({ sent: 0, failed: 0, blocked: 0, unavailable: false }) };
     if (request === "@/lib/hermes/kitty-class-service") return {
       addKittyClassEnrollment: async (_client, _actor, input) => { addCalls.push(input); return { id: "occurrence-1" }; }, editKittyClass: async () => ({}),
       getKittyClassOccurrence: async () => ({}), overrideKittyClass: async () => ({}),
@@ -197,6 +199,7 @@ test("admin item GET enforces auth and flag and wires the requested occurrence",
   Module._load = function load(request, parent, isMain) {
     if (request === "next/server") return { NextResponse: { json(value, init) { return new Response(JSON.stringify(value), { status: init?.status ?? 200, headers: { "content-type": "application/json" } }); } } };
     if (request === "@/lib/auth/get-user-profile") return { getUserProfile: async () => profile };
+    if (request === "@/lib/hermes/kitty-class-delivery") return { deliverPendingKittyClassNotifications: async () => ({ sent: 0, failed: 0, blocked: 0, unavailable: false }) };
     if (request === "@/lib/hermes/kitty-class-service") return {
       getKittyClassOccurrence: async (client, actor, id) => {
         calls.push({ client, actor, id });
@@ -246,6 +249,7 @@ test("admin retry PATCH executes failed delivery and rejects blocked delivery", 
     if (request === "next/server") return { NextResponse: { json(value, init) { return new Response(JSON.stringify(value), { status: init?.status ?? 200, headers: { "content-type": "application/json" } }); } } };
     if (request === "@/lib/auth/get-user-profile") return { getUserProfile: async () => profile };
     if (request === "@/lib/hermes/kitty-classes") return { kittyLocalDateTimeToUtc: () => "" };
+    if (request === "@/lib/hermes/kitty-class-delivery") return { deliverPendingKittyClassNotifications: async () => ({ sent: 0, failed: 0, blocked: 0, unavailable: false }) };
     if (request === "@/lib/hermes/kitty-class-tools") return { normalizeKittyClassCreatePayload: (value) => value };
     if (request === "@/lib/hermes/kitty-class-service") return {
       createKittyClass: async () => ({}), listKittyClasses: async () => [],

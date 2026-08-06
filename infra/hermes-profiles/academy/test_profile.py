@@ -207,6 +207,18 @@ class AcademyProfileTests(unittest.TestCase):
         ):
             self.assertIn(required, combined)
 
+    def test_kitty_maintenance_uses_hermes_no_agent_cron(self):
+        readme = (PROFILE_DIR / "README.md").read_text()
+        script = (PROFILE_DIR / "scripts" / "kitty-class-maintenance.py").read_text()
+        for required in (
+            'cron create "every 5m"', "--no-agent", "kitty-class-maintenance.py",
+            "HERMES_TOOL_SHARED_SECRET", "INSIGHT_KITTY_MAINTENANCE_URL",
+        ):
+            self.assertIn(required, readme)
+        self.assertIn('method="POST"', script)
+        self.assertIn('headers={"Authorization": f"Bearer {secret}"}', script)
+        self.assertNotIn("response.read", script)
+
 
 if __name__ == "__main__":
     unittest.main()

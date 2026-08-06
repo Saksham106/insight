@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
 import type { KittyEnrollmentInput } from "@/lib/hermes/kitty-class-enrollments";
+import { deliverPendingKittyClassNotifications } from "@/lib/hermes/kitty-class-delivery";
 import { addKittyClassEnrollment, editKittyClass, endKittyClassEnrollment, getKittyClassOccurrence, overrideKittyClass } from "@/lib/hermes/kitty-class-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -71,7 +72,8 @@ export async function PATCH(request: Request, route: Context) {
         endsAt: typeof body.endsAt === "string" ? body.endsAt : undefined,
         timezone: typeof body.timezone === "string" ? body.timezone : undefined,
       });
-      return NextResponse.json({ class: item });
+      const notificationDelivery = await deliverPendingKittyClassNotifications(auth.client, request.url);
+      return NextResponse.json({ class: item, notificationDelivery });
     }
     const scope = body.scope === "this_and_future" || body.scope === "entire_series" ? body.scope : "occurrence";
     const item = await editKittyClass(auth.client, actor, {

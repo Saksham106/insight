@@ -213,6 +213,7 @@ test("verified Kitty route supplies its stable request id to legacy creation", a
       parseIMessageAdminActor: () => ({ e164: "+15555550123" }),
       parseWhatsAppToolActor: () => null,
     };
+    if (request === "@/lib/hermes/kitty-class-delivery") return { deliverPendingKittyClassNotifications: async () => ({ sent: 0, failed: 0, blocked: 0, unavailable: false }) };
     if (request === "@/lib/hermes/kitty-class-tools") return originalLoad(toolsPath, parent, isMain);
     if (request === "@/lib/supabase/admin") return { createAdminClient: () => client };
     return originalLoad(request, parent, isMain);

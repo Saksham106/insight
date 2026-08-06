@@ -278,6 +278,38 @@ begin
   select occurrence.* into strict v_one_off
   from public.kitty_class_occurrences occurrence
   where occurrence.id = v_one_off.id;
+  select enrollment.id into strict v_existing_enrollment_id
+  from public.kitty_class_enrollments enrollment
+  where enrollment.occurrence_id = v_one_off.id and enrollment.is_active
+  order by enrollment.created_at
+  limit 1;
+  insert into public.kitty_class_change_requests(
+    occurrence_id, change_type, status, payload_digest, scope,
+    enrollment_id, required_enrollment_ids
+  ) values (
+    v_one_off.id, 'reschedule', 'awaiting_counterparty', pg_catalog.repeat('d', 64),
+    'individual_reschedule', v_existing_enrollment_id, array[v_existing_enrollment_id]::uuid[]
+  );
+  begin
+    perform public.add_kitty_class_enrollment(
+      v_one_off.id, v_one_off.version, v_one_off.local_date,
+      'occurrence', v_third_enrollment, null
+    );
+    raise exception 'roster add was accepted during an individual reschedule';
+  exception when others then
+    if sqlerrm <> 'class_not_editable' then raise; end if;
+  end;
+  begin
+    perform public.end_kitty_class_enrollment(
+      v_one_off.id, v_existing_enrollment_id, v_one_off.version,
+      v_one_off.local_date, 'occurrence', null
+    );
+    raise exception 'roster end was accepted during an individual reschedule';
+  exception when others then
+    if sqlerrm <> 'class_not_editable' then raise; end if;
+  end;
+  delete from public.kitty_class_change_requests
+  where occurrence_id = v_one_off.id and payload_digest = pg_catalog.repeat('d', 64);
 
   select * into v_one_off
   from public.add_kitty_class_enrollment(

@@ -64,6 +64,13 @@ begin
   if v_occurrence.status <> 'scheduled' then
     raise exception 'class_not_editable';
   end if;
+  if exists (
+    select 1 from public.kitty_class_change_requests request
+    where request.occurrence_id = v_occurrence.id
+      and request.status in ('awaiting_requester_confirmation', 'awaiting_counterparty', 'collecting_alternatives', 'ready_to_finalize')
+  ) then
+    raise exception 'class_not_editable';
+  end if;
 
   if v_occurrence.series_id is null then
     if p_scope <> 'occurrence' or p_effective_date <> v_occurrence.local_date then
@@ -191,6 +198,13 @@ begin
   if not found then raise exception 'class_not_found'; end if;
   if v_occurrence.version <> p_expected_version then raise exception 'stale_class'; end if;
   if v_occurrence.status <> 'scheduled' then
+    raise exception 'class_not_editable';
+  end if;
+  if exists (
+    select 1 from public.kitty_class_change_requests request
+    where request.occurrence_id = v_occurrence.id
+      and request.status in ('awaiting_requester_confirmation', 'awaiting_counterparty', 'collecting_alternatives', 'ready_to_finalize')
+  ) then
     raise exception 'class_not_editable';
   end if;
 

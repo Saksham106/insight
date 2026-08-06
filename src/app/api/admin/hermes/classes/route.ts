@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
 import { kittyLocalDateTimeToUtc } from "@/lib/hermes/kitty-classes";
+import { deliverPendingKittyClassNotifications } from "@/lib/hermes/kitty-class-delivery";
 import { createKittyClass, listKittyClasses, retryKittyClassNotification } from "@/lib/hermes/kitty-class-service";
 import { normalizeKittyClassCreatePayload } from "@/lib/hermes/kitty-class-tools";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -53,7 +54,8 @@ export async function POST(request: Request) {
       clientRequestId: requestId,
     });
     const created = await createKittyClass(createAdminClient(), { kind: "admin", profileId: profile.id, channel: "dashboard" }, input);
-    return NextResponse.json({ class: created }, { status: 201 });
+    const notificationDelivery = await deliverPendingKittyClassNotifications(createAdminClient(), request.url);
+    return NextResponse.json({ class: created, notificationDelivery }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error && ["invalid_class", "invalid_recurrence", "enrollment_required", "invalid_enrollment"].includes(error.message)
       ? "Check the class time, teacher, and enrollments."

@@ -155,6 +155,11 @@ test("admin hardening migration scopes roster edits, audit detail, and retry eli
     "both roster mutation RPCs must reject a pending class change",
   );
   assert.doesNotMatch(migration, /status not in \('scheduled', 'change_requested'\)/);
+  assert.equal(
+    (migration.match(/request\.status in \('awaiting_requester_confirmation', 'awaiting_counterparty', 'collecting_alternatives', 'ready_to_finalize'\)/g) ?? []).length,
+    2,
+    "both roster mutation RPCs must reject individual and whole-occurrence pending changes",
+  );
   assert.match(migration, /status = 'failed'/);
   assert.doesNotMatch(migration, /status in \('failed', 'blocked'\)/);
   assert.match(migration, /get_kitty_class_admin_detail_events/);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { verifyServiceRequest } from "@/lib/hermes/auth";
 import { communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor } from "@/lib/hermes/cases";
+import { deliverPendingKittyClassNotifications } from "@/lib/hermes/kitty-class-delivery";
 import { executeKittyClassTool, isKittyClassToolAction } from "@/lib/hermes/kitty-class-tools";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -53,8 +54,9 @@ export async function POST(request: Request) {
   if (replayError) return response(replayError.code === "23505" ? "Replay rejected" : "Audit unavailable", replayError.code === "23505" ? 409 : 503);
   try {
     const result = await executeKittyClassTool(supabase, actor, body.action, body.payload as JsonObject);
+    const notificationDelivery = await deliverPendingKittyClassNotifications(supabase, request.url);
     await supabase.from("kitty_class_audit_events").update({ event_type: "class_tool_completed" }).eq("id", auditId);
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, notificationDelivery });
   } catch (error) {
     const category = error instanceof Error && ["action_not_allowed", "class_not_found", "stale_class", "invalid_payload", "change_not_permitted", "invalid_ambiguity", "ambiguity_not_permitted"].includes(error.message)
       ? error.message : "class_tool_failed";
