@@ -2,6 +2,7 @@ do $$
 declare
   v_one_off public.kitty_class_occurrences;
   v_replayed_one_off public.kitty_class_occurrences;
+  v_distinct_one_off public.kitty_class_occurrences;
   v_series public.kitty_class_series;
   v_replayed_series public.kitty_class_series;
   v_occurrence public.kitty_class_occurrences;
@@ -9,10 +10,10 @@ declare
   v_count_before integer;
   v_enrollments jsonb := jsonb_build_array(
     jsonb_build_object(
-      'studentContactId', '00000000-0000-0000-0000-000000000902',
+      'studentContactId', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa902',
       'contacts', jsonb_build_array(
         jsonb_build_object(
-          'contactId', '00000000-0000-0000-0000-000000000902',
+          'contactId', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa902',
           'role', 'student', 'receivesNotifications', true,
           'confirmsCancellation', true, 'confirmsReschedule', true
         ),
@@ -56,7 +57,7 @@ declare
       )
     ),
     jsonb_build_object(
-      'studentContactId', '00000000-0000-0000-0000-000000000902',
+      'studentContactId', '  AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAA902  ',
       'contacts', jsonb_build_array(
         jsonb_build_object(
           'contactId', '00000000-0000-0000-0000-000000000903',
@@ -64,7 +65,7 @@ declare
           'confirmsCancellation', false, 'confirmsReschedule', true
         ),
         jsonb_build_object(
-          'contactId', '00000000-0000-0000-0000-000000000902',
+          'contactId', ' AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAA902 ',
           'role', 'student', 'receivesNotifications', true,
           'confirmsCancellation', true, 'confirmsReschedule', true
         )
@@ -100,7 +101,7 @@ begin
 
   insert into public.hermes_contacts(id) values
     ('00000000-0000-0000-0000-000000000901'),
-    ('00000000-0000-0000-0000-000000000902'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa902'),
     ('00000000-0000-0000-0000-000000000903'),
     ('00000000-0000-0000-0000-000000000904'),
     ('00000000-0000-0000-0000-000000000905'),
@@ -144,6 +145,42 @@ begin
   if v_replayed_one_off.id <> v_one_off.id then
     raise exception 'normalized one-off replay created a second class';
   end if;
+
+  select * into v_distinct_one_off
+  from public.create_kitty_group_one_off(
+    'Runtime group one-off', 'Math',
+    (current_date + 5 + time '10:00') at time zone 'UTC',
+    (current_date + 5 + time '11:00') at time zone 'UTC',
+    current_date + 5, 'UTC', 'dashboard', null,
+    '00000000-0000-0000-0000-000000000901', v_enrollments,
+    'runtime-group-one-off-distinct-request'
+  );
+  if v_distinct_one_off.id = v_one_off.id then
+    raise exception 'different requests with the same payload reused one class';
+  end if;
+
+  begin
+    perform public.kitty_class_normalize_group_enrollments(jsonb_build_array(
+      jsonb_build_object(
+        'studentContactId', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa902',
+        'contacts', jsonb_build_array(
+          jsonb_build_object(
+            'contactId', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa902',
+            'role', 'student', 'receivesNotifications', true,
+            'confirmsCancellation', true, 'confirmsReschedule', true
+          ),
+          jsonb_build_object(
+            'contactId', ' AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAA902 ',
+            'role', 'parent_guardian', 'receivesNotifications', true,
+            'confirmsCancellation', false, 'confirmsReschedule', true
+          )
+        )
+      )
+    ));
+    raise exception 'canonical duplicate enrollment contacts were accepted';
+  exception when others then
+    if sqlerrm <> 'duplicate_enrollment_contact' then raise; end if;
+  end;
 
   begin
     perform public.create_kitty_group_one_off(
@@ -273,8 +310,11 @@ begin
 
   if (
     select count(*) from public.kitty_class_audit_events audit
-    where audit.request_id in ('runtime-group-one-off', 'runtime-group-series')
-  ) <> 2 then
+    where audit.request_id in (
+      'runtime-group-one-off', 'runtime-group-one-off-distinct-request',
+      'runtime-group-series'
+    )
+  ) <> 3 then
     raise exception 'creation audit/idempotency records missing';
   end if;
 end;

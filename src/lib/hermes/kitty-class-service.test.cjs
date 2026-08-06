@@ -117,7 +117,7 @@ test("one teacher and two enrollments are created through one atomic RPC", async
   assert.equal("p_participants" in calls[0].payload, false);
 });
 
-function rosterClient() {
+function rosterClient(changeRequest = null) {
   const occurrence = {
     id: "occurrence-1", series_id: "series-1", title: "Group piano", subject: null,
     starts_at: "2026-08-12T20:00:00.000Z", ends_at: "2026-08-12T21:00:00.000Z",
@@ -146,7 +146,7 @@ function rosterClient() {
         is_active: true,
       })),
     })),
-    kitty_class_change_requests: null,
+    kitty_class_change_requests: changeRequest,
   };
 
   return {
@@ -184,6 +184,39 @@ test("contact reads reveal only represented roster shapes and a non-identifying 
   assert.doesNotMatch(JSON.stringify(item), /student-a|student-b|enrollment-1|enrollment-2/);
 });
 
+test("individual change details stay private to the teacher and represented enrollment", async () => {
+  const { getKittyClassOccurrence } = require(servicePath);
+  const individualChange = {
+    id: "change-1", change_type: "reschedule", scope: "individual_reschedule",
+    enrollment_id: "enrollment-1", requester_side: "student",
+    proposed_starts_at: "2026-08-13T20:00:00.000Z",
+    proposed_ends_at: "2026-08-13T21:00:00.000Z", proposed_timezone: "America/New_York",
+    status: "awaiting_counterparty", payload_digest: "private-digest", version: 1,
+    created_at: "2026-08-05T12:00:00.000Z",
+  };
+
+  const unrelatedFamily = await getKittyClassOccurrence(
+    rosterClient(individualChange),
+    { kind: "contact", contactId: "student-b", channel: "whatsapp" },
+    "occurrence-1",
+  );
+  const representedFamily = await getKittyClassOccurrence(
+    rosterClient(individualChange),
+    { kind: "contact", contactId: "student-a", channel: "whatsapp" },
+    "occurrence-1",
+  );
+  const teacher = await getKittyClassOccurrence(
+    rosterClient(individualChange),
+    { kind: "contact", contactId: "teacher-1", channel: "whatsapp" },
+    "occurrence-1",
+  );
+
+  assert.equal(unrelatedFamily.currentChangeRequest, null);
+  assert.equal(representedFamily.currentChangeRequest.id, "change-1");
+  assert.equal(teacher.currentChangeRequest.id, "change-1");
+  assert.doesNotMatch(JSON.stringify(unrelatedFamily), /private-digest|2026-08-13/);
+});
+
 test("contact class lists honor enrollment start and end dates", async () => {
   const { listKittyClasses } = require(servicePath);
   const occurrences = [
@@ -209,6 +242,51 @@ test("contact class lists honor enrollment start and end dates", async () => {
   const classes = await listKittyClasses(client, { kind: "contact", contactId: "guardian-1", channel: "whatsapp" });
 
   assert.deepEqual(classes.map((item) => item.id), ["during"]);
+});
+
+test("contact list applies membership dates before the requested limit", async () => {
+  const { listKittyClasses } = require(servicePath);
+  const occurrence = (id, localDate) => ({
+    id, series_id: "series-1", title: "Group piano", subject: null,
+    starts_at: `${localDate}T20:00:00.000Z`, ends_at: `${localDate}T21:00:00.000Z`,
+    local_date: localDate, timezone: "America/New_York", status: "scheduled", version: 1,
+  });
+  const occurrences = [
+    ...Array.from({ length: 100 }, (_, index) => occurrence(`ended-${index}`, "2026-08-20")),
+    occurrence("visible", "2026-08-10"),
+  ];
+  const client = { from(table) {
+    let filter = "";
+    let queryLimit = 1000;
+    const query = {
+      select() { return query; }, eq() { return query; }, in() { return query; }, order() { return query; },
+      or(value) { filter = value; return query; },
+      limit(value) { queryLimit = value; return query; },
+      then(resolve, reject) {
+        let data;
+        if (table === "kitty_class_participants") data = [];
+        else if (table === "kitty_class_enrollment_contacts") data = [{
+          enrollment: { occurrence_id: null, series_id: "series-1", active_from: "2026-08-01", active_until: "2026-08-15" },
+        }];
+        else {
+          const dateFiltered = filter.includes("local_date.lte.2026-08-15")
+            ? occurrences.filter((item) => item.local_date <= "2026-08-15")
+            : occurrences;
+          data = dateFiltered.slice(0, queryLimit);
+        }
+        return Promise.resolve({ data, error: null }).then(resolve, reject);
+      },
+    };
+    return query;
+  } };
+
+  const classes = await listKittyClasses(
+    client,
+    { kind: "contact", contactId: "guardian-1", channel: "whatsapp" },
+    { limit: 1 },
+  );
+
+  assert.deepEqual(classes.map((item) => item.id), ["visible"]);
 });
 
 test("enrollment membership mutations use optimistic atomic RPCs", async () => {

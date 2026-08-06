@@ -128,6 +128,21 @@ function contactMembership(
   throw new Error("class_not_found");
 }
 
+function projectCurrentChangeRequest(
+  changeRequest: Record<string, unknown> | null,
+  actor: KittyClassActor,
+  roster: Awaited<ReturnType<typeof loadOccurrenceRoster>>,
+) {
+  if (!changeRequest || actor.kind === "admin") return changeRequest;
+  if (changeRequest.scope !== "individual_attendance" && changeRequest.scope !== "individual_reschedule") return changeRequest;
+  if (String(roster.teacher?.contact_id ?? "") === actor.contactId) return changeRequest;
+  const enrollmentId = String(changeRequest.enrollment_id ?? "");
+  return roster.enrollments.some((enrollment) =>
+    enrollment.id === enrollmentId
+      && enrollment.contacts.some((contact) => contact.contactId === actor.contactId),
+  ) ? changeRequest : null;
+}
+
 async function assertContactMembership(client: Client, occurrenceId: string, contactId: string) {
   const occurrence = await fetchOccurrence(client, occurrenceId);
   const roster = await loadOccurrenceRoster(client, occurrence);
@@ -139,8 +154,7 @@ export async function listKittyClasses(client: Client, actor: KittyClassActor, o
   limit?: number;
 } = {}) {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
-  let allowedOccurrenceIds: string[] | null = null;
-  let allowedSeriesIds: string[] = [];
+  let contactFilterClauses: string[] | null = null;
   let contactScopes: Array<{
     occurrence_id: string | null;
     series_id: string | null;
@@ -164,26 +178,30 @@ export async function listKittyClasses(client: Client, actor: KittyClassActor, o
       ...(teacherResult.data ?? []),
       ...enrollmentScopes,
     ];
-    allowedOccurrenceIds = contactScopes.flatMap((row) => row.occurrence_id ? [String(row.occurrence_id)] : []);
-    allowedSeriesIds = contactScopes.flatMap((row) => row.series_id ? [String(row.series_id)] : []);
-    if (!allowedOccurrenceIds.length && !allowedSeriesIds.length) return [];
+    contactFilterClauses = [...new Set(contactScopes.flatMap((scope) => {
+      const identity = scope.occurrence_id
+        ? `id.eq.${String(scope.occurrence_id)}`
+        : scope.series_id ? `series_id.eq.${String(scope.series_id)}` : "";
+      if (!identity) return [];
+      const predicates = [
+        identity,
+        scope.active_from ? `local_date.gte.${scope.active_from}` : "",
+        scope.active_until ? `local_date.lte.${scope.active_until}` : "",
+      ].filter(Boolean);
+      return [predicates.length === 1 ? predicates[0] : `and(${predicates.join(",")})`];
+    }))];
+    if (!contactFilterClauses.length) return [];
   }
 
   let query = client
     .from("kitty_class_occurrences")
     .select("id, series_id, title, subject, starts_at, ends_at, local_date, timezone, status, version")
     .order("starts_at", { ascending: options.view !== "history" })
-    .limit(actor.kind === "contact" ? 100 : limit);
+    .limit(limit);
   if (options.view === "attention") query = query.eq("status", "change_requested");
   else if (options.view === "history") query = query.in("status", ["completed", "cancelled", "rescheduled"]);
   else query = query.in("status", ["scheduled", "change_requested"]);
-  if (allowedOccurrenceIds) {
-    const clauses = [
-      allowedOccurrenceIds.length ? `id.in.(${allowedOccurrenceIds.join(",")})` : "",
-      allowedSeriesIds.length ? `series_id.in.(${allowedSeriesIds.join(",")})` : "",
-    ].filter(Boolean);
-    query = query.or(clauses.join(","));
-  }
+  if (contactFilterClauses) query = query.or(contactFilterClauses.join(","));
   const { data, error } = await query;
   dbError(error);
   const visible = actor.kind === "contact"
@@ -205,7 +223,7 @@ export async function getKittyClassOccurrence(client: Client, actor: KittyClassA
   const [roster, changeResult] = await Promise.all([
     loadOccurrenceRoster(client, data),
     client.from("kitty_class_change_requests")
-      .select("id, change_type, requester_side, proposed_starts_at, proposed_ends_at, proposed_timezone, status, payload_digest, version, created_at")
+      .select("id, change_type, scope, enrollment_id, requester_side, proposed_starts_at, proposed_ends_at, proposed_timezone, status, payload_digest, version, created_at")
       .eq("occurrence_id", occurrenceId)
       .in("status", ["awaiting_requester_confirmation", "awaiting_counterparty", "collecting_alternatives", "ready_to_finalize"])
       .maybeSingle(),
@@ -220,7 +238,7 @@ export async function getKittyClassOccurrence(client: Client, actor: KittyClassA
     ...projectOccurrence(data),
     enrollments: projectedEnrollments,
     enrollmentCount: roster.enrollments.length,
-    currentChangeRequest: changeResult.data,
+    currentChangeRequest: projectCurrentChangeRequest(changeResult.data, actor, roster),
   };
   return actor.kind === "admin"
     ? { ...projected, teacherContactId: String(roster.teacher?.contact_id ?? "") }
