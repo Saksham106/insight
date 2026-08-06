@@ -141,6 +141,18 @@ test("legacy creators bridge one enrollment and shared guardians approve every r
   assert.match(migration, /request_expired/);
 });
 
+test("admin hardening migration scopes roster edits, audit detail, and retry eligibility", () => {
+  const migration = read("supabase/migrations/20260806040937_harden_kitty_class_admin.sql").toLowerCase();
+  assert.match(migration, /create function public\.add_kitty_class_enrollment\([\s\S]*p_scope text/);
+  assert.match(migration, /create function public\.end_kitty_class_enrollment\([\s\S]*p_scope text/);
+  assert.match(migration, /status = 'failed'/);
+  assert.doesNotMatch(migration, /status in \('failed', 'blocked'\)/);
+  assert.match(migration, /get_kitty_class_admin_detail_events/);
+  for (const entityType of ["occurrence", "attendance_update", "change_request", "notification"]) {
+    assert.ok(migration.includes(`'${entityType}'`), `missing ${entityType} audit scope`);
+  }
+});
+
 test("group RPC runtime behavior is repeatable in disposable databases", {
   skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
 }, () => {
@@ -351,6 +363,57 @@ test("attendance and relay RPCs preserve privacy, idempotency, and append-only h
     );
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.match(result.stdout, /kitty class relays runtime probe passed/);
+  } finally {
+    const droppedAfter = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
+    assert.equal(droppedAfter.status, 0, `${droppedAfter.stdout}\n${droppedAfter.stderr}`);
+  }
+});
+
+test("admin hardening RPCs enforce temporal scopes, linked audit, and failed-only retries", {
+  skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
+  timeout: 30_000,
+}, () => {
+  const container = process.env.KITTY_SCHEMA_TEST_CONTAINER;
+  const database = `kitty_group_admin_probe_${process.pid}`;
+  const migrations = [
+    ["predecessor migration", read("supabase/migrations/20260805120000_add_kitty_class_calendar.sql")],
+    ["group foundation migration", read("supabase/migrations/20260805222827_add_kitty_group_classes.sql")],
+    ["group service migration", read("supabase/migrations/20260805235110_add_kitty_group_class_services.sql")],
+    ["attendance and relay migration", read("supabase/migrations/20260806005742_add_kitty_class_relays.sql")],
+    ["group change migration", read("supabase/migrations/20260806020109_coordinate_kitty_group_class_changes.sql")],
+  ];
+
+  const droppedBefore = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
+  assert.equal(droppedBefore.status, 0, `${droppedBefore.stdout}\n${droppedBefore.stderr}`);
+  const created = runContainerCommand([container, "createdb", "-U", "postgres", database]);
+  assert.equal(created.status, 0, `${created.stdout}\n${created.stderr}`);
+
+  try {
+    for (const [label, sql] of [["bootstrap", migrationProbeBootstrap], ...migrations]) {
+      const result = runProbeSql(container, database, sql);
+      assert.equal(result.status, 0, `${label} failed:\n${result.stdout}\n${result.stderr}`);
+    }
+    const groupFixture = runProbeSql(
+      container,
+      database,
+      read("src/lib/hermes/kitty-class-group-service-runtime-probe.sql"),
+    );
+    assert.equal(groupFixture.status, 0, `${groupFixture.stdout}\n${groupFixture.stderr}`);
+
+    const migration = runProbeSql(
+      container,
+      database,
+      read("supabase/migrations/20260806040937_harden_kitty_class_admin.sql"),
+    );
+    assert.equal(migration.status, 0, `${migration.stdout}\n${migration.stderr}`);
+
+    const probe = runProbeSql(
+      container,
+      database,
+      read("src/lib/hermes/kitty-class-admin-runtime-probe.sql"),
+    );
+    assert.equal(probe.status, 0, `${probe.stdout}\n${probe.stderr}`);
+    assert.match(probe.stdout, /kitty class admin runtime probe passed/);
   } finally {
     const droppedAfter = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
     assert.equal(droppedAfter.status, 0, `${droppedAfter.stdout}\n${droppedAfter.stderr}`);

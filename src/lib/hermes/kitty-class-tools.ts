@@ -44,6 +44,11 @@ function number(payload: Payload, key: string) {
   return Number(value);
 }
 
+function enrollmentScope(payload: Payload): "occurrence" | "this_and_future" {
+  if (payload.scope === "occurrence" || payload.scope === "this_and_future") return payload.scope;
+  throw new Error("invalid_payload");
+}
+
 function clientRequestId(payload: Payload, fallback?: string) {
   const value = typeof payload.clientRequestId === "string" && payload.clientRequestId.trim()
     ? payload.clientRequestId.trim()
@@ -143,12 +148,14 @@ export async function executeKittyClassTool(
       if (!payload.enrollment || typeof payload.enrollment !== "object" || Array.isArray(payload.enrollment)) throw new Error("invalid_payload");
       return { class: await addKittyClassEnrollment(client, actor, {
         occurrenceId: text(payload, "occurrenceId"), version: number(payload, "version"),
+        scope: enrollmentScope(payload),
         effectiveDate: text(payload, "effectiveDate"), enrollment: payload.enrollment as KittyEnrollmentInput,
       }) };
     }
     case "end_enrollment": return { class: await endKittyClassEnrollment(client, actor, {
       occurrenceId: text(payload, "occurrenceId"), enrollmentId: text(payload, "enrollmentId"),
-      version: number(payload, "version"), effectiveDate: text(payload, "effectiveDate"),
+      version: number(payload, "version"), scope: enrollmentScope(payload),
+      effectiveDate: text(payload, "effectiveDate"),
     }) };
     case "find_my_classes": {
       const classes = await listKittyClasses(client, actor, { view: "upcoming", limit: 100 });
