@@ -3,6 +3,8 @@ declare
   v_one_off public.kitty_class_occurrences;
   v_replayed_one_off public.kitty_class_occurrences;
   v_distinct_one_off public.kitty_class_occurrences;
+  v_tool_one_off public.kitty_class_occurrences;
+  v_replayed_tool_one_off public.kitty_class_occurrences;
   v_series public.kitty_class_series;
   v_replayed_series public.kitty_class_series;
   v_occurrence public.kitty_class_occurrences;
@@ -106,6 +108,48 @@ begin
     ('00000000-0000-0000-0000-000000000904'),
     ('00000000-0000-0000-0000-000000000905'),
     ('00000000-0000-0000-0000-000000000906');
+
+  insert into public.kitty_class_audit_events(
+    id, actor_type, event_type, entity_type, entity_id, request_id, metadata
+  ) values (
+    '00000000-0000-0000-0000-000000000907', 'admin',
+    'class_tool_requested', 'notification',
+    '00000000-0000-0000-0000-000000000907',
+    'runtime-tool-request', jsonb_build_object('action', 'create_class')
+  );
+  select * into v_tool_one_off
+  from public.create_kitty_group_one_off(
+    'Runtime tool one-off', 'Math',
+    (current_date + 4 + time '10:00') at time zone 'UTC',
+    (current_date + 4 + time '11:00') at time zone 'UTC',
+    current_date + 4, 'UTC', 'imessage', null,
+    '00000000-0000-0000-0000-000000000901', v_enrollments,
+    'class-create:runtime-tool-request'
+  );
+  select * into v_replayed_tool_one_off
+  from public.create_kitty_group_one_off(
+    'Runtime tool one-off', 'Math',
+    (current_date + 4 + time '10:00') at time zone 'UTC',
+    (current_date + 4 + time '11:00') at time zone 'UTC',
+    current_date + 4, 'UTC', 'imessage', null,
+    '00000000-0000-0000-0000-000000000901', v_reordered_enrollments,
+    'class-create:runtime-tool-request'
+  );
+  if v_tool_one_off.id <> v_replayed_tool_one_off.id then
+    raise exception 'namespaced tool creation did not replay its class';
+  end if;
+  if not exists (
+    select 1 from public.kitty_class_audit_events audit
+    where audit.request_id = 'runtime-tool-request'
+      and audit.event_type = 'class_tool_requested'
+  ) or not exists (
+    select 1 from public.kitty_class_audit_events audit
+    where audit.request_id = 'class-create:runtime-tool-request'
+      and audit.event_type = 'occurrence_created'
+      and audit.entity_id = v_tool_one_off.id
+  ) then
+    raise exception 'tool audit and class creation identities were not isolated';
+  end if;
 
   select * into v_one_off
   from public.create_kitty_group_one_off(
@@ -312,9 +356,9 @@ begin
     select count(*) from public.kitty_class_audit_events audit
     where audit.request_id in (
       'runtime-group-one-off', 'runtime-group-one-off-distinct-request',
-      'runtime-group-series'
+      'runtime-group-series', 'class-create:runtime-tool-request'
     )
-  ) <> 3 then
+  ) <> 4 then
     raise exception 'creation audit/idempotency records missing';
   end if;
 end;

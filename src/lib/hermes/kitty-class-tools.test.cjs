@@ -118,6 +118,38 @@ test("create payload cannot mix native enrollments with legacy participants", as
   ), /invalid_payload/);
 });
 
+test("legacy participants reject every native roster marker even when malformed", () => {
+  const { normalizeKittyClassCreatePayload } = require(toolsPath);
+  const legacy = {
+    kind: "one_off", title: "Mixed contract", timezone: "UTC",
+    startsAt: "2026-08-12T20:00:00.000Z", endsAt: "2026-08-12T21:00:00.000Z", localDate: "2026-08-12",
+    participants: [
+      { contactId: "teacher-1", role: "teacher", decisionSide: "teacher", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
+      { contactId: "student-a", role: "student", decisionSide: "student", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
+    ],
+  };
+
+  for (const nativeFields of [
+    { teacherContactId: "teacher-1" },
+    { enrollments: { studentContactId: "student-a" } },
+    { enrollments: undefined },
+  ]) {
+    assert.throws(
+      () => normalizeKittyClassCreatePayload({ ...legacy, ...nativeFields }, "mixed-request"),
+      /invalid_payload/,
+    );
+  }
+});
+
+test("malformed native enrollments never fall through to the legacy adapter", () => {
+  const { normalizeKittyClassCreatePayload } = require(toolsPath);
+  assert.throws(() => normalizeKittyClassCreatePayload({
+    kind: "one_off", title: "Native malformed", timezone: "UTC",
+    startsAt: "2026-08-12T20:00:00.000Z", endsAt: "2026-08-12T21:00:00.000Z", localDate: "2026-08-12",
+    teacherContactId: "teacher-1", enrollments: { studentContactId: "student-a" },
+  }, "native-malformed-request"), /enrollment_required/);
+});
+
 test("verified Kitty route supplies its stable request id to legacy creation", async () => {
   const routePath = path.join(process.cwd(), "src/app/api/hermes/class-tools/route.ts");
   const calls = [];
@@ -176,7 +208,7 @@ test("verified Kitty route supplies its stable request id to legacy creation", a
 
     assert.equal(response.status, 200);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].payload.p_client_request_id, "hermes-legacy-request-1");
+    assert.equal(calls[0].payload.p_client_request_id, "class-create:hermes-legacy-request-1");
     assert.equal(calls[0].payload.p_teacher_contact_id, "teacher-1");
     assert.equal(calls[0].payload.p_enrollments[0].studentContactId, "student-1");
   } finally {

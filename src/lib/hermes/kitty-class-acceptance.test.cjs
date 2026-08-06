@@ -141,17 +141,39 @@ test("legacy creators bridge one enrollment and shared guardians approve every r
   assert.match(migration, /request_expired/);
 });
 
-test("group RPC runtime behavior rejects cross-class enrollments and waits for every approval", {
+test("group RPC runtime behavior is repeatable in disposable databases", {
   skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
 }, () => {
-  const sql = read("src/lib/hermes/kitty-class-group-runtime-probe.sql");
-  const result = childProcess.spawnSync(
-    "docker",
-    ["exec", "-i", process.env.KITTY_SCHEMA_TEST_CONTAINER, "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres"],
-    { input: sql, encoding: "utf8" },
-  );
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /kitty group runtime probe passed/);
+  const container = process.env.KITTY_SCHEMA_TEST_CONTAINER;
+  const predecessor = read("supabase/migrations/20260805120000_add_kitty_class_calendar.sql");
+  const fixture = read("src/lib/hermes/kitty-class-group-runtime-fixture.sql");
+  const migration = read("supabase/migrations/20260805222827_add_kitty_group_classes.sql");
+  const probe = read("src/lib/hermes/kitty-class-group-runtime-probe.sql");
+
+  for (const attempt of [1, 2]) {
+    const database = `kitty_group_runtime_probe_${process.pid}_${attempt}`;
+    const droppedBefore = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
+    assert.equal(droppedBefore.status, 0, `${droppedBefore.stdout}\n${droppedBefore.stderr}`);
+    const created = runContainerCommand([container, "createdb", "-U", "postgres", database]);
+    assert.equal(created.status, 0, `${created.stdout}\n${created.stderr}`);
+    try {
+      for (const [label, sql] of [
+        ["bootstrap", migrationProbeBootstrap],
+        ["predecessor migration", predecessor],
+        ["legacy group fixture", fixture],
+        ["group foundation migration", migration],
+      ]) {
+        const result = runProbeSql(container, database, sql);
+        assert.equal(result.status, 0, `attempt ${attempt} ${label} failed:\n${result.stdout}\n${result.stderr}`);
+      }
+      const result = runProbeSql(container, database, probe);
+      assert.equal(result.status, 0, `attempt ${attempt} probe failed:\n${result.stdout}\n${result.stderr}`);
+      assert.match(result.stdout, /kitty group runtime probe passed/);
+    } finally {
+      const droppedAfter = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
+      assert.equal(droppedAfter.status, 0, `${droppedAfter.stdout}\n${droppedAfter.stderr}`);
+    }
+  }
 });
 
 test("group migration rejects a legacy recurring occurrence with an active scoped teacher", {
