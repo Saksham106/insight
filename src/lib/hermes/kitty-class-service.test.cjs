@@ -117,7 +117,7 @@ test("one teacher and two enrollments are created through one atomic RPC", async
   assert.equal("p_participants" in calls[0].payload, false);
 });
 
-function rosterClient(changeRequest = null) {
+function rosterClient(changeRequest = null, extraRows = {}) {
   const occurrence = {
     id: "occurrence-1", series_id: "series-1", title: "Group piano", subject: null,
     starts_at: "2026-08-12T20:00:00.000Z", ends_at: "2026-08-12T21:00:00.000Z",
@@ -147,6 +147,7 @@ function rosterClient(changeRequest = null) {
       })),
     })),
     kitty_class_change_requests: changeRequest,
+    ...extraRows,
   };
 
   return {
@@ -164,6 +165,38 @@ function rosterClient(changeRequest = null) {
     },
   };
 }
+
+test("admin occurrence detail allowlists attendance, approval progress, audit, and failed delivery facts", async () => {
+  const { getKittyClassOccurrence } = require(servicePath);
+  const change = {
+    id: "change-1", change_type: "reschedule", scope: "whole_occurrence", enrollment_id: null,
+    proposed_starts_at: "2026-08-13T20:00:00.000Z", proposed_ends_at: "2026-08-13T21:00:00.000Z",
+    proposed_timezone: "America/New_York", status: "awaiting_counterparty", payload_digest: "digest-1", version: 2,
+    required_enrollment_ids: ["enrollment-1", "enrollment-2"], replacement_occurrence_id: null,
+    confirmations: [
+      { request_version: 2, decision_side: "teacher", enrollment_id: null, decision: "approved", payload_digest: "digest-1", decided_at: "2026-08-05T12:00:00.000Z" },
+      { request_version: 2, decision_side: "student", enrollment_id: "enrollment-1", decision: "approved", payload_digest: "digest-1", decided_at: "2026-08-05T12:01:00.000Z" },
+      { request_version: 1, decision_side: "student", enrollment_id: "enrollment-2", decision: "approved", payload_digest: "old-digest", decided_at: "2026-08-05T11:00:00.000Z" },
+    ],
+  };
+  const item = await getKittyClassOccurrence(rosterClient(change, {
+    kitty_class_attendance_updates: [
+      { id: "attendance-2", enrollment_id: "enrollment-1", reported_by_contact_id: "student-a", status: "late", estimated_at: "2026-08-12T20:10:00.000Z", note: "Train delayed", version: 2, supersedes_attendance_id: "attendance-1", created_at: "2026-08-05T12:02:00.000Z", internal_secret: "omit" },
+      { id: "attendance-1", enrollment_id: "enrollment-1", reported_by_contact_id: "student-a", status: "absent", estimated_at: null, note: null, version: 1, supersedes_attendance_id: null, created_at: "2026-08-05T12:00:00.000Z" },
+    ],
+    kitty_class_audit_events: [{ id: "audit-1", actor_type: "contact", event_type: "attendance_corrected", entity_type: "occurrence", created_at: "2026-08-05T12:02:00.000Z", metadata: { secret: true } }],
+    kitty_class_notification_outbox: [{ id: "notice-1", contact_id: "guardian-shared", intent: "class_attendance_update", status: "failed", attempt_count: 2, last_error_code: "provider_timeout", hermes_message_id: "message-1", updated_at: "2026-08-05T12:03:00.000Z", payload: { secret: true } }],
+  }), admin, "occurrence-1");
+
+  assert.equal(item.attendance.length, 1);
+  assert.equal(item.attendance[0].status, "late");
+  assert.equal(item.currentChangeRequest.receivedEnrollmentApprovals, 1);
+  assert.equal(item.currentChangeRequest.requiredEnrollmentApprovals, 2);
+  assert.deepEqual(item.currentChangeRequest.enrollmentApprovals.map((approval) => approval.status), ["approved", "pending"]);
+  assert.equal(item.auditEvents[0].eventType, "attendance_corrected");
+  assert.equal(item.notificationFailures[0].errorCode, "provider_timeout");
+  assert.doesNotMatch(JSON.stringify(item), /internal_secret|old-digest|metadata|payload|secret/);
+});
 
 test("contact reads reveal only represented roster shapes and a non-identifying group count", async () => {
   const { getKittyClassOccurrence } = require(servicePath);

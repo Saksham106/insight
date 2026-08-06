@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Plus } from "lucide-react";
 
@@ -20,8 +20,39 @@ type ClassOccurrence = {
 };
 
 type ClassSeries = { id: string; title: string; weekdays: number[]; local_time: string; timezone: string; status: string };
-type Contact = { id: string; display_name: string; role: string };
+type Contact = { id: string; display_name: string; role: string; deleted_at?: string | null; is_active?: boolean };
 type NotificationIssue = { id: string; occurrence_id: string; status: string; last_error_code: string | null; updated_at: string };
+type EnrollmentContact = {
+  contactId: string;
+  role: "student" | "parent_guardian";
+  receivesNotifications: boolean;
+  confirmsCancellation: boolean;
+  confirmsReschedule: boolean;
+};
+type Enrollment = { id: string; studentContactId: string; contacts: EnrollmentContact[] };
+type Attendance = {
+  id: string; enrollmentId: string; status: string; estimatedAt: string | null; note: string | null;
+  version: number; isCorrection: boolean; reportedByContactId: string; createdAt: string;
+};
+type ApprovalProgress = {
+  enrollmentId: string; status: string; decidedAt: string | null;
+};
+type ChangeRequest = {
+  id: string; changeType: string; scope: string; status: string; version: number;
+  requiredEnrollmentApprovals: number; receivedEnrollmentApprovals: number;
+  teacherApprovalStatus: string; enrollmentApprovals: ApprovalProgress[];
+};
+type OccurrenceDetail = {
+  id: string; version: number; localDate: string; teacherContactId: string;
+  enrollmentCount: number; enrollments: Enrollment[]; attendance: Attendance[];
+  currentChangeRequest: ChangeRequest | null;
+  auditEvents: Array<{ id: string; actorType: string; eventType: string; entityType: string; createdAt: string }>;
+  notificationFailures: Array<{
+    id: string; contactId: string; intent: string; status: string; attemptCount: number;
+    errorCode: string | null; messageId: string | null; updatedAt: string;
+  }>;
+};
+type EnrollmentDraft = { id: number; parentIds: number[] };
 type View = "upcoming" | "attention" | "recurring" | "history";
 
 const VIEW_LABELS: Array<[View, string]> = [
@@ -30,8 +61,112 @@ const VIEW_LABELS: Array<[View, string]> = [
   ["recurring", "Recurring"],
   ["history", "History"],
 ];
-
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const INITIAL_ENROLLMENTS: EnrollmentDraft[] = [{ id: 0, parentIds: [] }];
+
+function normalizedEventName(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+function formChecked(form: FormData, name: string) {
+  return form.get(name) === "on";
+}
+
+function enrollmentFromForm(form: FormData, prefix: string, draft: EnrollmentDraft) {
+  const studentContactId = String(form.get(`${prefix}.${draft.id}.studentId`) ?? "");
+  const contacts: EnrollmentContact[] = [{
+    contactId: studentContactId,
+    role: "student",
+    receivesNotifications: formChecked(form, `${prefix}.${draft.id}.studentReceivesUpdates`),
+    confirmsCancellation: formChecked(form, `${prefix}.${draft.id}.studentConfirmsCancellation`),
+    confirmsReschedule: formChecked(form, `${prefix}.${draft.id}.studentConfirmsReschedule`),
+  }];
+  for (const parentId of draft.parentIds) {
+    const contactId = String(form.get(`${prefix}.${draft.id}.parent.${parentId}.contactId`) ?? "");
+    if (!contactId) continue;
+    contacts.push({
+      contactId,
+      role: "parent_guardian",
+      receivesNotifications: formChecked(form, `${prefix}.${draft.id}.parent.${parentId}.receivesUpdates`),
+      confirmsCancellation: formChecked(form, `${prefix}.${draft.id}.parent.${parentId}.confirmsCancellation`),
+      confirmsReschedule: formChecked(form, `${prefix}.${draft.id}.parent.${parentId}.confirmsReschedule`),
+    });
+  }
+  return { studentContactId, contacts };
+}
+
+function ContactControls({ prefix, defaultReschedule = false }: { prefix: string; defaultReschedule?: boolean }) {
+  const name = (suffix: string) => prefix.endsWith(".")
+    ? `${prefix}${suffix[0].toLowerCase()}${suffix.slice(1)}`
+    : `${prefix}${suffix}`;
+  return (
+    <div className="text-sm" style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px", marginTop: 8 }}>
+      <label><input type="checkbox" name={name("ReceivesUpdates")} defaultChecked /> Receives updates</label>
+      <label><input type="checkbox" name={name("ConfirmsCancellation")} /> Confirms cancellations</label>
+      <label><input type="checkbox" name={name("ConfirmsReschedule")} defaultChecked={defaultReschedule} /> Confirms reschedules</label>
+    </div>
+  );
+}
+
+function EnrollmentFields({
+  draft, ordinal, prefix, contacts, canRemove, onAddParent, onRemoveParent, onRemoveEnrollment,
+}: {
+  draft: EnrollmentDraft;
+  ordinal: number;
+  prefix: string;
+  contacts: Contact[];
+  canRemove: boolean;
+  onAddParent: () => void;
+  onRemoveParent: (parentId: number) => void;
+  onRemoveEnrollment: () => void;
+}) {
+  const studentPrefix = `${prefix}.${draft.id}.student`;
+  const students = contacts.filter((contact) => contact.role === "student" && contact.is_active !== false && !contact.deleted_at);
+  const parents = contacts.filter((contact) => ["parent", "guardian", "parent_guardian"].includes(contact.role) && contact.is_active !== false && !contact.deleted_at);
+  return (
+    <fieldset className="border border-border" style={{ borderRadius: 10, padding: 12, display: "grid", gap: 10 }}>
+      <legend className="text-sm font-semibold">Student {ordinal}</legend>
+      <label className="text-sm">
+        Student
+        <select className="input" name={`${prefix}.${draft.id}.studentId`} required>
+          <option value="">Select student</option>
+          {students.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}
+        </select>
+      </label>
+      <ContactControls prefix={studentPrefix} defaultReschedule />
+      {draft.parentIds.map((parentId, index) => {
+        const parentPrefix = `${prefix}.${draft.id}.parent.${parentId}.`;
+        return (
+          <fieldset key={parentId} className="border border-border" style={{ borderRadius: 8, padding: 10 }}>
+            <legend className="text-sm font-semibold">Parent contact {index + 1} (optional)</legend>
+            <label className="text-sm">
+              Parent
+              <select className="input" name={`${parentPrefix}contactId`} required>
+                <option value="">Select parent or guardian</option>
+                {parents.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}
+              </select>
+            </label>
+            <ContactControls prefix={parentPrefix} defaultReschedule />
+            <button type="button" className="btn btn-secondary" onClick={() => onRemoveParent(parentId)} style={{ marginTop: 8 }}>Remove parent</button>
+          </fieldset>
+        );
+      })}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <button type="button" className="btn btn-secondary" onClick={onAddParent}>Add parent contact</button>
+        {canRemove ? <button type="button" className="btn btn-secondary" onClick={onRemoveEnrollment}>Remove student</button> : null}
+      </div>
+    </fieldset>
+  );
+}
+
+function ConfigurationSummary({ contact }: { contact: EnrollmentContact }) {
+  const labels = [
+    contact.receivesNotifications ? "receives updates" : null,
+    contact.confirmsCancellation ? "confirms cancellations" : null,
+    contact.confirmsReschedule ? "confirms reschedules" : null,
+  ].filter(Boolean);
+  return <span className="text-xs text-muted">{labels.length ? labels.join(" · ") : "no notifications or confirmations"}</span>;
+}
 
 export function HermesClassesPanel({ classes, series, contacts, notificationIssues, enabled }: {
   classes: ClassOccurrence[];
@@ -41,82 +176,199 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
   enabled: boolean;
 }) {
   const router = useRouter();
+  const nextDraftId = useRef(1);
   const [view, setView] = useState<View>("upcoming");
   const [kind, setKind] = useState<"one_off" | "weekly">("weekly");
+  const [enrollments, setEnrollments] = useState<EnrollmentDraft[]>(INITIAL_ENROLLMENTS);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageIsError, setMessageIsError] = useState(false);
+  const [details, setDetails] = useState<Record<string, OccurrenceDetail>>({});
+  const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
+  const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({});
   const submitClass = useMemo(() => createKittyClassDashboardSubmitter(), []);
+  const contactsById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
+  const teachers = useMemo(
+    () => contacts.filter((contact) => contact.role === "teacher" && contact.is_active !== false && !contact.deleted_at),
+    [contacts],
+  );
   const visible = useMemo(() => {
     if (view === "attention") return classes.filter((item) => item.status === "change_requested");
     if (view === "history") return classes.filter((item) => ["completed", "cancelled", "rescheduled"].includes(item.status));
     return classes.filter((item) => ["scheduled", "change_requested"].includes(item.status));
   }, [classes, view]);
 
-  async function retryNotification(notificationId: string) {
+  function showMessage(value: string, isError = false) {
+    setMessage(value);
+    setMessageIsError(isError);
+  }
+
+  function addEnrollment() {
+    const id = nextDraftId.current++;
+    setEnrollments((current) => [...current, { id, parentIds: [] }]);
+  }
+
+  function addParent(enrollmentId: number) {
+    const parentId = nextDraftId.current++;
+    setEnrollments((current) => current.map((enrollment) =>
+      enrollment.id === enrollmentId
+        ? { ...enrollment, parentIds: [...enrollment.parentIds, parentId] }
+        : enrollment,
+    ));
+  }
+
+  function removeParent(enrollmentId: number, parentId: number) {
+    setEnrollments((current) => current.map((enrollment) =>
+      enrollment.id === enrollmentId
+        ? { ...enrollment, parentIds: enrollment.parentIds.filter((id) => id !== parentId) }
+        : enrollment,
+    ));
+  }
+
+  async function loadOccurrenceDetails(occurrenceId: string, force = false) {
+    if ((!force && details[occurrenceId]) || loadingDetails[occurrenceId]) return;
+    setLoadingDetails((current) => ({ ...current, [occurrenceId]: true }));
+    setDetailErrors((current) => ({ ...current, [occurrenceId]: "" }));
+    try {
+      const response = await fetch(`/api/admin/hermes/classes/${occurrenceId}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not load class details.");
+      setDetails((current) => ({ ...current, [occurrenceId]: result.class }));
+    } catch (error) {
+      setDetailErrors((current) => ({
+        ...current,
+        [occurrenceId]: error instanceof Error ? error.message : "Could not load class details.",
+      }));
+    } finally {
+      setLoadingDetails((current) => ({ ...current, [occurrenceId]: false }));
+    }
+  }
+
+  async function retryNotification(notificationId: string, occurrenceId?: string) {
     setPending(true);
-    setMessage(null);
-    const response = await fetch("/api/admin/hermes/classes", {
-      method: "PATCH", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "retry_notification", notificationId }),
-    });
-    const result = await response.json();
-    setPending(false);
-    if (!response.ok) return setMessage(result.error ?? "Could not retry notification.");
-    setMessage("Notification queued for a safe retry.");
-    router.refresh();
+    showMessage("");
+    try {
+      const response = await fetch("/api/admin/hermes/classes", {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "retry_notification", notificationId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not retry notification.");
+      showMessage("Notification queued for a safe retry.");
+      if (occurrenceId) await loadOccurrenceDetails(occurrenceId, true);
+      router.refresh();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "Could not retry notification.", true);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function mutateEnrollment(event: React.FormEvent<HTMLFormElement>, occurrenceId: string, action: "add_enrollment" | "end_enrollment", enrollmentId?: string) {
+    event.preventDefault();
+    setPending(true);
+    showMessage("");
+    const form = new FormData(event.currentTarget);
+    const detail = details[occurrenceId];
+    const effectiveDate = String(form.get("effectiveDate") ?? "");
+    const scope = String(form.get("scope") ?? "");
+    const body: Record<string, unknown> = { action, version: detail.version, effectiveDate };
+    if (action === "add_enrollment") {
+      const studentContactId = String(form.get("studentContactId") ?? "");
+      const parentContactId = String(form.get("parentContactId") ?? "");
+      body.enrollment = {
+        studentContactId,
+        contacts: [
+          {
+            contactId: studentContactId, role: "student",
+            receivesNotifications: formChecked(form, "studentReceivesUpdates"),
+            confirmsCancellation: formChecked(form, "studentConfirmsCancellation"),
+            confirmsReschedule: formChecked(form, "studentConfirmsReschedule"),
+          },
+          ...(parentContactId ? [{
+            contactId: parentContactId, role: "parent_guardian",
+            receivesNotifications: formChecked(form, "parentReceivesUpdates"),
+            confirmsCancellation: formChecked(form, "parentConfirmsCancellation"),
+            confirmsReschedule: formChecked(form, "parentConfirmsReschedule"),
+          }] : []),
+        ],
+      };
+    } else {
+      if (scope !== "enrollment") {
+        setPending(false);
+        showMessage("Choose the enrollment change scope.", true);
+        return;
+      }
+      body.enrollmentId = enrollmentId;
+      body.scope = "enrollment";
+    }
+    try {
+      const response = await fetch(`/api/admin/hermes/classes/${occurrenceId}`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not update the enrollment.");
+      showMessage(action === "add_enrollment" ? "Student enrollment added." : "Enrollment end date saved.");
+      setDetails((current) => {
+        const next = { ...current };
+        delete next[occurrenceId];
+        return next;
+      });
+      await loadOccurrenceDetails(occurrenceId, true);
+      router.refresh();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "Could not update the enrollment.", true);
+    } finally {
+      setPending(false);
+    }
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setPending(true);
-    setMessage(null);
-    const form = new FormData(event.currentTarget);
-    const teacherId = String(form.get("teacherId") ?? "");
-    const studentId = String(form.get("studentId") ?? "");
-    const parentId = String(form.get("parentId") ?? "");
-    if (!studentId) {
+    showMessage("");
+    const form = new FormData(formElement);
+    const roster = enrollments.map((draft) => enrollmentFromForm(form, "enrollment", draft));
+    if (roster.some((enrollment) => !enrollment.studentContactId)) {
       setPending(false);
-      setMessage("Choose the student for this class. You can still make the parent the only contact who receives or confirms updates.");
+      showMessage("Choose the student for this class. You can still make a parent the only contact who receives or confirms updates.", true);
       return;
     }
-    const participants = [
-      { contactId: teacherId, role: "teacher", decisionSide: "teacher", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
-      ...(studentId ? [{
-        contactId: studentId, role: "student", decisionSide: "student",
-        receivesNotifications: form.get("studentReceivesUpdates") === "on",
-        confirmsCancellation: form.get("studentConfirmsCancellation") === "on",
-        confirmsReschedule: form.get("studentConfirmsReschedule") === "on",
-      }] : []),
-      ...(parentId ? [{
-        contactId: parentId, role: "parent_guardian", decisionSide: "student",
-        receivesNotifications: form.get("parentReceivesUpdates") === "on",
-        confirmsCancellation: form.get("parentConfirmsCancellation") === "on",
-        confirmsReschedule: form.get("parentConfirmsReschedule") === "on",
-      }] : []),
-    ];
+    if (roster.some((enrollment) => !enrollment.contacts.some((contact) => contact.confirmsReschedule))) {
+      setPending(false);
+      showMessage("Choose at least one reschedule decision-maker for every student enrollment.", true);
+      return;
+    }
     const startsAt = String(form.get("startsAt") ?? "");
     const durationMinutes = Number(form.get("durationMinutes") ?? 60);
+    const common = {
+      kind, title: form.get("title"), subject: form.get("subject"), timezone: form.get("timezone"),
+      durationMinutes, teacherContactId: form.get("teacherContactId"), enrollments: roster,
+    };
     const payload = kind === "weekly"
       ? {
-          kind, title: form.get("title"), subject: form.get("subject"), timezone: form.get("timezone"), durationMinutes,
-          effectiveStart: form.get("effectiveStart"),
+          ...common, effectiveStart: form.get("effectiveStart"),
           recurrence: { frequency: "weekly", weekdays: [Number(form.get("weekday"))], localTime: form.get("localTime"), intervalWeeks: 1 },
-          participants,
         }
-      : {
-          kind, title: form.get("title"), subject: form.get("subject"), timezone: form.get("timezone"),
-          localStartsAt: startsAt,
-          durationMinutes,
-          localDate: startsAt.slice(0, 10), participants,
-        };
-    const response = await submitClass(payload);
-    const result = await response.json();
-    setPending(false);
-    if (!response.ok) return setMessage(result.error ?? "Could not create class.");
-    setMessage("Class saved in Kitty Classes.");
-    event.currentTarget.reset();
-    router.refresh();
+      : { ...common, localStartsAt: startsAt, localDate: startsAt.slice(0, 10) };
+    try {
+      const response = await submitClass(payload);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not create class.");
+      showMessage("Class saved in Kitty Classes.");
+      formElement.reset();
+      setEnrollments(INITIAL_ENROLLMENTS);
+      router.refresh();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "Could not create class.", true);
+    } finally {
+      setPending(false);
+    }
   }
+
+  const activeStudents = contacts.filter((contact) => contact.role === "student" && contact.is_active !== false && !contact.deleted_at);
+  const activeParents = contacts.filter((contact) => ["parent", "guardian", "parent_guardian"].includes(contact.role) && contact.is_active !== false && !contact.deleted_at);
 
   return (
     <PanelCard icon={<CalendarDays size={18} />} title="Kitty Classes" description="A separate Kitty-owned class calendar. It does not change Academy sessions or availability.">
@@ -128,16 +380,19 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
       </div>
 
       {view === "attention" && notificationIssues.length ? (
-        <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+        <section aria-labelledby="class-delivery-issues" style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+          <h3 id="class-delivery-issues" className="text-sm font-semibold">Failed notifications</h3>
           {notificationIssues.map((issue) => {
             const occurrence = classes.find((item) => item.id === issue.occurrence_id);
             return <article key={issue.id} className="border border-border" style={{ borderRadius: 10, padding: 14 }}>
               <strong>{occurrence?.title ?? "Class notification"}</strong>
               <p className="text-sm text-muted">Delivery {issue.status}: {issue.last_error_code ?? "unknown error"}</p>
-              <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => retryNotification(issue.id)}>Retry notification</button>
+              {issue.status === "failed"
+                ? <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => retryNotification(issue.id)}>Retry notification</button>
+                : <p className="text-xs text-muted">Reconciliation required before another send.</p>}
             </article>;
           })}
-        </div>
+        </section>
       ) : null}
 
       {view === "recurring" ? (
@@ -148,15 +403,93 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
           </article>
         ))}</div> : <Empty>No recurring classes yet.</Empty>
       ) : visible.length ? (
-        <div style={{ display: "grid", gap: 10 }}>{visible.map((item) => (
-          <article key={item.id} className="border border-border" style={{ borderRadius: 10, padding: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div><strong>{item.title}</strong>{item.subject ? <p className="text-sm text-muted">{item.subject}</p> : null}</div>
-              <span className="text-xs text-muted">{item.status.replaceAll("_", " ")}</span>
-            </div>
-            <p className="text-sm" style={{ marginTop: 8 }}>{formatMessageTime(item.starts_at)}–{new Date(item.ends_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · {item.timezone}</p>
-          </article>
-        ))}</div>
+        <div style={{ display: "grid", gap: 10 }}>{visible.map((item) => {
+          const detail = details[item.id];
+          return (
+            <article key={item.id} className="border border-border" style={{ borderRadius: 10, padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div><strong>{item.title}</strong>{item.subject ? <p className="text-sm text-muted">{item.subject}</p> : null}</div>
+                <span className="text-xs text-muted">{normalizedEventName(item.status)}</span>
+              </div>
+              <p className="text-sm" style={{ marginTop: 8 }}>{formatMessageTime(item.starts_at)}–{new Date(item.ends_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · {item.timezone}</p>
+              <details onToggle={(event) => { if (event.currentTarget.open) void loadOccurrenceDetails(item.id); }} style={{ marginTop: 10 }}>
+                <summary className="text-sm font-semibold text-navy" style={{ cursor: "pointer" }}>Roster and occurrence details</summary>
+                {loadingDetails[item.id] ? <p className="text-sm text-muted" role="status">Loading class details…</p> : null}
+                {detailErrors[item.id] ? <p className="text-sm text-error" role="alert">{detailErrors[item.id]}</p> : null}
+                {detail ? (
+                  <div style={{ display: "grid", gap: 14, marginTop: 12 }}>
+                    <p className="text-sm"><strong>Teacher:</strong> {contactsById.get(detail.teacherContactId)?.display_name ?? "Unavailable contact"} · <strong>{detail.enrollmentCount}</strong> student enrollment{detail.enrollmentCount === 1 ? "" : "s"}</p>
+                    <section aria-labelledby={`roster-${item.id}`} style={{ display: "grid", gap: 10 }}>
+                      <h4 id={`roster-${item.id}`} className="text-sm font-semibold">Group roster</h4>
+                      {detail.enrollments.map((enrollment) => {
+                        const attendance = detail.attendance.find((row) => row.enrollmentId === enrollment.id);
+                        const approval = detail.currentChangeRequest?.enrollmentApprovals.find((row) => row.enrollmentId === enrollment.id);
+                        return (
+                          <article key={enrollment.id} className="border border-border" style={{ borderRadius: 8, padding: 12 }}>
+                            <strong>{contactsById.get(enrollment.studentContactId)?.display_name ?? "Unavailable student"}</strong>
+                            <p className="text-sm" style={{ marginTop: 6 }}><strong>Attendance:</strong> {attendance ? normalizedEventName(attendance.status) : "expected"}{attendance?.estimatedAt ? ` · estimated ${formatMessageTime(attendance.estimatedAt)}` : ""}{attendance?.isCorrection ? " · corrected" : ""}</p>
+                            {attendance?.note ? <p className="text-sm text-muted">Private admin note: {attendance.note}</p> : null}
+                            {approval ? <p className="text-sm"><strong>Current approval:</strong> {approval.status}</p> : null}
+                            <ul className="text-sm" style={{ display: "grid", gap: 6, marginTop: 8, paddingLeft: 18 }}>
+                              {enrollment.contacts.map((contact) => (
+                                <li key={contact.contactId}>
+                                  {contactsById.get(contact.contactId)?.display_name ?? "Unavailable contact"} ({contact.role === "student" ? "student" : "parent or guardian"})<br />
+                                  <ConfigurationSummary contact={contact} />
+                                </li>
+                              ))}
+                            </ul>
+                            <form onSubmit={(event) => mutateEnrollment(event, item.id, "end_enrollment", enrollment.id)} style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                              <label className="text-sm">Change scope<select className="input" name="scope" required defaultValue="enrollment"><option value="enrollment">This enrollment only</option></select></label>
+                              <label className="text-sm">Effective date<input className="input" type="date" name="effectiveDate" min={detail.localDate} required /></label>
+                              <button type="submit" className="btn btn-secondary" disabled={!enabled || pending}>End enrollment</button>
+                            </form>
+                          </article>
+                        );
+                      })}
+                    </section>
+
+                    <details>
+                      <summary className="text-sm font-semibold text-navy">Add student</summary>
+                      <form onSubmit={(event) => mutateEnrollment(event, item.id, "add_enrollment")} style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                        <label className="text-sm">Student<select className="input" name="studentContactId" required><option value="">Select student</option>{activeStudents.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}</select></label>
+                        <ContactControls prefix="student" defaultReschedule />
+                        <label className="text-sm">Parent contact (optional)<select className="input" name="parentContactId"><option value="">No parent contact</option>{activeParents.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}</select></label>
+                        <ContactControls prefix="parent" defaultReschedule />
+                        <label className="text-sm">Effective date<input className="input" type="date" name="effectiveDate" min={detail.localDate} required /></label>
+                        <button type="submit" className="btn btn-secondary" disabled={!enabled || pending}>Add student</button>
+                      </form>
+                    </details>
+
+                    <section aria-labelledby={`approvals-${item.id}`}>
+                      <h4 id={`approvals-${item.id}`} className="text-sm font-semibold">Approval progress</h4>
+                      {detail.currentChangeRequest ? (
+                        <p className="text-sm">{detail.currentChangeRequest.receivedEnrollmentApprovals} approvals received · {detail.currentChangeRequest.requiredEnrollmentApprovals} approvals required · teacher {detail.currentChangeRequest.teacherApprovalStatus}</p>
+                      ) : <p className="text-sm text-muted">No current class change.</p>}
+                    </section>
+
+                    <section aria-labelledby={`audit-${item.id}`}>
+                      <h4 id={`audit-${item.id}`} className="text-sm font-semibold">Audit history</h4>
+                      {detail.auditEvents.length ? <ul className="text-sm" style={{ paddingLeft: 18 }}>{detail.auditEvents.map((event) => <li key={event.id}>{normalizedEventName(event.eventType)} · {event.actorType} · {formatMessageTime(event.createdAt)}</li>)}</ul> : <p className="text-sm text-muted">No occurrence audit events.</p>}
+                    </section>
+
+                    <section aria-labelledby={`failures-${item.id}`}>
+                      <h4 id={`failures-${item.id}`} className="text-sm font-semibold">Failed notifications</h4>
+                      {detail.notificationFailures.length ? <div style={{ display: "grid", gap: 8 }}>{detail.notificationFailures.map((failure) => (
+                        <article key={failure.id} className="border border-border" style={{ borderRadius: 8, padding: 10 }}>
+                          <p className="text-sm">{normalizedEventName(failure.intent)} to {contactsById.get(failure.contactId)?.display_name ?? "Unavailable contact"} · {failure.status} · attempt {failure.attemptCount}</p>
+                          <p className="text-xs text-muted">Error: {failure.errorCode ?? "unknown"} · message record: {failure.messageId ?? "not created"}</p>
+                          {failure.status === "failed"
+                            ? <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => retryNotification(failure.id, item.id)}>Retry notification</button>
+                            : <p className="text-xs text-muted">Reconciliation required before another send.</p>}
+                        </article>
+                      ))}</div> : <p className="text-sm text-muted">No failed or blocked notifications.</p>}
+                    </section>
+                  </div>
+                ) : null}
+              </details>
+            </article>
+          );
+        })}</div>
       ) : <Empty>No classes in this view.</Empty>}
 
       <details style={{ marginTop: 20 }}>
@@ -167,7 +500,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
               <label><input type="radio" name="kind" checked={kind === "weekly"} onChange={() => setKind("weekly")} /> Weekly class</label>
               <label><input type="radio" name="kind" checked={kind === "one_off"} onChange={() => setKind("one_off")} /> One-off class</label>
             </div>
-            <label className="text-sm">Class title<input className="input" name="title" required placeholder="Maths — Asha and Minh" /></label>
+            <label className="text-sm">Class title<input className="input" name="title" required placeholder="Group maths" /></label>
             <label className="text-sm">Subject<input className="input" name="subject" placeholder="Maths" /></label>
             <label className="text-sm">Timezone<input className="input" name="timezone" required defaultValue="Asia/Ho_Chi_Minh" /></label>
             {kind === "weekly" ? <>
@@ -176,26 +509,28 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
               <label className="text-sm">Local time<input className="input" type="time" name="localTime" required /></label>
             </> : <label className="text-sm">Date and time<input className="input" type="datetime-local" name="startsAt" required /></label>}
             <label className="text-sm">Duration (minutes)<input className="input" type="number" min="5" max="1440" name="durationMinutes" defaultValue="60" required /></label>
-            <label className="text-sm">Teacher<select className="input" name="teacherId" required><option value="">Select teacher</option>{contacts.filter((c) => c.role === "teacher").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
-            <fieldset className="border border-border" style={{ borderRadius: 10, padding: 12 }}>
-              <legend className="text-sm font-semibold">Student</legend>
-              <label className="text-sm">Student<select className="input" name="studentId" required><option value="">Select student</option>{contacts.filter((c) => c.role === "student").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
-              <label><input type="checkbox" name="studentReceivesUpdates" defaultChecked /> Receives updates</label>
-              <label><input type="checkbox" name="studentConfirmsCancellation" defaultChecked /> Confirms cancellations</label>
-              <label><input type="checkbox" name="studentConfirmsReschedule" defaultChecked /> Confirms reschedules</label>
-            </fieldset>
-            <fieldset className="border border-border" style={{ borderRadius: 10, padding: 12 }}>
-              <legend className="text-sm font-semibold">Parent contact (optional)</legend>
-              <label className="text-sm">Parent<select className="input" name="parentId"><option value="">No parent contact</option>{contacts.filter((c) => c.role === "parent").map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
-              <label><input type="checkbox" name="parentReceivesUpdates" defaultChecked /> Receives updates</label>
-              <label><input type="checkbox" name="parentConfirmsCancellation" defaultChecked /> Confirms cancellations</label>
-              <label><input type="checkbox" name="parentConfirmsReschedule" defaultChecked /> Confirms reschedules</label>
-            </fieldset>
+            <label className="text-sm">Teacher<select className="input" name="teacherContactId" required><option value="">Select teacher</option>{teachers.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}</select></label>
+            {enrollments.map((draft, index) => (
+              <EnrollmentFields
+                key={draft.id}
+                draft={draft}
+                ordinal={index + 1}
+                prefix="enrollment"
+                contacts={contacts}
+                canRemove={enrollments.length > 1}
+                onAddParent={() => addParent(draft.id)}
+                onRemoveParent={(parentId) => removeParent(draft.id, parentId)}
+                onRemoveEnrollment={() => setEnrollments((current) => current.filter((enrollment) => enrollment.id !== draft.id))}
+              />
+            ))}
+            <button type="button" className="btn btn-secondary" onClick={addEnrollment}>Add student</button>
             <button className="btn btn-primary" type="submit">{pending ? "Saving…" : "Save class"}</button>
           </fieldset>
-          {message ? <p className="text-sm" role="status">{message}</p> : null}
         </form>
       </details>
+      <div aria-live="polite" aria-atomic="true">
+        {message ? <p className={messageIsError ? "text-sm text-error" : "text-sm"} role={messageIsError ? "alert" : "status"}>{message}</p> : null}
+      </div>
     </PanelCard>
   );
 }
