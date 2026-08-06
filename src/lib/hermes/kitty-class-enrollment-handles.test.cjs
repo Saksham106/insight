@@ -51,6 +51,34 @@ const contacts = [
   { id: "student-b", display_name: "Mina Student Grade 6", preferred_name: "Mina" },
   { id: "student-private", display_name: "Private Student", preferred_name: "Private" },
 ];
+const activeIndividualRequest = {
+  id: "change-1", occurrence_id: "occurrence-1", change_type: "reschedule",
+  scope: "individual_reschedule", enrollment_id: "enrollment-a", requester_side: "student",
+  proposed_starts_at: "2026-08-13T20:00:00.000Z",
+  proposed_ends_at: "2026-08-13T21:00:00.000Z", proposed_timezone: "America/New_York",
+  status: "awaiting_counterparty", payload_digest: "d".repeat(64), version: 2,
+  created_at: "2026-08-05T10:00:00.000Z", internal_secret: "must-not-leak",
+  required_enrollment_ids: ["enrollment-a"],
+};
+
+function assertContactSafe(value) {
+  const forbiddenKeys = new Set([
+    "enrollmentId", "enrollment_id", "requiredEnrollmentIds", "required_enrollment_ids",
+    "requesterSide", "requester_side", "payload_digest",
+    "actorContactId", "actor_contact_id", "internal_secret",
+  ]);
+  const visit = (item) => {
+    if (!item || typeof item !== "object") return;
+    if (Array.isArray(item)) return item.forEach(visit);
+    for (const [key, nested] of Object.entries(item)) {
+      assert.equal(forbiddenKeys.has(key), false, `contact response leaked ${key}`);
+      assert.equal(key.includes("_"), false, `contact response exposed snake_case key ${key}`);
+      visit(nested);
+    }
+  };
+  visit(value);
+  assert.doesNotMatch(JSON.stringify(value), /enrollment-a|enrollment-b|enrollment-private|internal_secret/);
+}
 
 function valueAt(row, key) {
   if (key.startsWith("metadata->>")) return row.metadata?.[key.slice("metadata->>".length)];
@@ -80,7 +108,7 @@ function fixtureClient() {
         },
       })));
     }
-    if (table === "kitty_class_change_requests") return [];
+    if (table === "kitty_class_change_requests") return [activeIndividualRequest];
     if (table === "kitty_class_audit_events") return audits;
     if (table === "hermes_contacts") return contacts;
     throw new Error(`unexpected table ${table}`);
@@ -155,6 +183,7 @@ test("shared guardian selects opaque represented-enrollment handles through each
 
   const found = await executeKittyClassTool(client, actor, "find_my_classes", { referenceDate: "2026-08-12" });
   assert.deepEqual(found.classes.map((item) => item.id), ["occurrence-1"]);
+  assertContactSafe(found);
 
   const selected = await executeKittyClassTool(client, actor, "confirm_class_selection", {
     occurrenceId: "occurrence-1", occurrenceVersion: 3,
@@ -164,6 +193,13 @@ test("shared guardian selects opaque represented-enrollment handles through each
   assert.ok(represented.every((item) => tokenPattern.test(item.enrollmentHandle)));
   assert.equal(new Set(represented.map((item) => item.enrollmentHandle)).size, 2);
   assert.doesNotMatch(JSON.stringify(selected), /enrollment-a|enrollment-b|enrollment-private|student-a|student-b|student-private|Private/);
+  assert.deepEqual(selected.confirmation.occurrence.currentChangeRequest, {
+    id: "change-1", changeType: "reschedule", scope: "individual_reschedule",
+    status: "awaiting_counterparty", version: 2,
+    proposedStartsAt: "2026-08-13T20:00:00.000Z",
+    proposedEndsAt: "2026-08-13T21:00:00.000Z", proposedTimezone: "America/New_York",
+  });
+  assertContactSafe(selected);
 
   const ashaHandle = represented.find((item) => item.studentName === "Asha").enrollmentHandle;
   const minaHandle = represented.find((item) => item.studentName === "Mina").enrollmentHandle;
@@ -176,7 +212,7 @@ test("shared guardian selects opaque represented-enrollment handles through each
     occurrenceId: "occurrence-1", enrollmentHandle: minaHandle,
     intent: "meeting_link_requested", selectionToken,
   }, { clientRequestId: "relay-1" });
-  await executeKittyClassTool(client, actor, "request_class_change", {
+  const replacement = await executeKittyClassTool(client, actor, "request_class_change", {
     occurrenceId: "occurrence-1", occurrenceVersion: 3, enrollmentHandle: minaHandle,
     scope: "individual_reschedule", changeType: "reschedule", selectionToken,
     proposedStartsAt: "2026-08-13T20:00:00.000Z", proposedEndsAt: "2026-08-13T21:00:00.000Z",
@@ -187,7 +223,30 @@ test("shared guardian selects opaque represented-enrollment handles through each
     "enrollment-a", "enrollment-b", "enrollment-b",
   ]);
   assert.ok(client.rpcCalls.every((call) => call.payload.p_actor_contact_id === "guardian-shared"));
-  assert.doesNotMatch(JSON.stringify({ attendance, relay }), /enrollment-a|enrollment-b|guardian-shared|occurrence_id|enrollment_id/);
+  assertContactSafe({ attendance, relay, replacement });
+
+  const unrelated = await executeKittyClassTool(
+    client,
+    { kind: "contact", contactId: "guardian-private", channel: "whatsapp" },
+    "confirm_class_selection",
+    { occurrenceId: "occurrence-1", occurrenceVersion: 3 },
+  );
+  assert.equal(unrelated.confirmation.occurrence.currentChangeRequest, null);
+  assertContactSafe(unrelated);
+
+  const teacher = await executeKittyClassTool(
+    client,
+    { kind: "contact", contactId: "teacher-1", channel: "whatsapp" },
+    "confirm_class_selection",
+    { occurrenceId: "occurrence-1", occurrenceVersion: 3 },
+  );
+  assert.deepEqual(teacher.confirmation.occurrence.currentChangeRequest, {
+    id: "change-1", changeType: "reschedule", scope: "individual_reschedule",
+    status: "awaiting_counterparty", version: 2,
+    proposedStartsAt: "2026-08-13T20:00:00.000Z",
+    proposedEndsAt: "2026-08-13T21:00:00.000Z", proposedTimezone: "America/New_York",
+  });
+  assertContactSafe(teacher);
 });
 
 test("forged, wrong-actor, wrong-occurrence, and expired enrollment handles fail before mutation", async () => {
