@@ -12,6 +12,7 @@ import {
   normalizeKittyAttendance,
   normalizeKittyOperationalRelay,
   type KittyAttendanceStatus,
+  type KittyPreparationCategory,
   type KittyRelayIntent,
   type KittyRelayMode,
 } from "./kitty-class-relays";
@@ -454,7 +455,7 @@ export async function createKittyOperationalRelay(client: Client, actor: KittyCl
   estimatedAt?: string | null;
   mode?: KittyRelayMode | null;
   locationLabel?: string | null;
-  preparationNote?: string | null;
+  preparationCategory?: KittyPreparationCategory | null;
   selectionToken: string;
   clientRequestId: string;
 }) {
@@ -468,7 +469,7 @@ export async function createKittyOperationalRelay(client: Client, actor: KittyCl
     p_estimated_at: normalized.estimatedAt,
     p_mode: normalized.mode,
     p_location_label: normalized.locationLabel,
-    p_preparation_note: normalized.preparationNote,
+    p_preparation_category: normalized.preparationCategory,
     p_selection_token: input.selectionToken,
     p_client_request_id: input.clientRequestId.trim(),
   });

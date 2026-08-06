@@ -41,14 +41,17 @@ export async function POST(request: Request) {
   const recipientName = messagingName(contact);
 
   const financialIntents: WhatsAppIntent[] = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"];
-  const classChangeIntents: WhatsAppIntent[] = ["class_change_request", "class_change_proposal", "class_cancelled", "class_rescheduled", "class_change_rejected"];
+  const classNotificationIntents: WhatsAppIntent[] = [
+    "class_change_request", "class_change_proposal", "class_cancelled", "class_rescheduled", "class_change_rejected",
+    "class_attendance_update", "class_teacher_delay", "class_operational_update",
+  ];
   const isLessonReportRequest = body.intent === "lesson_report_request";
   const isFinancial = financialIntents.includes(body.intent);
-  const isClassChange = classChangeIntents.includes(body.intent);
+  const isClassNotification = classNotificationIntents.includes(body.intent);
   let approved = false;
   let lessonContent: { body: string; bodyParameters: string[] } | null = null;
   let financialContent: { body: string; bodyParameters: string[] } | null = null;
-  if (isClassChange) {
+  if (isClassNotification) {
     if (process.env.KITTY_CLASS_CALENDAR_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (!body.classOutboxId || !body.occurrenceId || body.caseId || body.lessonCycleId || body.settlementCycleId || body.familyInvoiceId) return NextResponse.json({ error: "Class message requires one reserved outbox item" }, { status: 400 });
     const { data: outbox } = await supabase.from("kitty_class_notification_outbox")

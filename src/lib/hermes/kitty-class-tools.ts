@@ -170,7 +170,7 @@ export async function executeKittyClassTool(
       estimatedAt: typeof payload.estimatedAt === "string" ? payload.estimatedAt : undefined,
       mode: payload.mode as Parameters<typeof createKittyOperationalRelay>[2]["mode"],
       locationLabel: typeof payload.locationLabel === "string" ? payload.locationLabel : undefined,
-      preparationNote: typeof payload.preparationNote === "string" ? payload.preparationNote : undefined,
+      preparationCategory: payload.preparationCategory as Parameters<typeof createKittyOperationalRelay>[2]["preparationCategory"],
       selectionToken: text(payload, "selectionToken"), clientRequestId: clientRequestId(payload, context.clientRequestId),
     }) };
     case "request_class_change": {

@@ -12,7 +12,7 @@ alter table public.kitty_class_audit_events
   ),
   add constraint kitty_class_audit_relay_payload_digest_check check (
     event_type not in ('attendance_recorded', 'attendance_corrected', 'operational_relay_created')
-    or metadata->>'payloadDigest' ~ '^[a-f0-9]{64}$'
+    or coalesce(metadata->>'payloadDigest' ~ '^[a-f0-9]{64}$', false)
   );
 
 alter table public.kitty_class_notification_outbox
@@ -29,8 +29,11 @@ alter table public.kitty_class_notification_outbox
     intent not in ('class_attendance_update', 'class_teacher_delay', 'class_operational_update')
     or (
       pg_catalog.jsonb_typeof(payload) = 'object'
-      and pg_catalog.jsonb_typeof(payload->'relaySummary') = 'string'
-      and pg_catalog.length(payload->>'relaySummary') between 1 and 500
+      and coalesce(
+        pg_catalog.jsonb_typeof(payload->'relaySummary') = 'string'
+        and pg_catalog.length(payload->>'relaySummary') between 1 and 500,
+        false
+      )
       and not (payload ?| array['rawMessage', 'note', 'studentName', 'reason'])
     )
   );
@@ -46,9 +49,43 @@ alter table public.kitty_class_operational_relays
   add column payload_digest text not null
     check (payload_digest ~ '^[a-f0-9]{64}$'),
   add constraint kitty_class_relay_structured_payload_check check (
-    not (structured_payload ?| array['rawMessage', 'note', 'studentName', 'reason'])
-    and pg_catalog.length(coalesce(structured_payload->>'locationLabel', '')) <= 120
-    and pg_catalog.length(coalesce(structured_payload->>'preparationNote', '')) <= 240
+    structured_payload - array[
+      'estimatedAt', 'mode', 'locationLabel', 'preparationCategory'
+    ] = '{}'::jsonb
+    and (
+      not (structured_payload ? 'estimatedAt')
+      or intent in ('student_late', 'student_leaving_early', 'teacher_late')
+    )
+    and (intent = 'mode_changed') = (structured_payload ? 'mode')
+    and (
+      not (structured_payload ? 'mode')
+      or coalesce(
+        pg_catalog.jsonb_typeof(structured_payload->'mode') = 'string'
+        and structured_payload->>'mode' in ('online', 'in_person'),
+        false
+      )
+    )
+    and (intent = 'location_changed') = (structured_payload ? 'locationLabel')
+    and (
+      not (structured_payload ? 'locationLabel')
+      or coalesce(
+        pg_catalog.jsonb_typeof(structured_payload->'locationLabel') = 'string'
+        and pg_catalog.length(structured_payload->>'locationLabel') between 1 and 120
+        and pg_catalog.btrim(structured_payload->>'locationLabel') <> '',
+        false
+      )
+    )
+    and (intent = 'preparation_note') = (structured_payload ? 'preparationCategory')
+    and (
+      not (structured_payload ? 'preparationCategory')
+      or coalesce(
+        pg_catalog.jsonb_typeof(structured_payload->'preparationCategory') = 'string'
+        and structured_payload->>'preparationCategory' in (
+          'bring_materials', 'complete_assigned_work', 'review_prior_material', 'bring_device'
+        ),
+        false
+      )
+    )
   );
 
 create unique index kitty_class_attendance_one_correction_unique
@@ -460,7 +497,7 @@ create function public.create_kitty_class_operational_relay(
   p_estimated_at timestamptz,
   p_mode text,
   p_location_label text,
-  p_preparation_note text,
+  p_preparation_category text,
   p_selection_token text,
   p_client_request_id text
 ) returns public.kitty_class_operational_relays
@@ -475,7 +512,7 @@ declare
   v_existing_audit public.kitty_class_audit_events;
   v_request_id text := pg_catalog.btrim(p_client_request_id);
   v_location_label text := nullif(pg_catalog.btrim(p_location_label), '');
-  v_preparation_note text := nullif(pg_catalog.btrim(p_preparation_note), '');
+  v_preparation_category text := nullif(pg_catalog.btrim(p_preparation_category), '');
   v_selection_digest text;
   v_payload jsonb;
   v_payload_digest text;
@@ -493,16 +530,19 @@ begin
       'class_status_requested', 'substitute_teacher', 'preparation_note'
     )
     or (p_estimated_at is not null and p_intent not in ('student_late', 'student_leaving_early', 'teacher_late'))
-    or (p_intent = 'mode_changed' and p_mode not in ('online', 'in_person'))
+    or (p_intent = 'mode_changed' and (p_mode is null or p_mode not in ('online', 'in_person')))
     or (p_intent <> 'mode_changed' and p_mode is not null)
     or (p_intent = 'location_changed' and v_location_label is null)
     or (p_intent <> 'location_changed' and v_location_label is not null)
-    or (p_intent = 'preparation_note' and v_preparation_note is null)
-    or (p_intent <> 'preparation_note' and v_preparation_note is not null)
+    or (p_intent = 'preparation_note' and (
+      v_preparation_category is null
+      or v_preparation_category not in (
+        'bring_materials', 'complete_assigned_work', 'review_prior_material', 'bring_device'
+      )
+    ))
+    or (p_intent <> 'preparation_note' and v_preparation_category is not null)
     or pg_catalog.length(coalesce(v_location_label, '')) > 120
-    or pg_catalog.length(coalesce(v_preparation_note, '')) > 240
     or coalesce(v_location_label, '') ~* '\m(diagnos(is|ed)|medical|medication|therapy|disab(ility|led)|grade|gpa|exam score|tuition|payment|invoice|debt|disciplin(e|ary)|suspension|expulsion|abuse|violence)\M'
-    or coalesce(v_preparation_note, '') ~* '\m(diagnos(is|ed)|medical|medication|therapy|disab(ility|led)|grade|gpa|exam score|tuition|payment|invoice|debt|disciplin(e|ary)|suspension|expulsion|abuse|violence)\M'
     or coalesce(v_request_id, '') = ''
     or pg_catalog.length(v_request_id) > 200
     or p_selection_token is null
@@ -583,7 +623,7 @@ begin
     'estimatedAt', p_estimated_at,
     'mode', p_mode,
     'locationLabel', v_location_label,
-    'preparationNote', v_preparation_note
+    'preparationCategory', v_preparation_category
   );
   v_payload_digest := pg_catalog.encode(
     public.digest(pg_catalog.convert_to(v_payload::text, 'UTF8'), 'sha256'), 'hex'
@@ -617,7 +657,7 @@ begin
       'estimatedAt', p_estimated_at,
       'mode', p_mode,
       'locationLabel', v_location_label,
-      'preparationNote', v_preparation_note
+      'preparationCategory', v_preparation_category
     )),
     v_request_id, v_payload_digest
   ) returning * into v_relay;
@@ -671,7 +711,12 @@ begin
       v_summary_teacher := v_summary_family;
       v_whatsapp_intent := 'class_operational_update';
     when 'preparation_note' then
-      v_summary_family := 'Preparation for class: ' || v_preparation_note;
+      v_summary_family := case v_preparation_category
+        when 'bring_materials' then 'Please bring the usual class materials.'
+        when 'complete_assigned_work' then 'Please complete the assigned work before class.'
+        when 'review_prior_material' then 'Please review the previous class material before class.'
+        when 'bring_device' then 'Please bring the device normally used for class.'
+      end;
       v_summary_teacher := v_summary_family;
       v_whatsapp_intent := 'class_operational_update';
   end case;
