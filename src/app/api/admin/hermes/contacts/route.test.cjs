@@ -8,6 +8,15 @@ function read(relative) {
   return fs.readFileSync(path.join(process.cwd(), relative), "utf8");
 }
 
+function readMigration(suffix) {
+  const migrationsDirectory = path.join(process.cwd(), "supabase", "migrations");
+  const fileName = fs
+    .readdirSync(migrationsDirectory)
+    .find((candidate) => candidate.endsWith(suffix));
+  assert.ok(fileName, `${suffix} migration should exist`);
+  return fs.readFileSync(path.join(migrationsDirectory, fileName), "utf8");
+}
+
 test("the contact PATCH route accepts a messaging name and a reset", () => {
   const route = read("src/app/api/admin/hermes/contacts/[id]/route.ts");
   assert.match(route, /body\.preferredName !== undefined/);
@@ -17,7 +26,7 @@ test("the contact PATCH route accepts a messaging name and a reset", () => {
 });
 
 test("the migration adds a nullable, length-checked preferred_name", () => {
-  const migration = read("supabase/migrations/20260801120000_add_hermes_contact_preferred_name.sql");
+  const migration = readMigration("_add_hermes_contact_preferred_name.sql");
   assert.match(migration, /add column if not exists preferred_name text/);
   assert.match(migration, /between 1 and 100/);
   assert.match(migration, /not valid/);
