@@ -47,7 +47,9 @@ The linked migration list has substantial pre-existing two-way drift: many local
 
 ### Vercel authentication and environment
 
-Vercel CLI 54.21.1 reports that the saved token is invalid. The existing local production-environment snapshot contains empty Supabase values and does not contain the Kitty flag, dedicated tool URL, or required Kitty template variables. It cannot support a realistic disabled HTTP smoke test or preview deployment.
+Vercel CLI 54.21.1 reports that the saved token is invalid. The GitHub integration nevertheless built commit `551b1eb8854a5cf8ccc9da0aba29eafd35c64ca9` successfully as deployment `H3be5zBDxMA4ojJW3Tk4xN8XfB13` at `https://insight-git-codex-kitty-8d71eb-saksham-goels-projects-0ecf36cd.vercel.app`. The preview is protected by Vercel SSO: unauthenticated root, class-tool, and maintenance requests all returned the expected protection redirect, so application-level disabled responses could not be observed externally.
+
+The existing local production-environment snapshot contains empty Supabase values and does not contain the Kitty flag, dedicated tool URL, or required Kitty template variables. It cannot support a realistic local disabled HTTP smoke test, and the invalid CLI token prevents environment inspection or an authenticated protected-preview check.
 
 The required Kitty configuration names are:
 
