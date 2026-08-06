@@ -171,6 +171,28 @@ test("attention lifecycle migration is bounded, structured, active-contact-aware
   assert.doesNotMatch(migration, /raw_message|message_text|contact_name/);
 });
 
+test("Kitty foreign-key lookup paths are covered before rollout", () => {
+  const migrationName = fs.readdirSync(path.join(process.cwd(), "supabase/migrations"))
+    .find((name) => name.endsWith("_index_kitty_foreign_keys.sql"));
+  assert.ok(migrationName, "missing Kitty foreign-key index migration");
+  const migration = read(`supabase/migrations/${migrationName}`).toLowerCase();
+  for (const indexName of [
+    "kitty_class_series_created_by_idx",
+    "kitty_class_occurrences_series_idx",
+    "kitty_class_occurrences_predecessor_idx",
+    "kitty_class_occurrences_created_by_idx",
+    "kitty_class_participants_occurrence_idx",
+    "kitty_class_requests_requester_idx",
+    "kitty_class_requests_override_profile_idx",
+    "kitty_class_confirmations_decider_idx",
+    "kitty_class_audit_actor_profile_idx",
+    "kitty_class_outbox_occurrence_idx",
+    "kitty_class_outbox_change_request_idx",
+    "kitty_class_outbox_contact_idx",
+    "kitty_class_outbox_message_idx",
+  ]) assert.ok(migration.includes(indexName), `missing ${indexName}`);
+});
+
 test("group RPC runtime behavior is repeatable in disposable databases", {
   skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
 }, () => {
@@ -489,8 +511,11 @@ test("rollout remains disabled until every template and staging probe is ready",
     "WHATSAPP_TEMPLATE_CLASS_CANCELLED=",
     "WHATSAPP_TEMPLATE_CLASS_RESCHEDULED=",
     "WHATSAPP_TEMPLATE_CLASS_CHANGE_REJECTED=",
+    "WHATSAPP_TEMPLATE_CLASS_ATTENDANCE_UPDATE=",
+    "WHATSAPP_TEMPLATE_CLASS_TEACHER_DELAY=",
+    "WHATSAPP_TEMPLATE_CLASS_OPERATIONAL_UPDATE=",
   ]) assert.ok(env.includes(name), `missing ${name}`);
-  for (const phrase of ["shadow pilot", "selected contacts", "rollback", "exact occurrence", "both sides"]) {
+  for (const phrase of ["shadow pilot", "selected contacts", "rollback", "exact occurrence", "every active enrollment"]) {
     assert.ok(readme.toLowerCase().includes(phrase), `missing rollout phrase: ${phrase}`);
   }
 });
