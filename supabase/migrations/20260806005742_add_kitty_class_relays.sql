@@ -60,7 +60,13 @@ alter table public.kitty_class_operational_relays
           and (
             not (structured_payload ? 'estimatedAt')
             or coalesce(
-              structured_payload @@ '$.estimatedAt.type() == "string" && $.estimatedAt.datetime() != null',
+              pg_catalog.jsonb_typeof(structured_payload->'estimatedAt') = 'string'
+              and structured_payload->>'estimatedAt'
+                ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
+              and pg_catalog.pg_input_is_valid(
+                structured_payload->>'estimatedAt',
+                'timestamp with time zone'
+              ),
               false
             )
           )
