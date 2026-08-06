@@ -171,28 +171,6 @@ test("attention lifecycle migration is bounded, structured, active-contact-aware
   assert.doesNotMatch(migration, /raw_message|message_text|contact_name/);
 });
 
-test("Kitty foreign-key lookup paths are covered before rollout", () => {
-  const migrationName = fs.readdirSync(path.join(process.cwd(), "supabase/migrations"))
-    .find((name) => name.endsWith("_index_kitty_foreign_keys.sql"));
-  assert.ok(migrationName, "missing Kitty foreign-key index migration");
-  const migration = read(`supabase/migrations/${migrationName}`).toLowerCase();
-  for (const indexName of [
-    "kitty_class_series_created_by_idx",
-    "kitty_class_occurrences_series_idx",
-    "kitty_class_occurrences_predecessor_idx",
-    "kitty_class_occurrences_created_by_idx",
-    "kitty_class_participants_occurrence_idx",
-    "kitty_class_requests_requester_idx",
-    "kitty_class_requests_override_profile_idx",
-    "kitty_class_confirmations_decider_idx",
-    "kitty_class_audit_actor_profile_idx",
-    "kitty_class_outbox_occurrence_idx",
-    "kitty_class_outbox_change_request_idx",
-    "kitty_class_outbox_contact_idx",
-    "kitty_class_outbox_message_idx",
-  ]) assert.ok(migration.includes(indexName), `missing ${indexName}`);
-});
-
 test("group RPC runtime behavior is repeatable in disposable databases", {
   skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
 }, () => {
@@ -488,12 +466,38 @@ test("attention lifecycle RPCs deduplicate, resolve, filter before limits, and r
     for (const [label, sql] of [
       ["admin hardening migration", read("supabase/migrations/20260806040937_harden_kitty_class_admin.sql")],
       ["attention lifecycle migration", read("supabase/migrations/20260806042747_add_kitty_class_attention_lifecycle.sql")],
+      ["foreign-key index migration", read("supabase/migrations/20260806114049_index_kitty_foreign_keys.sql")],
       ["attention lifecycle probe", read("src/lib/hermes/kitty-class-attention-runtime-probe.sql")],
     ]) {
       const result = runProbeSql(container, database, sql);
       assert.equal(result.status, 0, `${label} failed:\n${result.stdout}\n${result.stderr}`);
       if (label === "attention lifecycle probe") assert.match(result.stdout, /kitty class attention runtime probe passed/);
     }
+    const indexCoverage = runProbeSql(container, database, `
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint constraint_row
+    join pg_class table_row on table_row.oid = constraint_row.conrelid
+    join pg_namespace schema_row on schema_row.oid = table_row.relnamespace
+    where constraint_row.contype = 'f'
+      and schema_row.nspname = 'public'
+      and table_row.relname like 'kitty\\_%' escape '\\'
+      and not exists (
+        select 1
+        from pg_index index_row
+        where index_row.indrelid = constraint_row.conrelid
+          and index_row.indisvalid
+          and (index_row.indkey::smallint[])[0:cardinality(constraint_row.conkey) - 1] @> constraint_row.conkey
+      )
+  ) then
+    raise exception 'unindexed Kitty foreign keys remain';
+  end if;
+end;
+$$;
+`);
+    assert.equal(indexCoverage.status, 0, `${indexCoverage.stdout}\n${indexCoverage.stderr}`);
   } finally {
     const droppedAfter = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
     assert.equal(droppedAfter.status, 0, `${droppedAfter.stdout}\n${droppedAfter.stderr}`);

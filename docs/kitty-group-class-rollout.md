@@ -9,11 +9,11 @@ Activation status: **blocked; feature remains disabled**
 ## Verified locally
 
 - `KITTY_CLASS_CALENDAR_ENABLED` remains false by default. No production or preview environment was changed.
-- The complete Node suite passed with the disposable PostgreSQL probes enabled: 371 passed, 0 failed, 0 skipped.
+- The complete Node suite passed with the disposable PostgreSQL probes enabled: 370 passed, 0 failed, 0 skipped.
 - The Academy profile and scheduling plugin suite passed: 26 passed, 0 failed.
 - `npx tsc --noEmit --incremental false` passed.
 - `npm run build` completed with Next.js 16.2.6 and generated all 71 static pages.
-- Seven PostgreSQL acceptance paths passed, including repeated migration application, rejection of an inconsistent legacy roster, group creation and enrollment changes, relay privacy and idempotency, group approval concurrency, admin retry rules, and attention lifecycle handling.
+- Seven PostgreSQL acceptance paths passed, including repeated migration application, rejection of an inconsistent legacy roster, group creation and enrollment changes, relay privacy and idempotency, group approval concurrency, admin retry rules, and attention lifecycle handling. The retained final-chain path applies `20260806114049_index_kitty_foreign_keys.sql` and queries `pg_constraint` plus `pg_index` to reject any uncovered Kitty foreign key.
 
 ## Database security and performance review
 
@@ -47,9 +47,13 @@ The linked migration list has substantial pre-existing two-way drift: many local
 
 ### Vercel authentication and environment
 
-Vercel CLI 54.21.1 reports that the saved token is invalid. The GitHub integration nevertheless built commit `551b1eb8854a5cf8ccc9da0aba29eafd35c64ca9` successfully as deployment `H3be5zBDxMA4ojJW3Tk4xN8XfB13` at `https://insight-git-codex-kitty-8d71eb-saksham-goels-projects-0ecf36cd.vercel.app`. The preview is protected by Vercel SSO: unauthenticated root, class-tool, and maintenance requests all returned the expected protection redirect, so application-level disabled responses could not be observed externally.
+The reviewed PR head `d6f57ed39e207a7f3af5c0c6818e7d65ffc601d1` built successfully through the GitHub integration as deployment `EVmWWYZUsxhmyuXZM9iENJnoZwBZ` at `https://insight-git-codex-kitty-8d71eb-saksham-goels-projects-0ecf36cd.vercel.app`. The earlier `551b1eb8854a5cf8ccc9da0aba29eafd35c64ca9` preview was deployment `H3be5zBDxMA4ojJW3Tk4xN8XfB13`.
 
-The existing local production-environment snapshot contains empty Supabase values and does not contain the Kitty flag, dedicated tool URL, or required Kitty template variables. It cannot support a realistic local disabled HTTP smoke test, and the invalid CLI token prevents environment inspection or an authenticated protected-preview check.
+The preview is protected by Vercel SSO. Unauthenticated GET `/`, POST `/api/hermes/class-tools`, and POST `/api/cron/kitty-classes` each returned HTTP 302 to the Vercel SSO endpoint, so application-level disabled responses could not be observed externally.
+
+Vercel CLI 54.21.1 initially reported `No existing credentials found` and started its device-login flow. While that read-only state check was being stopped, the already-authenticated device flow completed without a manually entered code and the CLI reported the account as `saksham106`. No deployment, environment, project-link, or production action was taken with the resulting session.
+
+The existing local production-environment snapshot contains empty Supabase values and does not contain the Kitty flag, dedicated tool URL, or required Kitty template variables. It cannot support a realistic local disabled HTTP smoke test. The restored CLI session was intentionally not used to continue blocked environment or protected-preview inspection.
 
 The required Kitty configuration names are:
 
