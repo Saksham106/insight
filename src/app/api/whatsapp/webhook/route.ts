@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { filterWebhookPayload, isInboundContactEligible, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } from "@/lib/hermes/webhook";
+import { filterWebhookPayload, inboundContactDisposition, isInboundContactEligible, isWhatsAppOptOut, projectWebhookEvents, verifyMetaSignature } from "@/lib/hermes/webhook";
 import { parseApprovalReply } from "@/lib/hermes/whatsapp-approvals";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -85,12 +85,12 @@ export async function POST(request: Request) {
 
     let { data: contact } = await supabase
       .from("hermes_contacts")
-      .select("id, role, communication_policy, consent_status, is_active")
+      .select("id, role, communication_policy, consent_status, is_active, deleted_at")
       .eq("whatsapp_e164", e164)
-      .is("deleted_at", null)
       .maybeSingle();
 
-    if (!contact) {
+    const disposition = inboundContactDisposition(contact);
+    if (disposition === "create") {
       const created = await supabase.from("hermes_contacts").insert({
         display_name: event.profileName?.trim() || "Unknown WhatsApp contact",
         whatsapp_e164: e164,
@@ -99,9 +99,12 @@ export async function POST(request: Request) {
         consent_status: "pending",
         consent_source: "whatsapp",
         consent_attested_by: null,
-      }).select("id, role, communication_policy, consent_status, is_active").single();
+      }).select("id, role, communication_policy, consent_status, is_active, deleted_at").single();
       contact = created.data;
       if (contact) await supabase.from("hermes_audit_events").insert({ actor_type: "system", actor_contact_id: contact.id, event_type: "unknown_contact_received", entity_type: "hermes_contact", entity_id: contact.id });
+    } else if (disposition === "deleted" && contact) {
+      // Keep the message so a mistaken removal is recoverable, but stay removed.
+      await supabase.from("hermes_audit_events").insert({ actor_type: "system", actor_contact_id: contact.id, event_type: "deleted_contact_received", entity_type: "hermes_contact", entity_id: contact.id });
     }
     if (!contact) {
       continue;
@@ -114,7 +117,7 @@ export async function POST(request: Request) {
       : { last_inbound_at: event.occurredAt, service_window_expires_at: windowExpiry }
     ).eq("id", contact.id);
     if (optedOut) await supabase.from("hermes_audit_events").insert({ actor_type: "contact", actor_contact_id: contact.id, event_type: "contact_opted_out", entity_type: "hermes_contact", entity_id: contact.id, metadata: { source: "whatsapp" } });
-    const eligible = !optedOut && isInboundContactEligible({
+    const eligible = !optedOut && disposition !== "deleted" && isInboundContactEligible({
       isActive: contact.is_active,
       consentStatus: contact.consent_status,
       role: contact.role,

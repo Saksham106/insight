@@ -13,6 +13,8 @@ export interface HermesContactIdentity {
   consent_status: string;
   timezone: string | null;
   updated_at: string;
+  /** Non-null means the contact was removed from the directory. */
+  deleted_at: string | null;
 }
 
 export interface HermesAdminContact extends HermesContactIdentity {
