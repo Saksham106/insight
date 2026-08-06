@@ -74,6 +74,27 @@ begin
 end;
 $$;
 
+create function pg_temp.assert_safe_change_result(
+  p_result jsonb,
+  p_required integer,
+  p_received integer
+) returns void language plpgsql as $$
+begin
+  if (p_result->>'requiredEnrollmentApprovals')::integer is distinct from p_required
+    or (p_result->>'receivedEnrollmentApprovals')::integer is distinct from p_received
+  then raise exception 'mutation result approval progress is not %/%: %', p_received, p_required, p_result; end if;
+  if p_result ?| array[
+      'enrollmentId', 'requiredEnrollmentIds', 'enrollment_id',
+      'required_enrollment_ids', 'required_enrollment_approvals',
+      'received_enrollment_approvals'
+    ] or exists (
+      select 1 from pg_catalog.jsonb_object_keys(p_result) result_key
+      where pg_catalog.strpos(result_key, '_') > 0
+    )
+  then raise exception 'mutation result exposed enrollment identity or snake fields: %', p_result; end if;
+end;
+$$;
+
 do $$
 declare
   v_signature text;
@@ -133,8 +154,8 @@ do $$
 declare
   v_occurrence_id uuid := pg_temp.create_probe_group('probe-group-main', 10);
   v_occurrence public.kitty_class_occurrences;
-  v_request public.kitty_class_change_requests;
-  v_result public.kitty_class_change_requests;
+  v_request record;
+  v_result record;
   v_token text := pg_catalog.repeat('a', 64);
   v_outsider_rejected boolean := false;
   v_stale_rejected boolean := false;
@@ -176,8 +197,10 @@ begin
     v_token, 'probe-main-request'
   ) requested;
   if v_request.status <> 'awaiting_counterparty'
-    or pg_catalog.cardinality(v_request.required_enrollment_ids) <> 3
+    or (select pg_catalog.cardinality(request.required_enrollment_ids)
+      from public.kitty_class_change_requests request where request.id = v_request.id) <> 3
   then raise exception 'group request did not snapshot three enrollments'; end if;
+  perform pg_temp.assert_safe_change_result(pg_catalog.to_jsonb(v_request), 3, 0);
   select pg_catalog.to_jsonb(pending) into strict v_pending
   from public.find_my_pending_kitty_class_changes(
     '00000000-0000-0000-0000-000000000301', null
@@ -190,7 +213,7 @@ begin
 
   begin
     perform public.decide_kitty_group_class_change(
-      v_request.id, v_request.version, v_request.payload_digest,
+      v_request.id, v_request.version, v_request."payloadDigest",
       '00000000-0000-0000-0000-000000000999', 'approved', null,
       'probe-outsider-decision'
     );
@@ -201,13 +224,14 @@ begin
 
   select decided.* into v_result
   from public.decide_kitty_group_class_change(
-    v_request.id, v_request.version, v_request.payload_digest,
+    v_request.id, v_request.version, v_request."payloadDigest",
     '00000000-0000-0000-0000-000000000301', 'approved', null,
     'probe-shared-guardian-decision'
   ) decided;
   if v_result.status <> 'awaiting_counterparty' then
     raise exception 'two of three approvals finalized the group';
   end if;
+  perform pg_temp.assert_safe_change_result(pg_catalog.to_jsonb(v_result), 3, 2);
   if (select count(*) from public.kitty_class_change_confirmations confirmation
       where confirmation.change_request_id = v_request.id
         and confirmation.request_version = v_request.version
@@ -226,18 +250,19 @@ begin
 
   select decided.* into v_result
   from public.decide_kitty_group_class_change(
-    v_request.id, v_request.version, v_request.payload_digest,
+    v_request.id, v_request.version, v_request."payloadDigest",
     '00000000-0000-0000-0000-000000000203', 'approved', null,
     'probe-third-student-decision'
   ) decided;
-  if v_result.status <> 'finalized' or v_result.replacement_occurrence_id is null then
+  if v_result.status <> 'finalized' or v_result."replacementOccurrenceId" is null then
     raise exception 'three of three enrollment approvals did not finalize';
   end if;
+  perform pg_temp.assert_safe_change_result(pg_catalog.to_jsonb(v_result), 3, 3);
   if (select status from public.kitty_class_occurrences where id = v_occurrence.id) <> 'rescheduled' then
     raise exception 'whole-group original was not rescheduled';
   end if;
   if (select count(*) from public.kitty_class_enrollments enrollment
-      where enrollment.occurrence_id = v_result.replacement_occurrence_id) <> 3 then
+      where enrollment.occurrence_id = v_result."replacementOccurrenceId") <> 3 then
     raise exception 'whole-group replacement did not copy three enrollments';
   end if;
   if (select count(*) from public.kitty_class_notification_outbox outbox
@@ -253,7 +278,7 @@ begin
         and confirmation.request_version = v_request.version
         and confirmation.decision_side = 'student'
         and confirmation.decision = 'approved'
-        and confirmation.payload_digest = v_request.payload_digest) <> 3
+        and confirmation.payload_digest = v_request."payloadDigest") <> 3
   then raise exception 'finalized projection/evidence did not preserve current-version 3/3 progress'; end if;
 end;
 $$;
@@ -264,8 +289,8 @@ do $$
 declare
   v_occurrence_id uuid := pg_temp.create_probe_group('probe-group-reproposal', 12);
   v_occurrence public.kitty_class_occurrences;
-  v_request public.kitty_class_change_requests;
-  v_result public.kitty_class_change_requests;
+  v_request record;
+  v_result record;
   v_token text := pg_catalog.repeat('b', 64);
 begin
   perform pg_temp.confirm_probe_selection(
@@ -281,17 +306,18 @@ begin
     v_token, 'probe-reproposal-request'
   ) requested;
   perform public.decide_kitty_group_class_change(
-    v_request.id, v_request.version, v_request.payload_digest,
+    v_request.id, v_request.version, v_request."payloadDigest",
     '00000000-0000-0000-0000-000000000301', 'approved', null,
     'probe-reproposal-old-family'
   );
   select proposed.* into v_request
   from public.propose_kitty_group_class_change(
-    v_request.id, v_request.version, v_request.payload_digest,
+    v_request.id, v_request.version, v_request."payloadDigest",
     '00000000-0000-0000-0000-000000000101',
     '2026-08-14T20:00:00Z', '2026-08-14T21:00:00Z', 'America/New_York',
     'probe-reproposal-new-time'
   ) proposed;
+  perform pg_temp.assert_safe_change_result(pg_catalog.to_jsonb(v_request), 3, 0);
   if v_request.version <> 2 then raise exception 'proposal version was not advanced'; end if;
   if exists (
     select 1 from public.kitty_class_change_confirmations confirmation
@@ -301,7 +327,7 @@ begin
   ) then raise exception 'old family approvals leaked into the new proposal version'; end if;
   select decided.* into v_result
   from public.decide_kitty_group_class_change(
-    v_request.id, v_request.version, v_request.payload_digest,
+    v_request.id, v_request.version, v_request."payloadDigest",
     '00000000-0000-0000-0000-000000000203', 'approved', null,
     'probe-reproposal-third-only'
   ) decided;
@@ -310,7 +336,7 @@ begin
   end if;
   select decided.* into v_result
   from public.decide_kitty_group_class_change(
-    v_request.id, v_request.version, v_request.payload_digest,
+    v_request.id, v_request.version, v_request."payloadDigest",
     '00000000-0000-0000-0000-000000000301', 'approved', null,
     'probe-reproposal-shared-refresh'
   ) decided;
@@ -324,8 +350,8 @@ do $$
 declare
   v_occurrence_id uuid := pg_temp.create_probe_group('probe-group-cancel', 15);
   v_occurrence public.kitty_class_occurrences;
-  v_request public.kitty_class_change_requests;
-  v_replay public.kitty_class_change_requests;
+  v_request record;
+  v_replay record;
   v_token text := pg_catalog.repeat('c', 64);
   v_mismatch_rejected boolean := false;
   v_version_mismatch_rejected boolean := false;
@@ -342,6 +368,7 @@ begin
     '00000000-0000-0000-0000-000000000101', 'cancel',
     null, null, null, v_token, 'probe-cancel-request'
   ) requested;
+  perform pg_temp.assert_safe_change_result(pg_catalog.to_jsonb(v_request), 0, 0);
   if v_request.status <> 'finalized'
     or (select status from public.kitty_class_occurrences where id = v_occurrence.id) <> 'cancelled'
   then raise exception 'teacher cancellation was not atomic'; end if;
@@ -361,6 +388,7 @@ begin
     '00000000-0000-0000-0000-000000000101', 'cancel',
     null, null, null, v_token, 'probe-cancel-request'
   ) replayed;
+  perform pg_temp.assert_safe_change_result(pg_catalog.to_jsonb(v_replay), 0, 0);
   if v_replay.id <> v_request.id then raise exception 'same-payload cancellation replay duplicated'; end if;
   if not exists (
     select 1
@@ -414,8 +442,8 @@ declare
   v_occurrence_id uuid := pg_temp.create_probe_group('probe-individual-replacement', 18);
   v_occurrence public.kitty_class_occurrences;
   v_enrollment_id uuid;
-  v_request public.kitty_class_change_requests;
-  v_result public.kitty_class_change_requests;
+  v_request record;
+  v_result record;
   v_token text := pg_catalog.repeat('d', 64);
 begin
   select occurrence.* into strict v_occurrence from public.kitty_class_occurrences occurrence
@@ -434,23 +462,25 @@ begin
     '2026-08-19T20:00:00Z', '2026-08-19T21:00:00Z', 'America/New_York',
     v_token, 'probe-individual-request'
   ) requested;
+  perform pg_temp.assert_safe_change_result(pg_catalog.to_jsonb(v_request), 1, 1);
   if (select status from public.kitty_class_occurrences where id = v_occurrence.id) <> 'scheduled'
     or (select version from public.kitty_class_occurrences where id = v_occurrence.id) <> v_occurrence.version
   then raise exception 'individual request changed the shared occurrence'; end if;
   select decided.* into v_result
   from public.decide_kitty_group_class_change(
-    v_request.id, v_request.version, v_request.payload_digest,
+    v_request.id, v_request.version, v_request."payloadDigest",
     '00000000-0000-0000-0000-000000000101', 'approved', null,
     'probe-individual-teacher-decision'
   ) decided;
-  if v_result.status <> 'finalized' or v_result.replacement_occurrence_id is null then
+  perform pg_temp.assert_safe_change_result(pg_catalog.to_jsonb(v_result), 1, 1);
+  if v_result.status <> 'finalized' or v_result."replacementOccurrenceId" is null then
     raise exception 'individual replacement did not finalize';
   end if;
   if (select status from public.kitty_class_occurrences where id = v_occurrence.id) <> 'scheduled' then
     raise exception 'individual finalization moved the shared group';
   end if;
   if (select count(*) from public.kitty_class_enrollments enrollment
-      where enrollment.occurrence_id = v_result.replacement_occurrence_id) <> 1 then
+      where enrollment.occurrence_id = v_result."replacementOccurrenceId") <> 1 then
     raise exception 'individual replacement copied unrelated enrollments';
   end if;
   if exists (
