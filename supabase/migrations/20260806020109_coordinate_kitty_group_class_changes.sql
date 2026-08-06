@@ -402,6 +402,7 @@ declare
   v_request_id text := pg_catalog.btrim(p_client_request_id);
   v_selection_digest text;
   v_payload_digest text;
+  v_operation_digest text;
   v_required_enrollment_ids uuid[];
   v_side text;
   v_actor_enrollment_ids uuid[];
@@ -421,10 +422,20 @@ begin
     raise exception 'invalid_change_scope';
   end if;
 
+  v_selection_digest := pg_catalog.encode(
+    public.digest(pg_catalog.convert_to(p_selection_token, 'UTF8'), 'sha256'), 'hex'
+  );
   v_payload_digest := public.kitty_group_change_payload_digest(
     p_occurrence_id, p_scope, p_enrollment_id, p_change_type,
     p_proposed_starts_at, p_proposed_ends_at, p_proposed_timezone
   );
+  v_operation_digest := pg_catalog.encode(public.digest(pg_catalog.convert_to(
+    pg_catalog.jsonb_build_object(
+      'expectedOccurrenceVersion', p_expected_occurrence_version,
+      'payloadDigest', v_payload_digest,
+      'selectionTokenDigest', v_selection_digest
+    )::text, 'UTF8'
+  ), 'sha256'), 'hex');
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_request_id, 0));
   select audit.* into v_existing_audit
   from public.kitty_class_audit_events audit
@@ -433,7 +444,7 @@ begin
   if found then
     if v_existing_audit.event_type <> 'group_change_requested'
       or v_existing_audit.actor_contact_id is distinct from p_actor_contact_id
-      or v_existing_audit.metadata->>'payloadDigest' is distinct from v_payload_digest
+      or v_existing_audit.metadata->>'operationDigest' is distinct from v_operation_digest
     then
       raise exception 'client_request_payload_mismatch';
     end if;
@@ -462,9 +473,6 @@ begin
     raise exception 'stale_class';
   end if;
 
-  v_selection_digest := pg_catalog.encode(
-    public.digest(pg_catalog.convert_to(p_selection_token, 'UTF8'), 'sha256'), 'hex'
-  );
   if not exists (
     select 1
     from public.kitty_class_audit_events selection
@@ -580,6 +588,7 @@ begin
     'change_request', v_request.id, v_request_id,
     pg_catalog.jsonb_build_object(
       'payloadDigest', v_payload_digest,
+      'operationDigest', v_operation_digest,
       'scope', p_scope,
       'occurrenceId', v_occurrence.id
     )
@@ -893,20 +902,34 @@ begin
 end;
 $$;
 
-create or replace function public.find_my_pending_kitty_class_changes(
+drop function public.find_my_pending_kitty_class_changes(uuid, text);
+
+create function public.find_my_pending_kitty_class_changes(
   p_contact_id uuid,
   p_reference_code text default null
 ) returns table (
   id uuid, occurrence_id uuid, change_type text, status text,
   proposed_starts_at timestamptz, proposed_ends_at timestamptz,
   proposed_timezone text, payload_digest text, version integer,
-  expires_at timestamptz
+  expires_at timestamptz, required_enrollment_approvals integer,
+  received_enrollment_approvals integer
 )
 language sql stable security definer set search_path = '' as $$
   select request.id, request.occurrence_id, request.change_type, request.status,
     request.proposed_starts_at, request.proposed_ends_at,
     request.proposed_timezone, request.payload_digest, request.version,
-    request.expires_at
+    request.expires_at,
+    coalesce(pg_catalog.cardinality(request.required_enrollment_ids), 0),
+    (
+      select pg_catalog.count(*)::integer
+      from public.kitty_class_change_confirmations confirmation
+      where confirmation.change_request_id = request.id
+        and confirmation.request_version = request.version
+        and confirmation.decision_side = 'student'
+        and confirmation.decision = 'approved'
+        and confirmation.payload_digest = request.payload_digest
+        and confirmation.enrollment_id = any(request.required_enrollment_ids)
+    )
   from public.kitty_class_change_requests request
   join public.kitty_class_occurrences occurrence
     on occurrence.id = request.occurrence_id
@@ -958,6 +981,11 @@ revoke execute on function public.request_kitty_group_class_change(uuid, integer
 revoke execute on function public.propose_kitty_group_class_change(uuid, integer, text, uuid, timestamptz, timestamptz, text, text) from public, anon, authenticated;
 revoke execute on function public.decide_kitty_group_class_change(uuid, integer, text, uuid, text, text, text) from public, anon, authenticated;
 revoke execute on function public.find_my_pending_kitty_class_changes(uuid, text) from public, anon, authenticated;
+
+revoke execute on function public.request_kitty_class_change(uuid, text, uuid, text, text, timestamptz, timestamptz, text, text) from public, anon, authenticated, service_role;
+revoke execute on function public.propose_kitty_class_replacement(uuid, integer, text, uuid, timestamptz, timestamptz, text, text) from public, anon, authenticated, service_role;
+revoke execute on function public.decide_kitty_class_change(uuid, integer, text, uuid, text, text) from public, anon, authenticated, service_role;
+revoke execute on function public.finalize_kitty_class_change(uuid, integer, text) from public, anon, authenticated, service_role;
 
 grant execute on function public.request_kitty_group_class_change(uuid, integer, text, uuid, uuid, text, timestamptz, timestamptz, text, text, text) to service_role;
 grant execute on function public.propose_kitty_group_class_change(uuid, integer, text, uuid, timestamptz, timestamptz, text, text) to service_role;

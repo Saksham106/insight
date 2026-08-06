@@ -141,12 +141,20 @@ test("pending group changes use the multi-counterparty status projection", async
       id: "11111111-1111-1111-1111-111111111111",
       status: "awaiting_counterparty",
       version: 2,
+      required_enrollment_approvals: 3,
+      received_enrollment_approvals: 2,
+      required_enrollment_ids: ["must-not-leak"],
     }], error: null };
   } };
 
   const [pending] = await findMyPendingKittyChanges(client, contact);
 
   assert.equal(pending.status, "awaiting_counterparties");
+  assert.equal(pending.requiredEnrollmentApprovals, 3);
+  assert.equal(pending.receivedEnrollmentApprovals, 2);
+  assert.equal("required_enrollment_ids" in pending, false);
+  assert.equal("required_enrollment_approvals" in pending, false);
+  assert.equal("received_enrollment_approvals" in pending, false);
   assert.equal(pending.referenceCode, "111111");
 });
 

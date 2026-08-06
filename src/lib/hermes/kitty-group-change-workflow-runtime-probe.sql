@@ -75,29 +75,52 @@ end;
 $$;
 
 do $$
+declare
+  v_signature text;
 begin
-  if not pg_catalog.has_function_privilege(
-    'service_role',
+  foreach v_signature in array array[
     'public.request_kitty_group_class_change(uuid,integer,text,uuid,uuid,text,timestamptz,timestamptz,text,text,text)',
-    'EXECUTE'
-  ) or pg_catalog.has_function_privilege(
-    'anon',
-    'public.request_kitty_group_class_change(uuid,integer,text,uuid,uuid,text,timestamptz,timestamptz,text,text,text)',
-    'EXECUTE'
-  ) or pg_catalog.has_function_privilege(
-    'authenticated',
-    'public.request_kitty_group_class_change(uuid,integer,text,uuid,uuid,text,timestamptz,timestamptz,text,text,text)',
-    'EXECUTE'
-  ) then raise exception 'request RPC privilege boundary failed'; end if;
-  if not pg_catalog.has_function_privilege(
-    'service_role',
     'public.propose_kitty_group_class_change(uuid,integer,text,uuid,timestamptz,timestamptz,text,text)',
-    'EXECUTE'
-  ) or not pg_catalog.has_function_privilege(
-    'service_role',
-    'public.decide_kitty_group_class_change(uuid,integer,text,uuid,text,text,text)',
-    'EXECUTE'
-  ) then raise exception 'proposal/decision service grants failed'; end if;
+    'public.decide_kitty_group_class_change(uuid,integer,text,uuid,text,text,text)'
+  ] loop
+    if not pg_catalog.has_function_privilege('service_role', v_signature, 'EXECUTE')
+      or pg_catalog.has_function_privilege('anon', v_signature, 'EXECUTE')
+      or pg_catalog.has_function_privilege('authenticated', v_signature, 'EXECUTE')
+      or exists (
+        select 1
+        from pg_catalog.pg_proc procedure
+        cross join lateral pg_catalog.aclexplode(
+          coalesce(procedure.proacl, pg_catalog.acldefault('f', procedure.proowner))
+        ) privilege
+        where procedure.oid = pg_catalog.to_regprocedure(v_signature)
+          and privilege.grantee = 0
+          and privilege.privilege_type = 'EXECUTE'
+      )
+    then raise exception 'new RPC privilege boundary failed for %', v_signature; end if;
+  end loop;
+
+  foreach v_signature in array array[
+    'public.request_kitty_class_change(uuid,text,uuid,text,text,timestamptz,timestamptz,text,text)',
+    'public.propose_kitty_class_replacement(uuid,integer,text,uuid,timestamptz,timestamptz,text,text)',
+    'public.decide_kitty_class_change(uuid,integer,text,uuid,text,text)',
+    'public.finalize_kitty_class_change(uuid,integer,text)'
+  ] loop
+    if pg_catalog.has_function_privilege('service_role', v_signature, 'EXECUTE')
+      or pg_catalog.has_function_privilege('anon', v_signature, 'EXECUTE')
+      or pg_catalog.has_function_privilege('authenticated', v_signature, 'EXECUTE')
+      or exists (
+        select 1
+        from pg_catalog.pg_proc procedure
+        cross join lateral pg_catalog.aclexplode(
+          coalesce(procedure.proacl, pg_catalog.acldefault('f', procedure.proowner))
+        ) privilege
+        where procedure.oid = pg_catalog.to_regprocedure(v_signature)
+          and privilege.grantee = 0
+          and privilege.privilege_type = 'EXECUTE'
+      )
+    then raise exception 'legacy RPC remains executable for %', v_signature; end if;
+  end loop;
+
   if pg_catalog.has_function_privilege(
     'service_role', 'public.finalize_kitty_group_class_change(uuid)', 'EXECUTE'
   ) then raise exception 'internal finalizer is externally executable'; end if;
@@ -116,6 +139,7 @@ declare
   v_outsider_rejected boolean := false;
   v_stale_rejected boolean := false;
   v_selection_rejected boolean := false;
+  v_pending jsonb;
 begin
   perform pg_temp.confirm_probe_selection(
     v_occurrence_id, '00000000-0000-0000-0000-000000000101', v_token
@@ -154,6 +178,15 @@ begin
   if v_request.status <> 'awaiting_counterparty'
     or pg_catalog.cardinality(v_request.required_enrollment_ids) <> 3
   then raise exception 'group request did not snapshot three enrollments'; end if;
+  select pg_catalog.to_jsonb(pending) into strict v_pending
+  from public.find_my_pending_kitty_class_changes(
+    '00000000-0000-0000-0000-000000000301', null
+  ) pending
+  where pending.id = v_request.id;
+  if (v_pending->>'required_enrollment_approvals')::integer <> 3
+    or (v_pending->>'received_enrollment_approvals')::integer <> 0
+    or v_pending ? 'required_enrollment_ids'
+  then raise exception 'pending projection did not expose private-safe 0/3 progress'; end if;
 
   begin
     perform public.decide_kitty_group_class_change(
@@ -182,6 +215,14 @@ begin
         and confirmation.decision = 'approved') <> 2 then
     raise exception 'shared guardian did not atomically approve two siblings';
   end if;
+  select pg_catalog.to_jsonb(pending) into strict v_pending
+  from public.find_my_pending_kitty_class_changes(
+    '00000000-0000-0000-0000-000000000301', null
+  ) pending
+  where pending.id = v_request.id;
+  if (v_pending->>'required_enrollment_approvals')::integer <> 3
+    or (v_pending->>'received_enrollment_approvals')::integer <> 2
+  then raise exception 'pending projection did not expose current-version 2/3 progress'; end if;
 
   select decided.* into v_result
   from public.decide_kitty_group_class_change(
@@ -203,6 +244,17 @@ begin
       where outbox.change_request_id = v_request.id and outbox.intent = 'class_rescheduled') <> 6 then
     raise exception 'whole-group final outcome did not notify teacher plus five family recipients';
   end if;
+  if exists (
+    select 1 from public.find_my_pending_kitty_class_changes(
+      '00000000-0000-0000-0000-000000000301', null
+    ) pending where pending.id = v_request.id
+  ) or (select count(*) from public.kitty_class_change_confirmations confirmation
+      where confirmation.change_request_id = v_request.id
+        and confirmation.request_version = v_request.version
+        and confirmation.decision_side = 'student'
+        and confirmation.decision = 'approved'
+        and confirmation.payload_digest = v_request.payload_digest) <> 3
+  then raise exception 'finalized projection/evidence did not preserve current-version 3/3 progress'; end if;
 end;
 $$;
 
@@ -276,6 +328,8 @@ declare
   v_replay public.kitty_class_change_requests;
   v_token text := pg_catalog.repeat('c', 64);
   v_mismatch_rejected boolean := false;
+  v_version_mismatch_rejected boolean := false;
+  v_token_mismatch_rejected boolean := false;
 begin
   perform pg_temp.confirm_probe_selection(
     v_occurrence_id, '00000000-0000-0000-0000-000000000101', v_token
@@ -308,6 +362,37 @@ begin
     null, null, null, v_token, 'probe-cancel-request'
   ) replayed;
   if v_replay.id <> v_request.id then raise exception 'same-payload cancellation replay duplicated'; end if;
+  if not exists (
+    select 1
+    from public.kitty_class_audit_events audit
+    where audit.request_id = 'probe-cancel-request'
+      and audit.metadata->>'operationDigest' ~ '^[a-f0-9]{64}$'
+      and audit.metadata::text not like '%' || v_token || '%'
+  ) then raise exception 'request replay evidence was not stored as a digest'; end if;
+  begin
+    perform public.request_kitty_group_class_change(
+      v_occurrence.id, 999, 'whole_occurrence', null,
+      '00000000-0000-0000-0000-000000000101', 'cancel',
+      null, null, null, v_token, 'probe-cancel-request'
+    );
+  exception when others then
+    v_version_mismatch_rejected := sqlerrm like '%client_request_payload_mismatch%';
+  end;
+  if not v_version_mismatch_rejected then
+    raise exception 'request id accepted a changed expected occurrence version';
+  end if;
+  begin
+    perform public.request_kitty_group_class_change(
+      v_occurrence.id, v_occurrence.version, 'whole_occurrence', null,
+      '00000000-0000-0000-0000-000000000101', 'cancel',
+      null, null, null, pg_catalog.repeat('9', 64), 'probe-cancel-request'
+    );
+  exception when others then
+    v_token_mismatch_rejected := sqlerrm like '%client_request_payload_mismatch%';
+  end;
+  if not v_token_mismatch_rejected then
+    raise exception 'request id accepted changed selection evidence';
+  end if;
   begin
     perform public.request_kitty_group_class_change(
       v_occurrence.id, v_occurrence.version, 'whole_occurrence', null,
@@ -382,6 +467,44 @@ begin
       where outbox.change_request_id = v_request.id and outbox.intent = 'class_rescheduled') <> 3 then
     raise exception 'individual final notification recipient count is wrong';
   end if;
+end;
+$$;
+
+-- Task 4 attendance and correction are enrollment-private messages, not class
+-- scheduling mutations. Both must leave the shared occurrence unchanged.
+do $$
+declare
+  v_occurrence_id uuid := pg_temp.create_probe_group('probe-attendance-no-class-change', 23);
+  v_occurrence public.kitty_class_occurrences;
+  v_enrollment_id uuid;
+  v_attendance public.kitty_class_attendance_updates;
+  v_token text := pg_catalog.repeat('8', 64);
+begin
+  select occurrence.* into strict v_occurrence
+  from public.kitty_class_occurrences occurrence where occurrence.id = v_occurrence_id;
+  select enrollment.id into strict v_enrollment_id
+  from public.kitty_class_enrollments enrollment
+  where enrollment.occurrence_id = v_occurrence.id
+    and enrollment.student_contact_id = '00000000-0000-0000-0000-000000000201';
+  perform pg_temp.confirm_probe_selection(
+    v_occurrence.id, '00000000-0000-0000-0000-000000000201', v_token
+  );
+  select recorded.* into v_attendance
+  from public.record_kitty_class_attendance(
+    v_occurrence.id, v_enrollment_id,
+    '00000000-0000-0000-0000-000000000201',
+    'absent', null, null, v_token, 'probe-task4-attendance'
+  ) recorded;
+  perform public.correct_kitty_class_attendance(
+    v_attendance.id, v_occurrence.id, v_enrollment_id,
+    '00000000-0000-0000-0000-000000000201',
+    'expected', null, null, v_token, 'probe-task4-attendance-correction'
+  );
+  if (select occurrence.status from public.kitty_class_occurrences occurrence
+      where occurrence.id = v_occurrence.id) <> v_occurrence.status
+    or (select occurrence.version from public.kitty_class_occurrences occurrence
+      where occurrence.id = v_occurrence.id) <> v_occurrence.version
+  then raise exception 'attendance or correction changed shared class scheduling state'; end if;
 end;
 $$;
 

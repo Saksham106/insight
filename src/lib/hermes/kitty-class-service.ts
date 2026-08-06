@@ -517,13 +517,30 @@ export async function beginKittyClassChange(client: Client, actor: KittyClassAct
   return projectKittyChangeRequest(Array.isArray(data) ? data[0] : data);
 }
 
-function projectKittyChangeRequest(data: Record<string, unknown> | null) {
+type KittyChangeRequestProjection = Record<string, unknown> & {
+  requiredEnrollmentApprovals: number;
+  receivedEnrollmentApprovals?: number;
+};
+
+function projectKittyChangeRequest(data: Record<string, unknown> | null): KittyChangeRequestProjection {
   if (!data) throw new Error("kitty_class_operation_failed");
-  const required = Array.isArray(data.required_enrollment_ids) ? data.required_enrollment_ids : [];
+  const {
+    required_enrollment_ids: requiredEnrollmentIds,
+    required_enrollment_approvals: requiredEnrollmentApprovals,
+    received_enrollment_approvals: receivedEnrollmentApprovals,
+    ...safe
+  } = data;
+  const required = Number.isInteger(requiredEnrollmentApprovals)
+    ? Number(requiredEnrollmentApprovals)
+    : Array.isArray(requiredEnrollmentIds) ? requiredEnrollmentIds.length : 0;
+  const received = Number.isInteger(receivedEnrollmentApprovals)
+    ? Number(receivedEnrollmentApprovals)
+    : undefined;
   return {
-    ...data,
+    ...safe,
     status: data.status === "awaiting_counterparty" ? "awaiting_counterparties" : data.status,
-    requiredEnrollmentApprovals: required.length,
+    requiredEnrollmentApprovals: required,
+    ...(received === undefined ? {} : { receivedEnrollmentApprovals: received }),
   };
 }
 
@@ -584,14 +601,6 @@ export async function retryKittyClassNotification(client: Client, actor: KittyCl
   assertAdmin(actor);
   const { data, error } = await client.rpc("retry_kitty_class_notification", {
     p_notification_id: notificationId, p_profile_id: actor.profileId,
-  });
-  dbError(error);
-  return Array.isArray(data) ? data[0] : data;
-}
-
-export async function finalizeKittyClassChange(client: Client, input: { requestId: string; requestVersion: number; payloadDigest: string }) {
-  const { data, error } = await client.rpc("finalize_kitty_class_change", {
-    p_request_id: input.requestId, p_request_version: input.requestVersion, p_payload_digest: input.payloadDigest,
   });
   dbError(error);
   return Array.isArray(data) ? data[0] : data;
