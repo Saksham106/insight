@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { CalendarDays, Plus } from "lucide-react";
 
 import { Empty, formatMessageTime, PanelCard } from "@/components/admin/hermes-dashboard-shared";
+import {
+  filterKittyAttentionClasses,
+  kittyClassAttentionReasons,
+  type KittyAdminAttentionIssue,
+} from "@/lib/hermes/kitty-class-admin";
 import { createKittyClassDashboardSubmitter } from "@/lib/hermes/kitty-class-dashboard-submit";
 
 type ClassOccurrence = {
@@ -43,7 +48,7 @@ type ChangeRequest = {
   teacherApprovalStatus: string; enrollmentApprovals: ApprovalProgress[];
 };
 type OccurrenceDetail = {
-  id: string; version: number; localDate: string; teacherContactId: string;
+  id: string; seriesId: string | null; version: number; localDate: string; teacherContactId: string;
   enrollmentCount: number; enrollments: Enrollment[]; attendance: Attendance[];
   currentChangeRequest: ChangeRequest | null;
   auditEvents: Array<{ id: string; actorType: string; eventType: string; entityType: string; createdAt: string }>;
@@ -168,11 +173,12 @@ function ConfigurationSummary({ contact }: { contact: EnrollmentContact }) {
   return <span className="text-xs text-muted">{labels.length ? labels.join(" · ") : "no notifications or confirmations"}</span>;
 }
 
-export function HermesClassesPanel({ classes, series, contacts, notificationIssues, enabled }: {
+export function HermesClassesPanel({ classes, series, contacts, notificationIssues, attentionIssues, enabled }: {
   classes: ClassOccurrence[];
   series: ClassSeries[];
   contacts: Contact[];
   notificationIssues: NotificationIssue[];
+  attentionIssues: KittyAdminAttentionIssue[];
   enabled: boolean;
 }) {
   const router = useRouter();
@@ -193,10 +199,10 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
     [contacts],
   );
   const visible = useMemo(() => {
-    if (view === "attention") return classes.filter((item) => item.status === "change_requested");
+    if (view === "attention") return filterKittyAttentionClasses(classes, notificationIssues, attentionIssues);
     if (view === "history") return classes.filter((item) => ["completed", "cancelled", "rescheduled"].includes(item.status));
     return classes.filter((item) => ["scheduled", "change_requested"].includes(item.status));
-  }, [classes, view]);
+  }, [attentionIssues, classes, notificationIssues, view]);
 
   function showMessage(value: string, isError = false) {
     setMessage(value);
@@ -274,6 +280,12 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
     const scope = String(form.get("scope") ?? "");
     const body: Record<string, unknown> = { action, version: detail.version, effectiveDate };
     if (action === "add_enrollment") {
+      if (scope !== "occurrence" && scope !== "this_and_future") {
+        setPending(false);
+        showMessage("Choose when this student joins the roster.", true);
+        return;
+      }
+      body.scope = scope;
       const studentContactId = String(form.get("studentContactId") ?? "");
       const parentContactId = String(form.get("parentContactId") ?? "");
       body.enrollment = {
@@ -294,13 +306,13 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
         ],
       };
     } else {
-      if (scope !== "enrollment") {
+      if (scope !== "occurrence" && scope !== "this_and_future") {
         setPending(false);
         showMessage("Choose the enrollment change scope.", true);
         return;
       }
       body.enrollmentId = enrollmentId;
-      body.scope = "enrollment";
+      body.scope = scope;
     }
     try {
       const response = await fetch(`/api/admin/hermes/classes/${occurrenceId}`, {
@@ -373,15 +385,15 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
   return (
     <PanelCard icon={<CalendarDays size={18} />} title="Kitty Classes" description="A separate Kitty-owned class calendar. It does not change Academy sessions or availability.">
       {!enabled ? <p className="text-sm text-muted" style={{ marginBottom: 16 }}>The class calendar is in safe rollout mode. Set KITTY_CLASS_CALENDAR_ENABLED=true when its migration and WhatsApp templates are ready.</p> : null}
-      <div role="tablist" aria-label="Class views" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
+      <nav aria-label="Class views" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
         {VIEW_LABELS.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className="btn btn-secondary" style={{ opacity: view === id ? 1 : .65 }}>{label}</button>
+          <button key={id} type="button" aria-pressed={view === id} onClick={() => setView(id)} className="btn btn-secondary" style={{ opacity: view === id ? 1 : .65 }}>{label}</button>
         ))}
-      </div>
+      </nav>
 
       {view === "attention" && notificationIssues.length ? (
         <section aria-labelledby="class-delivery-issues" style={{ display: "grid", gap: 10, marginBottom: 14 }}>
-          <h3 id="class-delivery-issues" className="text-sm font-semibold">Failed notifications</h3>
+          <h3 id="class-delivery-issues" className="text-sm font-semibold">Delivery issues</h3>
           {notificationIssues.map((issue) => {
             const occurrence = classes.find((item) => item.id === issue.occurrence_id);
             return <article key={issue.id} className="border border-border" style={{ borderRadius: 10, padding: 14 }}>
@@ -412,6 +424,11 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
                 <span className="text-xs text-muted">{normalizedEventName(item.status)}</span>
               </div>
               <p className="text-sm" style={{ marginTop: 8 }}>{formatMessageTime(item.starts_at)}–{new Date(item.ends_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · {item.timezone}</p>
+              {view === "attention" ? (
+                <p className="text-sm text-muted" aria-label="Needs attention reasons">
+                  {kittyClassAttentionReasons(item, notificationIssues, attentionIssues).join(" · ")}
+                </p>
+              ) : null}
               <details onToggle={(event) => { if (event.currentTarget.open) void loadOccurrenceDetails(item.id); }} style={{ marginTop: 10 }}>
                 <summary className="text-sm font-semibold text-navy" style={{ cursor: "pointer" }}>Roster and occurrence details</summary>
                 {loadingDetails[item.id] ? <p className="text-sm text-muted" role="status">Loading class details…</p> : null}
@@ -439,8 +456,11 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
                               ))}
                             </ul>
                             <form onSubmit={(event) => mutateEnrollment(event, item.id, "end_enrollment", enrollment.id)} style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                              <label className="text-sm">Change scope<select className="input" name="scope" required defaultValue="enrollment"><option value="enrollment">This enrollment only</option></select></label>
-                              <label className="text-sm">Effective date<input className="input" type="date" name="effectiveDate" min={detail.localDate} required /></label>
+                              <label className="text-sm">Change scope<select className="input" name="scope" required defaultValue={detail.seriesId ? "this_and_future" : "occurrence"}>
+                                {detail.seriesId ? <option value="this_and_future">This and future occurrences</option> : <option value="occurrence">Occurrence only</option>}
+                              </select></label>
+                              {detail.seriesId ? <p className="text-xs text-muted">Use Attendance for a single missed class. Ending membership applies after the selected last active date.</p> : null}
+                              <label className="text-sm">{detail.seriesId ? "Last active date" : "Occurrence date"}<input className="input" type="date" name="effectiveDate" min={detail.localDate} defaultValue={detail.seriesId ? undefined : detail.localDate} max={detail.seriesId ? undefined : detail.localDate} required /></label>
                               <button type="submit" className="btn btn-secondary" disabled={!enabled || pending}>End enrollment</button>
                             </form>
                           </article>
@@ -451,11 +471,15 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
                     <details>
                       <summary className="text-sm font-semibold text-navy">Add student</summary>
                       <form onSubmit={(event) => mutateEnrollment(event, item.id, "add_enrollment")} style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                        <label className="text-sm">Add scope<select className="input" name="scope" required defaultValue={detail.seriesId ? "this_and_future" : "occurrence"}>
+                          <option value="occurrence">Occurrence only</option>
+                          {detail.seriesId ? <option value="this_and_future">This and future occurrences</option> : null}
+                        </select></label>
                         <label className="text-sm">Student<select className="input" name="studentContactId" required><option value="">Select student</option>{activeStudents.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}</select></label>
                         <ContactControls prefix="student" defaultReschedule />
                         <label className="text-sm">Parent contact (optional)<select className="input" name="parentContactId"><option value="">No parent contact</option>{activeParents.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}</select></label>
                         <ContactControls prefix="parent" defaultReschedule />
-                        <label className="text-sm">Effective date<input className="input" type="date" name="effectiveDate" min={detail.localDate} required /></label>
+                        <label className="text-sm">Effective date<input className="input" type="date" name="effectiveDate" min={detail.localDate} defaultValue={detail.localDate} required /></label>
                         <button type="submit" className="btn btn-secondary" disabled={!enabled || pending}>Add student</button>
                       </form>
                     </details>

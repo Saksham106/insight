@@ -151,6 +151,12 @@ function rosterClient(changeRequest = null, extraRows = {}) {
   };
 
   return {
+    rpc(name) {
+      if (name !== "get_kitty_class_admin_detail_events") {
+        return Promise.resolve({ data: null, error: { message: "unexpected_rpc" } });
+      }
+      return Promise.resolve({ data: rows.kitty_class_audit_events ?? [], error: null });
+    },
     from(table) {
       const query = {
         select() { return query; }, eq() { return query; }, in() { return query; }, or() { return query; },
@@ -331,25 +337,70 @@ test("enrollment membership mutations use optimistic atomic RPCs", async () => {
   } };
 
   await addKittyClassEnrollment(client, admin, {
-    occurrenceId: "occurrence-1", version: 3, effectiveDate: "2026-08-15", enrollment: enrollments[0],
+    occurrenceId: "occurrence-1", version: 3, scope: "occurrence", effectiveDate: "2026-08-15", enrollment: enrollments[0],
   });
   await endKittyClassEnrollment(client, admin, {
-    occurrenceId: "occurrence-1", enrollmentId: "enrollment-1", version: 4, effectiveDate: "2026-08-31",
+    occurrenceId: "occurrence-1", enrollmentId: "enrollment-1", version: 4, scope: "this_and_future", effectiveDate: "2026-08-31",
   });
 
   assert.deepEqual(calls.map((call) => call.name), ["add_kitty_class_enrollment", "end_kitty_class_enrollment"]);
   assert.equal(calls[0].payload.p_expected_version, 3);
+  assert.equal(calls[0].payload.p_scope, "occurrence");
   assert.equal(calls[0].payload.p_effective_date, "2026-08-15");
   assert.equal(calls[1].payload.p_expected_version, 4);
+  assert.equal(calls[1].payload.p_scope, "this_and_future");
   assert.equal(calls[1].payload.p_effective_date, "2026-08-31");
+});
+
+test("enrollment mutations reject omitted and unsupported temporal scopes before RPC", async () => {
+  const { addKittyClassEnrollment, endKittyClassEnrollment } = require(servicePath);
+  let rpcCalls = 0;
+  const client = { rpc: async () => { rpcCalls += 1; return { data: null, error: null }; } };
+  await assert.rejects(() => addKittyClassEnrollment(client, admin, {
+    occurrenceId: "occurrence-1", version: 3, effectiveDate: "2026-08-15", enrollment: enrollments[0],
+  }), /invalid_scope/);
+  await assert.rejects(() => endKittyClassEnrollment(client, admin, {
+    occurrenceId: "occurrence-1", enrollmentId: "enrollment-1", version: 4,
+    scope: "series", effectiveDate: "2026-08-31",
+  }), /invalid_scope/);
+  assert.equal(rpcCalls, 0);
 });
 
 test("enrollment mutations preserve stale version conflicts", async () => {
   const { addKittyClassEnrollment } = require(servicePath);
   const client = { rpc: async () => ({ data: null, error: { message: "stale_class" } }) };
   await assert.rejects(() => addKittyClassEnrollment(client, admin, {
-    occurrenceId: "occurrence-1", version: 3, effectiveDate: "2026-08-15", enrollment: enrollments[0],
+    occurrenceId: "occurrence-1", version: 3, scope: "this_and_future", effectiveDate: "2026-08-15", enrollment: enrollments[0],
   }), /stale_class/);
+});
+
+test("notification retry is server-guarded to failed rows only", async () => {
+  const { retryKittyClassNotification } = require(servicePath);
+  const clientFor = (status, errorCode = null) => {
+    const calls = [];
+    return {
+      calls,
+      from() {
+        const query = {
+          select() { return query; }, eq() { return query; },
+          maybeSingle: async () => ({ data: { id: "notification-1", status, last_error_code: errorCode }, error: null }),
+        };
+        return query;
+      },
+      async rpc(name, payload) { calls.push({ name, payload }); return { data: { id: "notification-1", status: "pending" }, error: null }; },
+    };
+  };
+
+  const failed = clientFor("failed", "provider_rejected");
+  await retryKittyClassNotification(failed, admin, "notification-1");
+  assert.equal(failed.calls.length, 1);
+  for (const [status, errorCode] of [
+    ["blocked", "provider_indeterminate"], ["pending", null], ["sending", null], ["sent", null],
+  ]) {
+    const client = clientFor(status, errorCode);
+    await assert.rejects(() => retryKittyClassNotification(client, admin, "notification-1"), /notification_not_retryable/);
+    assert.equal(client.calls.length, 0, `${status} reached retry RPC`);
+  }
 });
 
 test("group class RPCs bind replay payloads and expose only the service role", () => {

@@ -32,7 +32,8 @@ test("Kitty class routes are admin-only, flagged, and service-backed", () => {
   assert.match(collection, /normalizeKittyClassCreatePayload/);
   assert.match(item, /addKittyClassEnrollment/);
   assert.match(item, /endKittyClassEnrollment/);
-  assert.match(item, /body\.scope !== "enrollment"/);
+  assert.match(item, /function enrollmentScope/);
+  assert.match(item, /value === "occurrence" \|\| value === "this_and_future"/);
   assert.match(item, /effectiveDate/);
 });
 
@@ -125,18 +126,19 @@ test("admin POST preserves a native multi-enrollment roster and stable request i
   assert.equal("participants" in capturedInput, false);
 });
 
-test("ending an enrollment requires explicit scope and effective date before the service call", async () => {
+test("enrollment routes preserve explicit add/end temporal scopes", async () => {
   const routePath = path.join(process.cwd(), "src/app/api/admin/hermes/classes/[id]/route.ts");
   const originalLoad = Module._load;
   const previousFlag = process.env.KITTY_CLASS_CALENDAR_ENABLED;
-  const calls = [];
+  const addCalls = [];
+  const endCalls = [];
   Module._load = function load(request, parent, isMain) {
     if (request === "next/server") return { NextResponse: { json(value, init) { return new Response(JSON.stringify(value), { status: init?.status ?? 200, headers: { "content-type": "application/json" } }); } } };
     if (request === "@/lib/auth/get-user-profile") return { getUserProfile: async () => ({ id: "admin-1", role: "admin" }) };
     if (request === "@/lib/hermes/kitty-class-service") return {
-      addKittyClassEnrollment: async () => ({}), editKittyClass: async () => ({}),
+      addKittyClassEnrollment: async (_client, _actor, input) => { addCalls.push(input); return { id: "occurrence-1" }; }, editKittyClass: async () => ({}),
       getKittyClassOccurrence: async () => ({}), overrideKittyClass: async () => ({}),
-      endKittyClassEnrollment: async (_client, _actor, input) => { calls.push(input); return { id: "occurrence-1" }; },
+      endKittyClassEnrollment: async (_client, _actor, input) => { endCalls.push(input); return { id: "occurrence-1" }; },
     };
     if (request === "@/lib/supabase/admin") return { createAdminClient: () => ({}) };
     return originalLoad(request, parent, isMain);
@@ -151,15 +153,32 @@ test("ending an enrollment requires explicit scope and effective date before the
       body: JSON.stringify({ action: "end_enrollment", enrollmentId: "enrollment-1", version: 3, effectiveDate: "2026-08-31" }),
     }), context);
     assert.equal(withoutScope.status, 400);
-    assert.equal(calls.length, 0);
+    assert.equal(endCalls.length, 0);
 
     const withScope = await PATCH(new Request("https://insight.test/api/admin/hermes/classes/occurrence-1", {
       method: "PATCH", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "end_enrollment", scope: "enrollment", enrollmentId: "enrollment-1", version: 3, effectiveDate: "2026-08-31" }),
+      body: JSON.stringify({ action: "end_enrollment", scope: "this_and_future", enrollmentId: "enrollment-1", version: 3, effectiveDate: "2026-08-31" }),
     }), context);
     assert.equal(withScope.status, 200);
-    assert.equal(calls[0].effectiveDate, "2026-08-31");
-    assert.equal(calls[0].enrollmentId, "enrollment-1");
+    assert.equal(endCalls[0].scope, "this_and_future");
+    assert.equal(endCalls[0].effectiveDate, "2026-08-31");
+    assert.equal(endCalls[0].enrollmentId, "enrollment-1");
+
+    const addWithoutScope = await PATCH(new Request("https://insight.test/api/admin/hermes/classes/occurrence-1", {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "add_enrollment", version: 3, effectiveDate: "2026-08-31", enrollment: { studentContactId: "student-1", contacts: [] } }),
+    }), context);
+    assert.equal(addWithoutScope.status, 400);
+    assert.equal(addCalls.length, 0);
+
+    for (const scope of ["occurrence", "this_and_future"]) {
+      const response = await PATCH(new Request("https://insight.test/api/admin/hermes/classes/occurrence-1", {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "add_enrollment", scope, version: 3, effectiveDate: "2026-08-31", enrollment: { studentContactId: "student-1", contacts: [] } }),
+      }), context);
+      assert.equal(response.status, 200);
+    }
+    assert.deepEqual(addCalls.map((call) => call.scope), ["occurrence", "this_and_future"]);
   } finally {
     Module._load = originalLoad;
     if (previousFlag === undefined) delete process.env.KITTY_CLASS_CALENDAR_ENABLED;

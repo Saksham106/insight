@@ -36,6 +36,7 @@ function dbError(error: { message?: string } | null) {
     "stale_attendance", "relay_not_permitted", "attendance_not_permitted",
     "invalid_change_scope", "change_not_permitted", "stale_change_request",
     "request_unavailable", "enrollment_approvals_required", "teacher_confirmation_required",
+    "invalid_scope", "notification_not_retryable",
   ]) if (error.message?.includes(code)) throw new Error(code);
   throw new Error("kitty_class_operation_failed");
 }
@@ -341,10 +342,7 @@ export async function getKittyClassOccurrence(client: Client, actor: KittyClassA
           .eq("occurrence_id", occurrenceId).order("created_at", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     adminOnly
-      ? client.from("kitty_class_audit_events")
-          .select("id, actor_type, event_type, entity_type, created_at")
-          .eq("entity_type", "occurrence").eq("entity_id", occurrenceId)
-          .order("created_at", { ascending: false }).limit(30)
+      ? client.rpc("get_kitty_class_admin_detail_events", { p_occurrence_id: occurrenceId })
       : Promise.resolve({ data: [], error: null }),
     adminOnly
       ? client.from("kitty_class_notification_outbox")
@@ -375,7 +373,9 @@ export async function getKittyClassOccurrence(client: Client, actor: KittyClassA
         ...projected,
         teacherContactId: String(roster.teacher?.contact_id ?? ""),
         attendance: projectAdminAttendance(attendanceResult.data ?? []),
-        auditEvents: (auditResult.data ?? []).map((event) => ({
+        auditEvents: (auditResult.data ?? []).map((event: {
+          id: unknown; actor_type: unknown; event_type: unknown; entity_type: unknown; created_at: unknown;
+        }) => ({
           id: String(event.id),
           actorType: String(event.actor_type),
           eventType: String(event.event_type),
@@ -449,16 +449,19 @@ export async function createKittyClass(client: Client, actor: KittyClassActor, i
 export async function addKittyClassEnrollment(client: Client, actor: KittyClassActor, input: {
   occurrenceId: string;
   version: number;
+  scope: "occurrence" | "this_and_future";
   effectiveDate: string;
   enrollment: KittyEnrollmentInput;
 }) {
   assertAdmin(actor);
-  if (!nonEmpty(input.occurrenceId) || !Number.isInteger(input.version) || input.version < 1 || !validDate(input.effectiveDate)) throw new Error("invalid_class");
+  if (!nonEmpty(input.occurrenceId) || !Number.isInteger(input.version) || input.version < 1
+    || !["occurrence", "this_and_future"].includes(input.scope) || !validDate(input.effectiveDate)) throw new Error("invalid_scope");
   validateKittyEnrollments([input.enrollment]);
   const { data, error } = await client.rpc("add_kitty_class_enrollment", {
     p_occurrence_id: input.occurrenceId,
     p_expected_version: input.version,
     p_effective_date: input.effectiveDate,
+    p_scope: input.scope,
     p_enrollment: input.enrollment,
     p_profile_id: actor.profileId,
   });
@@ -470,15 +473,18 @@ export async function endKittyClassEnrollment(client: Client, actor: KittyClassA
   occurrenceId: string;
   enrollmentId: string;
   version: number;
+  scope: "occurrence" | "this_and_future";
   effectiveDate: string;
 }) {
   assertAdmin(actor);
-  if (!nonEmpty(input.occurrenceId) || !nonEmpty(input.enrollmentId) || !Number.isInteger(input.version) || input.version < 1 || !validDate(input.effectiveDate)) throw new Error("invalid_class");
+  if (!nonEmpty(input.occurrenceId) || !nonEmpty(input.enrollmentId) || !Number.isInteger(input.version) || input.version < 1
+    || !["occurrence", "this_and_future"].includes(input.scope) || !validDate(input.effectiveDate)) throw new Error("invalid_scope");
   const { data, error } = await client.rpc("end_kitty_class_enrollment", {
     p_occurrence_id: input.occurrenceId,
     p_enrollment_id: input.enrollmentId,
     p_expected_version: input.version,
     p_effective_date: input.effectiveDate,
+    p_scope: input.scope,
     p_profile_id: actor.profileId,
   });
   dbError(error);
@@ -889,6 +895,13 @@ export async function maintainKittyClassState(client: Client) {
 
 export async function retryKittyClassNotification(client: Client, actor: KittyClassActor, notificationId: string) {
   assertAdmin(actor);
+  const { data: notification, error: readError } = await client
+    .from("kitty_class_notification_outbox")
+    .select("id, status, last_error_code")
+    .eq("id", notificationId)
+    .maybeSingle();
+  dbError(readError);
+  if (!notification || notification.status !== "failed") throw new Error("notification_not_retryable");
   const { data, error } = await client.rpc("retry_kitty_class_notification", {
     p_notification_id: notificationId, p_profile_id: actor.profileId,
   });

@@ -25,8 +25,11 @@ test("classes panel exposes group roster creation and occurrence administration"
   assert.match(source, /retry_notification/);
   assert.match(source, /add_enrollment/);
   assert.match(source, /end_enrollment/);
-  assert.match(source, /body\.scope = "enrollment"/);
+  assert.match(source, /this_and_future/);
+  assert.match(source, /Occurrence only/);
+  assert.match(source, /Use Attendance/);
   assert.match(source, /aria-live="polite"/);
+  assert.doesNotMatch(source, /role="tab(?:list)?"/);
   assert.doesNotMatch(source, /\/api\/sessions/);
 });
 

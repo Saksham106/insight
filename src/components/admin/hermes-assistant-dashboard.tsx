@@ -20,6 +20,7 @@ import {
 import { HermesSchedulingPanel } from "@/components/admin/hermes-scheduling-panel";
 import { HermesSettlementsPanel } from "@/components/admin/hermes-settlements-panel";
 import type { AdminLessonCycle } from "@/lib/hermes/lesson-ledger-admin";
+import type { KittyAdminAttentionIssue } from "@/lib/hermes/kitty-class-admin";
 
 interface HermesAssistantDashboardProps {
   tab: HermesTab;
@@ -39,6 +40,7 @@ interface HermesAssistantDashboardProps {
   classOccurrences: Array<{ id: string; series_id: string | null; title: string; subject: string | null; starts_at: string; ends_at: string; timezone: string; status: string; version: number }>;
   classSeries: Array<{ id: string; title: string; weekdays: number[]; local_time: string; timezone: string; status: string }>;
   classNotificationIssues: Array<{ id: string; occurrence_id: string; status: string; last_error_code: string | null; updated_at: string }>;
+  classAttentionIssues: KittyAdminAttentionIssue[];
   classCalendarEnabled: boolean;
 }
 
@@ -67,6 +69,7 @@ export function HermesAssistantDashboard({
   classOccurrences,
   classSeries,
   classNotificationIssues,
+  classAttentionIssues,
   classCalendarEnabled,
 }: HermesAssistantDashboardProps) {
   const attentionContacts = contacts.filter((contact) =>
@@ -177,7 +180,7 @@ export function HermesAssistantDashboard({
 
       {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} /> : null}
 
-      {tab === "classes" ? <HermesClassesPanel classes={classOccurrences} series={classSeries} contacts={directoryContacts} notificationIssues={classNotificationIssues} enabled={classCalendarEnabled} /> : null}
+      {tab === "classes" ? <HermesClassesPanel classes={classOccurrences} series={classSeries} contacts={directoryContacts} notificationIssues={classNotificationIssues} attentionIssues={classAttentionIssues} enabled={classCalendarEnabled} /> : null}
     </div>
   );
 }

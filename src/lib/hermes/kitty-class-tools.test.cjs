@@ -230,4 +230,11 @@ test("enrollment actions require a version and effective date", async () => {
   await assert.rejects(() => executeKittyClassTool({}, actor, "end_enrollment", {
     occurrenceId: "occurrence-1", enrollmentId: "enrollment-1", version: 2,
   }), /invalid_payload/);
+  await assert.rejects(() => executeKittyClassTool({}, actor, "add_enrollment", {
+    occurrenceId: "occurrence-1", version: 2, effectiveDate: "2026-08-12", enrollment,
+  }), /invalid_payload/);
+  await assert.rejects(() => executeKittyClassTool({}, actor, "end_enrollment", {
+    occurrenceId: "occurrence-1", enrollmentId: "enrollment-1", version: 2,
+    effectiveDate: "2026-08-12", scope: "series",
+  }), /invalid_payload/);
 });

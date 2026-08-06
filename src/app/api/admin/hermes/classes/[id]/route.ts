@@ -7,6 +7,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ id: string }> };
 
+function enrollmentScope(value: unknown): "occurrence" | "this_and_future" {
+  if (value === "occurrence" || value === "this_and_future") return value;
+  throw new Error("invalid_scope");
+}
+
 async function context() {
   const profile = await getUserProfile();
   if (!profile || profile.role !== "admin") return null;
@@ -40,17 +45,18 @@ export async function PATCH(request: Request, route: Context) {
       const item = await addKittyClassEnrollment(auth.client, actor, {
         occurrenceId: id,
         version: Number(body.version),
+        scope: enrollmentScope(body.scope),
         effectiveDate: String(body.effectiveDate ?? ""),
         enrollment: body.enrollment as KittyEnrollmentInput,
       });
       return NextResponse.json({ class: item });
     }
     if (body.action === "end_enrollment") {
-      if (body.scope !== "enrollment") throw new Error("invalid_action");
       const item = await endKittyClassEnrollment(auth.client, actor, {
         occurrenceId: id,
         enrollmentId: String(body.enrollmentId ?? ""),
         version: Number(body.version),
+        scope: enrollmentScope(body.scope),
         effectiveDate: String(body.effectiveDate ?? ""),
       });
       return NextResponse.json({ class: item });
