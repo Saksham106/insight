@@ -115,10 +115,12 @@ class PluginTests(unittest.TestCase):
             "individual student",
             "whole class",
             "selectionToken",
-            "enrollmentId",
+            "enrollmentHandle",
             "preparationCategory",
         ):
             self.assertIn(required, source)
+        self.assertNotIn("record_class_attendance={occurrenceId,enrollmentId", source)
+        self.assertNotIn("relay_class_update={occurrenceId,enrollmentId", source)
 
     def test_pending_change_decision_payloads_are_request_bound(self):
         source = (PLUGIN_DIR / "__init__.py").read_text()

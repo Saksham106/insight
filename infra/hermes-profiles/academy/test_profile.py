@@ -198,6 +198,8 @@ class AcademyProfileTests(unittest.TestCase):
             "review_prior_material",
             "bring_device",
             "never forward raw inbound text",
+            "enrollmenthandle",
+            "never accept a raw enrollment id",
         ):
             self.assertIn(required, combined)
 
