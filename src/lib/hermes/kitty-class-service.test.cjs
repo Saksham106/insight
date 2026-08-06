@@ -75,7 +75,7 @@ test("mutations retain the atomic Kitty RPC boundary", () => {
   ]) assert.match(source, new RegExp(`rpc\\(["']${rpc}["']`));
   assert.doesNotMatch(source, /rpc\(["'](?:request_kitty_class_change|propose_kitty_class_replacement|decide_kitty_class_change|finalize_kitty_class_change)["']/);
   assert.match(source, /assertAdmin\(actor\)/);
-  assert.match(source, /assertContactMembership/);
+  assert.match(source, /contactMembership/);
   assert.match(source, /validateKittyEnrollments/);
   assert.match(source, /occurrence_selection_confirmed/);
   assert.match(source, /selectionTokenDigest/);

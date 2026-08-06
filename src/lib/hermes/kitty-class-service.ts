@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { messagingName } from "./contact-name";
 import { expandKittySeries, parseKittyRecurrence } from "./kitty-classes";
 import {
   projectKittyClassRoster,
@@ -155,12 +156,6 @@ function projectCurrentChangeRequest(
     enrollment.id === enrollmentId
       && enrollment.contacts.some((contact) => contact.contactId === actor.contactId),
   ) ? changeRequest : null;
-}
-
-async function assertContactMembership(client: Client, occurrenceId: string, contactId: string) {
-  const occurrence = await fetchOccurrence(client, occurrenceId);
-  const roster = await loadOccurrenceRoster(client, occurrence);
-  return contactMembership(roster, contactId);
 }
 
 export async function listKittyClasses(client: Client, actor: KittyClassActor, options: {
@@ -365,24 +360,62 @@ export async function editKittyClass(client: Client, actor: KittyClassActor, inp
 
 export async function confirmKittyClassSelection(client: Client, actor: KittyClassActor, input: { occurrenceId: string; version: number }) {
   if (actor.kind !== "contact") throw new Error("contact_required");
-  await assertContactMembership(client, input.occurrenceId, actor.contactId);
+  const rawOccurrence = await fetchOccurrence(client, input.occurrenceId);
+  const roster = await loadOccurrenceRoster(client, rawOccurrence);
+  contactMembership(roster, actor.contactId);
   const occurrence = await getKittyClassOccurrence(client, actor, input.occurrenceId);
   if (occurrence.version !== input.version || !["scheduled", "change_requested"].includes(occurrence.status)) throw new Error("stale_class");
+  const represented = roster.enrollments.filter((enrollment) =>
+    enrollment.contacts.some((contact) => contact.contactId === actor.contactId),
+  );
+  const studentIds = represented.map((enrollment) => enrollment.studentContactId);
+  const studentResult = studentIds.length
+    ? await client.from("hermes_contacts").select("id, display_name, preferred_name").in("id", studentIds)
+    : { data: [], error: null };
+  dbError(studentResult.error);
+  const students = new Map((studentResult.data ?? []).map((student) => [String(student.id), student]));
+  if (represented.some((enrollment) => !students.has(enrollment.studentContactId))) {
+    throw new Error("kitty_class_operation_failed");
+  }
   const selectionToken = randomBytes(32).toString("hex");
   const selectionTokenDigest = createHash("sha256").update(selectionToken).digest("hex");
   const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+  const representedEnrollments = represented.map((enrollment) => {
+    const enrollmentHandle = randomBytes(32).toString("hex");
+    return {
+      enrollmentId: enrollment.id,
+      enrollmentHandle,
+      enrollmentHandleDigest: createHash("sha256").update(enrollmentHandle).digest("hex"),
+      studentName: messagingName(students.get(enrollment.studentContactId)!),
+    };
+  });
   const { error } = await client.from("kitty_class_audit_events").insert({
     actor_type: "contact", actor_contact_id: actor.contactId,
     event_type: "occurrence_selection_confirmed", entity_type: "occurrence", entity_id: input.occurrenceId,
-    metadata: { occurrenceVersion: input.version, selectionTokenDigest, expiresAt },
+    metadata: {
+      occurrenceVersion: input.version,
+      selectionTokenDigest,
+      expiresAt,
+      representedEnrollmentBindings: representedEnrollments.map((enrollment) => ({
+        enrollmentId: enrollment.enrollmentId,
+        enrollmentHandleDigest: enrollment.enrollmentHandleDigest,
+      })),
+    },
   });
   dbError(error);
-  return { occurrence, selectionToken, expiresAt };
+  return {
+    occurrence,
+    selectionToken,
+    expiresAt,
+    representedEnrollments: representedEnrollments.map(({ enrollmentHandle, studentName }) => ({
+      enrollmentHandle,
+      studentName,
+    })),
+  };
 }
 
 function assertContactRelayInput(actor: KittyClassActor, input: {
   occurrenceId: string;
-  enrollmentId?: string | null;
   selectionToken: string;
   clientRequestId: string;
 }): asserts actor is Extract<KittyClassActor, { kind: "contact" }> {
@@ -390,15 +423,96 @@ function assertContactRelayInput(actor: KittyClassActor, input: {
   if (!nonEmpty(input.occurrenceId)
     || !/^[a-f0-9]{64}$/.test(input.selectionToken)
     || !nonEmpty(input.clientRequestId)
-    || input.clientRequestId.trim().length > 200
-    || (input.enrollmentId !== undefined && input.enrollmentId !== null && !nonEmpty(input.enrollmentId))) {
+    || input.clientRequestId.trim().length > 200) {
     throw new Error("invalid_payload");
   }
 }
 
+async function resolveKittyEnrollmentHandle(client: Client, actor: KittyClassActor, input: {
+  occurrenceId: string;
+  selectionToken: string;
+  enrollmentHandle?: string | null;
+}) {
+  if (actor.kind !== "contact") throw new Error("contact_required");
+  if (!nonEmpty(input.occurrenceId)
+    || !/^[a-f0-9]{64}$/.test(input.selectionToken)
+    || (input.enrollmentHandle !== undefined
+      && input.enrollmentHandle !== null
+      && !/^[a-f0-9]{64}$/.test(input.enrollmentHandle))) {
+    throw new Error("invalid_payload");
+  }
+  const selectionTokenDigest = createHash("sha256").update(input.selectionToken).digest("hex");
+  const { data, error } = await client.from("kitty_class_audit_events")
+    .select("metadata")
+    .eq("actor_contact_id", actor.contactId)
+    .eq("event_type", "occurrence_selection_confirmed")
+    .eq("entity_type", "occurrence")
+    .eq("entity_id", input.occurrenceId)
+    .eq("metadata->>selectionTokenDigest", selectionTokenDigest)
+    .maybeSingle();
+  dbError(error);
+  if (!data || !data.metadata || typeof data.metadata !== "object" || Array.isArray(data.metadata)) {
+    throw new Error("selection_confirmation_required");
+  }
+  const metadata = data.metadata as Record<string, unknown>;
+  const expiresAt = typeof metadata.expiresAt === "string" ? new Date(metadata.expiresAt) : null;
+  if (!expiresAt || !Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+    throw new Error("selection_expired");
+  }
+  const rawBindings = metadata.representedEnrollmentBindings;
+  if (!Array.isArray(rawBindings)) throw new Error("selection_confirmation_required");
+  const bindings = rawBindings.flatMap((binding) => {
+    if (!binding || typeof binding !== "object" || Array.isArray(binding)) return [];
+    const value = binding as Record<string, unknown>;
+    return nonEmpty(value.enrollmentId)
+      && typeof value.enrollmentHandleDigest === "string"
+      && /^[a-f0-9]{64}$/.test(value.enrollmentHandleDigest)
+      ? [{ enrollmentId: value.enrollmentId, enrollmentHandleDigest: value.enrollmentHandleDigest }]
+      : [];
+  });
+  if (!input.enrollmentHandle) {
+    if (bindings.length === 1) return bindings[0].enrollmentId;
+    if (bindings.length > 1) throw new Error("enrollment_selection_required");
+    throw new Error("enrollment_not_represented");
+  }
+  const enrollmentHandleDigest = createHash("sha256").update(input.enrollmentHandle).digest("hex");
+  const selected = bindings.find((binding) => binding.enrollmentHandleDigest === enrollmentHandleDigest);
+  if (!selected) throw new Error("enrollment_selection_required");
+  return selected.enrollmentId;
+}
+
+function projectKittyAttendanceMutation(data: Record<string, unknown> | null) {
+  if (!data) throw new Error("kitty_class_operation_failed");
+  const estimatedAt = data.estimatedAt ?? data.estimated_at;
+  const supersedesAttendanceId = data.supersedesAttendanceId ?? data.supersedes_attendance_id;
+  const createdAt = data.createdAt ?? data.created_at;
+  return {
+    id: String(data.id),
+    status: String(data.status),
+    version: Number(data.version),
+    ...(estimatedAt === undefined ? {} : { estimatedAt: estimatedAt === null ? null : String(estimatedAt) }),
+    ...(supersedesAttendanceId === undefined ? {} : {
+      supersedesAttendanceId: supersedesAttendanceId === null ? null : String(supersedesAttendanceId),
+    }),
+    ...(createdAt === undefined ? {} : { createdAt: String(createdAt) }),
+  };
+}
+
+function projectKittyRelayMutation(data: Record<string, unknown> | null) {
+  if (!data) throw new Error("kitty_class_operation_failed");
+  const structuredPayload = data.structuredPayload ?? data.structured_payload;
+  const createdAt = data.createdAt ?? data.created_at;
+  return {
+    id: String(data.id),
+    intent: String(data.intent),
+    ...(structuredPayload === undefined ? {} : { structuredPayload }),
+    ...(createdAt === undefined ? {} : { createdAt: String(createdAt) }),
+  };
+}
+
 export async function recordKittyAttendance(client: Client, actor: KittyClassActor, input: {
   occurrenceId: string;
-  enrollmentId: string;
+  enrollmentHandle?: string | null;
   status: KittyAttendanceStatus;
   estimatedAt?: string | null;
   note?: string | null;
@@ -406,11 +520,11 @@ export async function recordKittyAttendance(client: Client, actor: KittyClassAct
   clientRequestId: string;
 }) {
   assertContactRelayInput(actor, input);
-  if (!nonEmpty(input.enrollmentId)) throw new Error("invalid_payload");
+  const enrollmentId = await resolveKittyEnrollmentHandle(client, actor, input);
   const normalized = normalizeKittyAttendance(input);
   const { data, error } = await client.rpc("record_kitty_class_attendance", {
     p_occurrence_id: input.occurrenceId,
-    p_enrollment_id: input.enrollmentId,
+    p_enrollment_id: enrollmentId,
     p_actor_contact_id: actor.contactId,
     p_status: normalized.status,
     p_estimated_at: normalized.estimatedAt,
@@ -419,13 +533,13 @@ export async function recordKittyAttendance(client: Client, actor: KittyClassAct
     p_client_request_id: input.clientRequestId.trim(),
   });
   dbError(error);
-  return Array.isArray(data) ? data[0] : data;
+  return projectKittyAttendanceMutation(Array.isArray(data) ? data[0] : data);
 }
 
 export async function correctKittyAttendance(client: Client, actor: KittyClassActor, input: {
   attendanceId: string;
   occurrenceId: string;
-  enrollmentId: string;
+  enrollmentHandle?: string | null;
   status: KittyAttendanceStatus;
   estimatedAt?: string | null;
   note?: string | null;
@@ -433,12 +547,13 @@ export async function correctKittyAttendance(client: Client, actor: KittyClassAc
   clientRequestId: string;
 }) {
   assertContactRelayInput(actor, input);
-  if (!nonEmpty(input.attendanceId) || !nonEmpty(input.enrollmentId)) throw new Error("invalid_payload");
+  if (!nonEmpty(input.attendanceId)) throw new Error("invalid_payload");
+  const enrollmentId = await resolveKittyEnrollmentHandle(client, actor, input);
   const normalized = normalizeKittyAttendance(input);
   const { data, error } = await client.rpc("correct_kitty_class_attendance", {
     p_supersedes_attendance_id: input.attendanceId,
     p_occurrence_id: input.occurrenceId,
-    p_enrollment_id: input.enrollmentId,
+    p_enrollment_id: enrollmentId,
     p_actor_contact_id: actor.contactId,
     p_status: normalized.status,
     p_estimated_at: normalized.estimatedAt,
@@ -447,12 +562,12 @@ export async function correctKittyAttendance(client: Client, actor: KittyClassAc
     p_client_request_id: input.clientRequestId.trim(),
   });
   dbError(error);
-  return Array.isArray(data) ? data[0] : data;
+  return projectKittyAttendanceMutation(Array.isArray(data) ? data[0] : data);
 }
 
 export async function createKittyOperationalRelay(client: Client, actor: KittyClassActor, input: {
   occurrenceId: string;
-  enrollmentId?: string | null;
+  enrollmentHandle?: string | null;
   intent: KittyRelayIntent;
   estimatedAt?: string | null;
   mode?: KittyRelayMode | null;
@@ -463,9 +578,17 @@ export async function createKittyOperationalRelay(client: Client, actor: KittyCl
 }) {
   assertContactRelayInput(actor, input);
   const normalized = normalizeKittyOperationalRelay(input);
+  const enrollmentScoped = [
+    "student_absent", "student_late", "student_leaving_early",
+    "meeting_link_requested", "class_status_requested",
+  ].includes(normalized.intent);
+  if (!enrollmentScoped && input.enrollmentHandle) throw new Error("invalid_payload");
+  const enrollmentId = enrollmentScoped
+    ? await resolveKittyEnrollmentHandle(client, actor, input)
+    : null;
   const { data, error } = await client.rpc("create_kitty_class_operational_relay", {
     p_occurrence_id: input.occurrenceId,
-    p_enrollment_id: input.enrollmentId ?? null,
+    p_enrollment_id: enrollmentId,
     p_actor_contact_id: actor.contactId,
     p_intent: normalized.intent,
     p_estimated_at: normalized.estimatedAt,
@@ -476,13 +599,13 @@ export async function createKittyOperationalRelay(client: Client, actor: KittyCl
     p_client_request_id: input.clientRequestId.trim(),
   });
   dbError(error);
-  return Array.isArray(data) ? data[0] : data;
+  return projectKittyRelayMutation(Array.isArray(data) ? data[0] : data);
 }
 
 export async function beginKittyClassChange(client: Client, actor: KittyClassActor, input: {
   occurrenceId: string; occurrenceVersion: number; changeType: "cancel" | "reschedule";
   scope: "individual_reschedule" | "whole_occurrence";
-  enrollmentId?: string | null;
+  enrollmentHandle?: string | null;
   selectionToken: string;
   clientRequestId: string;
   proposedStartsAt?: string;
@@ -497,15 +620,16 @@ export async function beginKittyClassChange(client: Client, actor: KittyClassAct
     || !nonEmpty(input.clientRequestId) || input.clientRequestId.trim().length > 200) {
     throw new Error("invalid_payload");
   }
-  if (input.scope === "individual_reschedule" && (input.changeType !== "reschedule" || !nonEmpty(input.enrollmentId))) {
-    throw new Error("invalid_change_scope");
-  }
-  if (input.scope === "whole_occurrence" && input.enrollmentId) throw new Error("invalid_change_scope");
+  if (input.scope === "individual_reschedule" && input.changeType !== "reschedule") throw new Error("invalid_change_scope");
+  if (input.scope === "whole_occurrence" && input.enrollmentHandle) throw new Error("invalid_change_scope");
+  const enrollmentId = input.scope === "individual_reschedule"
+    ? await resolveKittyEnrollmentHandle(client, actor, input)
+    : null;
   const { data, error } = await client.rpc("request_kitty_group_class_change", {
     p_occurrence_id: input.occurrenceId,
     p_expected_occurrence_version: input.occurrenceVersion,
     p_scope: input.scope,
-    p_enrollment_id: input.enrollmentId ?? null,
+    p_enrollment_id: enrollmentId,
     p_actor_contact_id: actor.contactId,
     p_change_type: input.changeType,
     p_proposed_starts_at: input.proposedStartsAt ?? null,

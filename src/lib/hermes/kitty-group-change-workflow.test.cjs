@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require("node:assert/strict");
 const childProcess = require("node:child_process");
+const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -19,6 +20,7 @@ const toolsPath = path.join(__dirname, "kitty-class-tools.ts");
 const contact = { kind: "contact", contactId: "family-a", channel: "whatsapp" };
 const token = "a".repeat(64);
 const digest = "b".repeat(64);
+const enrollmentHandle = "c".repeat(64);
 
 function rpcClient(result = {
   id: "request-1", status: "awaiting_counterparty", version: 1,
@@ -28,6 +30,20 @@ function rpcClient(result = {
   return {
     calls,
     client: {
+      from(table) {
+        assert.equal(table, "kitty_class_audit_events");
+        const query = {
+          select() { return query; }, eq() { return query; },
+          maybeSingle: async () => ({ data: { metadata: {
+            expiresAt: "2099-01-01T00:00:00.000Z",
+            representedEnrollmentBindings: [{
+              enrollmentId: "enrollment-a",
+              enrollmentHandleDigest: createHash("sha256").update(enrollmentHandle).digest("hex"),
+            }],
+          } }, error: null }),
+        };
+        return query;
+      },
       async rpc(name, payload) {
         calls.push({ name, payload });
         return { data: result, error: null };
@@ -97,7 +113,7 @@ test("individual replacement is explicitly bound to one enrollment", async () =>
     occurrenceId: "occurrence-1",
     occurrenceVersion: 4,
     scope: "individual_reschedule",
-    enrollmentId: "enrollment-a",
+    enrollmentHandle,
     changeType: "reschedule",
     proposedStartsAt: "2026-08-13T21:00:00.000Z",
     proposedEndsAt: "2026-08-13T22:00:00.000Z",
@@ -205,19 +221,35 @@ test("pending group changes use the multi-counterparty status projection", async
 test("contact tool requires explicit scope and passes one stable request identity", async () => {
   const { executeKittyClassTool } = require(toolsPath);
   const calls = [];
-  const client = { async rpc(name, payload) {
-    calls.push({ name, payload });
-    return { data: {
-      id: "request-1", status: "awaiting_counterparty", version: 1,
-      occurrence_id: "occurrence-1", enrollment_id: "enrollment-a",
-      required_enrollment_ids: ["enrollment-a"],
-      required_enrollment_approvals: 1, received_enrollment_approvals: 1,
-    }, error: null };
-  } };
+  const client = {
+    from(table) {
+      assert.equal(table, "kitty_class_audit_events");
+      const query = {
+        select() { return query; }, eq() { return query; },
+        maybeSingle: async () => ({ data: { metadata: {
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          representedEnrollmentBindings: [{
+            enrollmentId: "enrollment-a",
+            enrollmentHandleDigest: createHash("sha256").update(enrollmentHandle).digest("hex"),
+          }],
+        } }, error: null }),
+      };
+      return query;
+    },
+    async rpc(name, payload) {
+      calls.push({ name, payload });
+      return { data: {
+        id: "request-1", status: "awaiting_counterparty", version: 1,
+        occurrence_id: "occurrence-1", enrollment_id: "enrollment-a",
+        required_enrollment_ids: ["enrollment-a"],
+        required_enrollment_approvals: 1, received_enrollment_approvals: 1,
+      }, error: null };
+    },
+  };
 
   const result = await executeKittyClassTool(client, contact, "request_class_change", {
     occurrenceId: "occurrence-1", occurrenceVersion: 4,
-    scope: "individual_reschedule", enrollmentId: "enrollment-a",
+    scope: "individual_reschedule", enrollmentHandle,
     changeType: "reschedule", selectionToken: token,
     proposedStartsAt: "2026-08-13T21:00:00.000Z",
     proposedEndsAt: "2026-08-13T22:00:00.000Z",

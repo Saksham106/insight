@@ -52,6 +52,14 @@ function clientRequestId(payload: Payload, fallback?: string) {
   return value;
 }
 
+function contactEnrollmentHandle(payload: Payload) {
+  if ("enrollmentId" in payload) throw new Error("invalid_payload");
+  if (payload.enrollmentHandle === undefined || payload.enrollmentHandle === null || payload.enrollmentHandle === "") {
+    return undefined;
+  }
+  return text(payload, "enrollmentHandle");
+}
+
 function legacyGroupRoster(payload: Payload) {
   if (!Array.isArray(payload.participants) || payload.participants.length < 2) throw new Error("invalid_payload");
   const participants = payload.participants as Array<Record<string, unknown>>;
@@ -149,7 +157,7 @@ export async function executeKittyClassTool(
     case "find_my_pending_changes": return { changeRequests: await findMyPendingKittyChanges(client, actor, typeof payload.referenceCode === "string" ? payload.referenceCode : undefined) };
     case "confirm_class_selection": return { confirmation: await confirmKittyClassSelection(client, actor, { occurrenceId: text(payload, "occurrenceId"), version: number(payload, "occurrenceVersion") }), confirmed: true };
     case "record_class_attendance": return { attendance: await recordKittyAttendance(client, actor, {
-      occurrenceId: text(payload, "occurrenceId"), enrollmentId: text(payload, "enrollmentId"),
+      occurrenceId: text(payload, "occurrenceId"), enrollmentHandle: contactEnrollmentHandle(payload),
       status: payload.status as Parameters<typeof recordKittyAttendance>[2]["status"],
       estimatedAt: typeof payload.estimatedAt === "string" ? payload.estimatedAt : undefined,
       note: typeof payload.note === "string" ? payload.note : undefined,
@@ -157,7 +165,7 @@ export async function executeKittyClassTool(
     }) };
     case "correct_class_attendance": return { attendance: await correctKittyAttendance(client, actor, {
       attendanceId: text(payload, "attendanceId"), occurrenceId: text(payload, "occurrenceId"),
-      enrollmentId: text(payload, "enrollmentId"),
+      enrollmentHandle: contactEnrollmentHandle(payload),
       status: payload.status as Parameters<typeof correctKittyAttendance>[2]["status"],
       estimatedAt: typeof payload.estimatedAt === "string" ? payload.estimatedAt : undefined,
       note: typeof payload.note === "string" ? payload.note : undefined,
@@ -165,7 +173,7 @@ export async function executeKittyClassTool(
     }) };
     case "relay_class_update": return { relay: await createKittyOperationalRelay(client, actor, {
       occurrenceId: text(payload, "occurrenceId"),
-      enrollmentId: typeof payload.enrollmentId === "string" ? payload.enrollmentId : undefined,
+      enrollmentHandle: contactEnrollmentHandle(payload),
       intent: payload.intent as Parameters<typeof createKittyOperationalRelay>[2]["intent"],
       estimatedAt: typeof payload.estimatedAt === "string" ? payload.estimatedAt : undefined,
       mode: payload.mode as Parameters<typeof createKittyOperationalRelay>[2]["mode"],
@@ -180,7 +188,7 @@ export async function executeKittyClassTool(
       if (payload.scope !== "individual_reschedule" && payload.scope !== "whole_occurrence") throw new Error("invalid_payload");
       const changeRequest = await beginKittyClassChange(client, actor, {
         occurrenceId, occurrenceVersion, changeType, scope: payload.scope,
-        enrollmentId: typeof payload.enrollmentId === "string" ? payload.enrollmentId : undefined,
+        enrollmentHandle: contactEnrollmentHandle(payload),
         selectionToken: text(payload, "selectionToken"),
         clientRequestId: clientRequestId(payload, context.clientRequestId),
         proposedStartsAt: typeof payload.proposedStartsAt === "string" ? payload.proposedStartsAt : undefined,

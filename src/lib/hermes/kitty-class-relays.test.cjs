@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -132,14 +133,32 @@ test("notification template projection ignores raw and attendance note fields", 
 test("attendance, correction, and relay services use one actor-bound transactional RPC", async () => {
   const { recordKittyAttendance, correctKittyAttendance, createKittyOperationalRelay } = require(servicePath);
   const calls = [];
-  const client = { rpc: async (name, payload) => {
-    calls.push({ name, payload });
-    return { data: { id: `${name}-1`, status: payload.p_status ?? "pending", version: 1 }, error: null };
-  } };
+  const selectionToken = "a".repeat(64);
+  const enrollmentHandle = "c".repeat(64);
+  const client = {
+    from(table) {
+      assert.equal(table, "kitty_class_audit_events");
+      const query = {
+        select() { return query; }, eq() { return query; },
+        maybeSingle: async () => ({ data: { metadata: {
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          representedEnrollmentBindings: [{
+            enrollmentId: "enrollment-a",
+            enrollmentHandleDigest: createHash("sha256").update(enrollmentHandle).digest("hex"),
+          }],
+        } }, error: null }),
+      };
+      return query;
+    },
+    rpc: async (name, payload) => {
+      calls.push({ name, payload });
+      return { data: { id: `${name}-1`, status: payload.p_status ?? "pending", version: 1 }, error: null };
+    },
+  };
   const actor = { kind: "contact", contactId: "student-a", channel: "whatsapp" };
   const common = {
-    occurrenceId: "occurrence-1", enrollmentId: "enrollment-a",
-    selectionToken: "a".repeat(64), clientRequestId: "wa-request-1",
+    occurrenceId: "occurrence-1", enrollmentHandle,
+    selectionToken, clientRequestId: "wa-request-1",
   };
 
   await recordKittyAttendance(client, actor, { ...common, status: "absent", note: "Family conflict" });
@@ -157,6 +176,7 @@ test("attendance, correction, and relay services use one actor-bound transaction
     "create_kitty_class_operational_relay",
   ]);
   assert.ok(calls.every((call) => call.payload.p_actor_contact_id === "student-a"));
+  assert.ok(calls.every((call) => call.payload.p_enrollment_id === "enrollment-a"));
   assert.ok(calls.every((call) => !("actorContactId" in call.payload) && !("role" in call.payload)));
   assert.equal(calls[0].payload.p_note, "Family conflict");
   assert.equal(calls[1].payload.p_supersedes_attendance_id, "attendance-1");
