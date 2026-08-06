@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
 import { kittyLocalDateTimeToUtc } from "@/lib/hermes/kitty-classes";
-import { createKittyClass, listKittyClasses, retryKittyClassNotification, type KittyClassParticipantInput } from "@/lib/hermes/kitty-class-service";
+import type { KittyEnrollmentInput } from "@/lib/hermes/kitty-class-enrollments";
+import { createKittyClass, listKittyClasses, retryKittyClassNotification } from "@/lib/hermes/kitty-class-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function enabled() {
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
   if (!enabled()) return NextResponse.json({ error: "Kitty Classes is not enabled." }, { status: 503 });
   try {
     const body = await request.json() as Record<string, unknown>;
-    const participants = Array.isArray(body.participants) ? body.participants as KittyClassParticipantInput[] : [];
+    const enrollments = Array.isArray(body.enrollments) ? body.enrollments as KittyEnrollmentInput[] : [];
     const timezone = String(body.timezone ?? "");
     const localStartsAt = typeof body.localStartsAt === "string" ? body.localStartsAt : null;
     const startsAt = localStartsAt ? kittyLocalDateTimeToUtc(localStartsAt, timezone) : typeof body.startsAt === "string" ? body.startsAt : undefined;
@@ -53,12 +54,14 @@ export async function POST(request: Request) {
       durationMinutes,
       effectiveStart: typeof body.effectiveStart === "string" ? body.effectiveStart : undefined,
       effectiveEnd: typeof body.effectiveEnd === "string" ? body.effectiveEnd : null,
-      participants,
+      teacherContactId: String(body.teacherContactId ?? ""),
+      enrollments,
+      clientRequestId: String(body.clientRequestId ?? ""),
     });
     return NextResponse.json({ class: created }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error && ["invalid_class", "invalid_recurrence"].includes(error.message)
-      ? "Check the class time and participants."
+    const message = error instanceof Error && ["invalid_class", "invalid_recurrence", "enrollment_required", "invalid_enrollment"].includes(error.message)
+      ? "Check the class time, teacher, and enrollments."
       : "Could not create the Kitty class.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

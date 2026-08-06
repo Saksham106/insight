@@ -19,4 +19,9 @@ test("Kitty class routes are admin-only, flagged, and service-backed", () => {
   assert.match(item, /editKittyClass/);
   assert.match(item, /overrideKittyClass/);
   assert.match(item, /overrideReason/);
+  assert.match(collection, /teacherContactId/);
+  assert.match(collection, /enrollments/);
+  assert.match(collection, /clientRequestId/);
+  assert.match(item, /addKittyClassEnrollment/);
+  assert.match(item, /endKittyClassEnrollment/);
 });
