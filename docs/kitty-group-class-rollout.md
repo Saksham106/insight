@@ -43,7 +43,20 @@ No project was relinked.
 
 ### Supabase migration drift
 
-The linked migration list has substantial pre-existing two-way drift: many local-only versions and many remote-only versions from May through August 2026. Applying the Kitty migrations in that state could misrepresent or collide with the live schema history. No linked dry run or database push was attempted. Reconcile the migration history in a separate reviewed operation, then rerun `supabase migration list --linked` and a dry-run push before applying any Kitty migration.
+The linked database's real migration history was reconstructed read-only in a temporary workspace created with restrictive mode `0700`. All 47 production migrations were fetched, and each fetched file was validated against its exact production hash before any local-only migration was introduced. Exactly these eight Kitty migrations were then appended in version order:
+
+- `20260805120000_add_kitty_class_calendar.sql`
+- `20260805222827_add_kitty_group_classes.sql`
+- `20260805235110_add_kitty_group_class_services.sql`
+- `20260806005742_add_kitty_class_relays.sql`
+- `20260806020109_coordinate_kitty_group_class_changes.sql`
+- `20260806040937_harden_kitty_class_admin.sql`
+- `20260806042747_add_kitty_class_attention_lifecycle.sql`
+- `20260806114049_index_kitty_foreign_keys.sql`
+
+The unrelated branch migration `20260804120000_preserve_known_hermes_contacts_on_import.sql` was explicitly excluded from the reconstructed chain. The resulting linked migration list contained exactly 47 paired production migrations and eight local-only Kitty migrations. `supabase db push --linked --dry-run` listed only those eight Kitty migrations and performed no database write. The temporary workspace was then removed.
+
+This proves the Kitty-only application set, but it does not authorize a production push from the feature branch. The repository's real branch history remains different from the reconstructed production history. Persisting that reconciliation into the branch would materially change unrelated migrations and requires its own reviewed operation. Production application therefore remains blocked; no migration file, migration-history row, or database object was changed during this reconciliation check.
 
 ### Vercel authentication and environment
 
@@ -56,6 +69,8 @@ Vercel CLI 54.21.1 initially reported `No existing credentials found` and starte
 Using that session, only `KITTY_CLASS_CALENDAR_ENABLED=false` was added to Preview. Production and all other variables were left unchanged. Redeploying reviewed head `b398e7357f7f73b98518947e26896269358f347d` created Preview deployment `dpl_3y1dixc8ocmjqobPeKxutDrTZVyi` at `https://insight-mct3av007-saksham-goels-projects-0ecf36cd.vercel.app`; Vercel reported target `preview` and status `Ready`, with the branch alias attached. The GitHub checks for the same head's source deployment remained successful.
 
 Authenticated protected-preview probes returned HTTP 200 for GET `/` and HTTP 404 with the safe `Not found` response for POST `/api/hermes/class-tools`, proving the feature flag is disabled in the application. An unsigned maintenance request returned HTTP 401 as designed because cron authentication precedes the feature gate. Preview has no `CRON_SECRET`, so the authenticated maintenance 404 cannot be tested without inventing a credential; none was added. The temporary environment file used to check name presence was deleted, and no value was printed. Vercel CLI generated its normal deployment-protection bypass token automatically for the project; the token value was not displayed or stored in the repository.
+
+Documentation commit `3817a3a5cef9d22a8b9bb9c191c5c64ab17a04e9` subsequently built as Git-integrated Preview deployment `dpl_BkvDJWo4pgjmF2VLoSmSdnAVJKLQ` at `https://insight-mg3dkj2yv-saksham-goels-projects-0ecf36cd.vercel.app`. Vercel reported target `preview` and status `Ready`; both the Vercel deployment check and Vercel Preview Comments check passed. The valid application smoke evidence remains the explicit-false deployment `dpl_3y1dixc8ocmjqobPeKxutDrTZVyi`: root 200, class-tools 404, and unsigned cron 401 because Preview has no `CRON_SECRET`.
 
 The existing local production-environment snapshot contains empty Supabase values and does not contain the dedicated Kitty tool URL or required Kitty template variables. Those unknown values were not added.
 
@@ -81,7 +96,7 @@ There is no configured provider sandbox or explicitly selected safe contact in t
 
 ## Safe continuation order
 
-1. Reconcile Supabase migration history without discarding remote-only changes.
+1. Review and persist a production-history reconciliation separately, without changing or discarding unrelated migrations; do not apply from the feature branch's current history.
 2. Configure an existing approved Preview `CRON_SECRET` only when an exact value is available, then verify the authenticated maintenance route returns the disabled 404.
 3. Verify the protected admin UI with an approved Preview admin session; the public page and disabled class-tool API are already healthy.
 4. Dry-run and apply only the reviewed Kitty migrations while disabled.
