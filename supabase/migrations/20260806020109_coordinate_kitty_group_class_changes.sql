@@ -11,6 +11,23 @@ create index kitty_class_requests_replacement_occurrence_idx
   on public.kitty_class_change_requests(replacement_occurrence_id)
   where replacement_occurrence_id is not null;
 
+create type public.kitty_group_change_result as (
+  id uuid,
+  "occurrenceId" uuid,
+  "changeType" text,
+  scope text,
+  status text,
+  "proposedStartsAt" timestamptz,
+  "proposedEndsAt" timestamptz,
+  "proposedTimezone" text,
+  "payloadDigest" text,
+  version integer,
+  "expiresAt" timestamptz,
+  "replacementOccurrenceId" uuid,
+  "requiredEnrollmentApprovals" integer,
+  "receivedEnrollmentApprovals" integer
+);
+
 create or replace function public.kitty_class_active_enrollment_ids(p_occurrence_id uuid)
 returns uuid[]
 language sql stable security invoker set search_path = '' as $$
@@ -93,6 +110,28 @@ language sql immutable security invoker set search_path = '' as $$
     ),
     'hex'
   )
+$$;
+
+create function public.project_kitty_group_change_result(p_request_id uuid)
+returns public.kitty_group_change_result
+language sql stable security invoker set search_path = '' as $$
+  select request.id, request.occurrence_id, request.change_type, request.scope,
+    request.status, request.proposed_starts_at, request.proposed_ends_at,
+    request.proposed_timezone, request.payload_digest, request.version,
+    request.expires_at, request.replacement_occurrence_id,
+    coalesce(pg_catalog.cardinality(request.required_enrollment_ids), 0),
+    (
+      select pg_catalog.count(*)::integer
+      from public.kitty_class_change_confirmations confirmation
+      where confirmation.change_request_id = request.id
+        and confirmation.request_version = request.version
+        and confirmation.decision_side = 'student'
+        and confirmation.decision = 'approved'
+        and confirmation.payload_digest = request.payload_digest
+        and confirmation.enrollment_id = any(request.required_enrollment_ids)
+    )
+  from public.kitty_class_change_requests request
+  where request.id = p_request_id
 $$;
 
 create function public.kitty_group_change_actor(
@@ -393,7 +432,7 @@ create function public.request_kitty_group_class_change(
   p_proposed_timezone text,
   p_selection_token text,
   p_client_request_id text
-) returns public.kitty_class_change_requests
+) returns public.kitty_group_change_result
 language plpgsql security definer set search_path = '' as $$
 declare
   v_occurrence public.kitty_class_occurrences;
@@ -452,7 +491,7 @@ begin
     from public.kitty_class_change_requests request
     where request.id = v_existing_audit.entity_id;
     if not found then raise exception 'idempotency_target_missing'; end if;
-    return v_request;
+    return public.project_kitty_group_change_result(v_request.id);
   end if;
 
   select occurrence.* into v_occurrence
@@ -593,7 +632,7 @@ begin
       'occurrenceId', v_occurrence.id
     )
   );
-  return v_request;
+  return public.project_kitty_group_change_result(v_request.id);
 end;
 $$;
 
@@ -606,7 +645,7 @@ create function public.propose_kitty_group_class_change(
   p_ends_at timestamptz,
   p_timezone text,
   p_client_request_id text
-) returns public.kitty_class_change_requests
+) returns public.kitty_group_change_result
 language plpgsql security definer set search_path = '' as $$
 declare
   v_request public.kitty_class_change_requests;
@@ -645,7 +684,7 @@ begin
     select request.* into v_request from public.kitty_class_change_requests request
     where request.id = v_existing_audit.entity_id;
     if not found then raise exception 'idempotency_target_missing'; end if;
-    return v_request;
+    return public.project_kitty_group_change_result(v_request.id);
   end if;
 
   select request.* into v_request
@@ -726,7 +765,7 @@ begin
     'change_request', v_request.id, v_request_id,
     pg_catalog.jsonb_build_object('payloadDigest', v_operation_digest)
   );
-  return v_request;
+  return public.project_kitty_group_change_result(v_request.id);
 end;
 $$;
 
@@ -738,7 +777,7 @@ create function public.decide_kitty_group_class_change(
   p_decision text,
   p_provider_message_id text,
   p_client_request_id text
-) returns public.kitty_class_change_requests
+) returns public.kitty_group_change_result
 language plpgsql security definer set search_path = '' as $$
 declare
   v_request public.kitty_class_change_requests;
@@ -776,7 +815,7 @@ begin
     select request.* into v_request from public.kitty_class_change_requests request
     where request.id = v_existing_audit.entity_id;
     if not found then raise exception 'idempotency_target_missing'; end if;
-    return v_request;
+    return public.project_kitty_group_change_result(v_request.id);
   end if;
 
   select request.* into v_request
@@ -898,7 +937,7 @@ begin
     'change_request', v_request.id, v_request_id,
     pg_catalog.jsonb_build_object('payloadDigest', v_operation_digest)
   );
-  return v_request;
+  return public.project_kitty_group_change_result(v_request.id);
 end;
 $$;
 
@@ -973,6 +1012,7 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 revoke execute on function public.kitty_group_change_payload_digest(uuid, text, uuid, text, timestamptz, timestamptz, text) from public, anon, authenticated, service_role;
+revoke execute on function public.project_kitty_group_change_result(uuid) from public, anon, authenticated, service_role;
 revoke execute on function public.kitty_group_change_actor(uuid, uuid, text, uuid, uuid[]) from public, anon, authenticated, service_role;
 revoke execute on function public.reserve_kitty_group_change_notifications(uuid, uuid, uuid[], text, jsonb, text, uuid) from public, anon, authenticated, service_role;
 revoke execute on function public.finalize_kitty_group_class_change(uuid) from public, anon, authenticated, service_role;
@@ -986,6 +1026,9 @@ revoke execute on function public.request_kitty_class_change(uuid, text, uuid, t
 revoke execute on function public.propose_kitty_class_replacement(uuid, integer, text, uuid, timestamptz, timestamptz, text, text) from public, anon, authenticated, service_role;
 revoke execute on function public.decide_kitty_class_change(uuid, integer, text, uuid, text, text) from public, anon, authenticated, service_role;
 revoke execute on function public.finalize_kitty_class_change(uuid, integer, text) from public, anon, authenticated, service_role;
+
+revoke usage on type public.kitty_group_change_result from public, anon, authenticated;
+grant usage on type public.kitty_group_change_result to service_role;
 
 grant execute on function public.request_kitty_group_class_change(uuid, integer, text, uuid, uuid, text, timestamptz, timestamptz, text, text, text) to service_role;
 grant execute on function public.propose_kitty_group_class_change(uuid, integer, text, uuid, timestamptz, timestamptz, text, text) to service_role;

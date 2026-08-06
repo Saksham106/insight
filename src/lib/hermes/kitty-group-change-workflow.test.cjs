@@ -20,7 +20,10 @@ const contact = { kind: "contact", contactId: "family-a", channel: "whatsapp" };
 const token = "a".repeat(64);
 const digest = "b".repeat(64);
 
-function rpcClient(result = { id: "request-1", status: "awaiting_counterparty", version: 1 }) {
+function rpcClient(result = {
+  id: "request-1", status: "awaiting_counterparty", version: 1,
+  requiredEnrollmentApprovals: 1, receivedEnrollmentApprovals: 1,
+}) {
   const calls = [];
   return {
     calls,
@@ -33,11 +36,23 @@ function rpcClient(result = { id: "request-1", status: "awaiting_counterparty", 
   };
 }
 
+function assertSafeProgress(result, required, received) {
+  assert.equal(result.requiredEnrollmentApprovals, required);
+  assert.equal(result.receivedEnrollmentApprovals, received);
+  assert.equal(Object.keys(result).some((key) => key.includes("_")), false);
+  for (const key of ["enrollmentId", "requiredEnrollmentIds", "enrollment_id", "required_enrollment_ids"]) {
+    assert.equal(key in result, false);
+  }
+}
+
 test("whole-group reschedule is one locked scope-aware RPC", async () => {
   const { beginKittyClassChange } = require(servicePath);
   const { client, calls } = rpcClient({
     id: "request-1", status: "awaiting_counterparty", version: 1,
+    occurrence_id: "occurrence-1", change_type: "reschedule",
+    payload_digest: digest, enrollment_id: "must-not-leak",
     required_enrollment_ids: ["enrollment-a", "enrollment-b", "enrollment-c"],
+    required_enrollment_approvals: 3, received_enrollment_approvals: 0,
   });
 
   const result = await beginKittyClassChange(client, contact, {
@@ -53,7 +68,10 @@ test("whole-group reschedule is one locked scope-aware RPC", async () => {
   });
 
   assert.equal(result.status, "awaiting_counterparties");
-  assert.equal(result.requiredEnrollmentApprovals, 3);
+  assertSafeProgress(result, 3, 0);
+  assert.equal(result.occurrenceId, "occurrence-1");
+  assert.equal(result.changeType, "reschedule");
+  assert.equal(result.payloadDigest, digest);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].name, "request_kitty_group_class_change");
   assert.deepEqual(calls[0].payload, {
@@ -110,28 +128,54 @@ test("individual cancellation cannot enter the change workflow", async () => {
 
 test("proposal changes and decisions carry optimistic binding and idempotency", async () => {
   const { decideKittyClassChange, proposeKittyClassReplacement } = require(servicePath);
-  const proposed = rpcClient({ id: "request-1", status: "awaiting_counterparties", version: 3 });
-  const decided = rpcClient({ id: "request-1", status: "finalized", version: 3 });
+  const proposed = rpcClient({
+    id: "request-1", status: "awaiting_counterparty", version: 3,
+    occurrence_id: "occurrence-1", payload_digest: digest,
+    enrollment_id: "must-not-leak", required_enrollment_ids: ["a", "b", "c"],
+    required_enrollment_approvals: 3, received_enrollment_approvals: 0,
+  });
+  const partiallyDecided = rpcClient({
+    id: "request-1", status: "awaiting_counterparty", version: 3,
+    occurrence_id: "occurrence-1", payload_digest: digest,
+    enrollment_id: "must-not-leak", required_enrollment_ids: ["a", "b", "c"],
+    required_enrollment_approvals: 3, received_enrollment_approvals: 2,
+  });
+  const finallyDecided = rpcClient({
+    id: "request-1", status: "finalized", version: 3,
+    occurrence_id: "occurrence-1", payload_digest: digest,
+    replacement_occurrence_id: "replacement-1",
+    enrollment_id: "must-not-leak", required_enrollment_ids: ["a", "b", "c"],
+    required_enrollment_approvals: 3, received_enrollment_approvals: 3,
+  });
 
-  await proposeKittyClassReplacement(proposed.client, contact, {
+  const proposalResult = await proposeKittyClassReplacement(proposed.client, contact, {
     requestId: "request-1", requestVersion: 2, payloadDigest: digest,
     proposedStartsAt: "2026-08-14T21:00:00.000Z",
     proposedEndsAt: "2026-08-14T22:00:00.000Z",
     proposedTimezone: "America/New_York",
     clientRequestId: "proposal:2",
   });
-  await decideKittyClassChange(decided.client, contact, {
+  const partialResult = await decideKittyClassChange(partiallyDecided.client, contact, {
     requestId: "request-1", requestVersion: 3, payloadDigest: digest,
     decision: "approved", providerMessageId: "wamid.1",
     clientRequestId: "decision:3",
+  });
+  const finalResult = await decideKittyClassChange(finallyDecided.client, contact, {
+    requestId: "request-1", requestVersion: 3, payloadDigest: digest,
+    decision: "approved", providerMessageId: "wamid.2",
+    clientRequestId: "decision:4",
   });
 
   assert.equal(proposed.calls[0].name, "propose_kitty_group_class_change");
   assert.equal(proposed.calls[0].payload.p_actor_contact_id, "family-a");
   assert.equal(proposed.calls[0].payload.p_client_request_id, "proposal:2");
-  assert.equal(decided.calls[0].name, "decide_kitty_group_class_change");
-  assert.equal(decided.calls[0].payload.p_actor_contact_id, "family-a");
-  assert.equal(decided.calls[0].payload.p_client_request_id, "decision:3");
+  assert.equal(partiallyDecided.calls[0].name, "decide_kitty_group_class_change");
+  assert.equal(partiallyDecided.calls[0].payload.p_actor_contact_id, "family-a");
+  assert.equal(partiallyDecided.calls[0].payload.p_client_request_id, "decision:3");
+  assertSafeProgress(proposalResult, 3, 0);
+  assertSafeProgress(partialResult, 3, 2);
+  assertSafeProgress(finalResult, 3, 3);
+  assert.equal(finalResult.replacementOccurrenceId, "replacement-1");
 });
 
 test("pending group changes use the multi-counterparty status projection", async () => {
@@ -163,7 +207,12 @@ test("contact tool requires explicit scope and passes one stable request identit
   const calls = [];
   const client = { async rpc(name, payload) {
     calls.push({ name, payload });
-    return { data: { id: "request-1", status: "awaiting_counterparty", version: 1, required_enrollment_ids: ["enrollment-a"] }, error: null };
+    return { data: {
+      id: "request-1", status: "awaiting_counterparty", version: 1,
+      occurrence_id: "occurrence-1", enrollment_id: "enrollment-a",
+      required_enrollment_ids: ["enrollment-a"],
+      required_enrollment_approvals: 1, received_enrollment_approvals: 1,
+    }, error: null };
   } };
 
   const result = await executeKittyClassTool(client, contact, "request_class_change", {
@@ -174,7 +223,7 @@ test("contact tool requires explicit scope and passes one stable request identit
     proposedEndsAt: "2026-08-13T22:00:00.000Z",
   }, { clientRequestId: "transport-request:1" });
 
-  assert.equal(result.changeRequest.requiredEnrollmentApprovals, 1);
+  assertSafeProgress(result.changeRequest, 1, 1);
   assert.equal(calls[0].payload.p_scope, "individual_reschedule");
   assert.equal(calls[0].payload.p_client_request_id, "transport-request:1");
 
@@ -189,7 +238,10 @@ test("teacher cancellation reports final notification reservation truthfully", a
   const client = { async rpc() {
     return { data: {
       id: "cancel-1", status: "finalized", version: 1,
+      occurrence_id: "occurrence-1", enrollment_id: "must-not-leak",
+      replacementOccurrenceId: null,
       required_enrollment_ids: [],
+      required_enrollment_approvals: 0, received_enrollment_approvals: 0,
     }, error: null };
   } };
 
@@ -202,6 +254,8 @@ test("teacher cancellation reports final notification reservation truthfully", a
 
   assert.equal(result.counterpartyNotificationReserved, false);
   assert.equal(result.finalNotificationsReserved, true);
+  assertSafeProgress(result.changeRequest, 0, 0);
+  assert.equal(result.changeRequest.replacementOccurrenceId, null);
 });
 
 test("Task 5 mutations are service-role-only definers with an empty search path", () => {

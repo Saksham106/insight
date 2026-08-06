@@ -517,30 +517,54 @@ export async function beginKittyClassChange(client: Client, actor: KittyClassAct
   return projectKittyChangeRequest(Array.isArray(data) ? data[0] : data);
 }
 
-type KittyChangeRequestProjection = Record<string, unknown> & {
+type KittyChangeRequestProjection = {
+  id: string;
+  occurrenceId?: string;
+  changeType?: string;
+  scope?: string;
+  status: string;
+  proposedStartsAt?: string | null;
+  proposedEndsAt?: string | null;
+  proposedTimezone?: string | null;
+  payloadDigest?: string;
+  version: number;
+  expiresAt?: string;
+  replacementOccurrenceId?: string | null;
   requiredEnrollmentApprovals: number;
-  receivedEnrollmentApprovals?: number;
+  receivedEnrollmentApprovals: number;
 };
 
 function projectKittyChangeRequest(data: Record<string, unknown> | null): KittyChangeRequestProjection {
   if (!data) throw new Error("kitty_class_operation_failed");
-  const {
-    required_enrollment_ids: requiredEnrollmentIds,
-    required_enrollment_approvals: requiredEnrollmentApprovals,
-    received_enrollment_approvals: receivedEnrollmentApprovals,
-    ...safe
-  } = data;
-  const required = Number.isInteger(requiredEnrollmentApprovals)
-    ? Number(requiredEnrollmentApprovals)
-    : Array.isArray(requiredEnrollmentIds) ? requiredEnrollmentIds.length : 0;
-  const received = Number.isInteger(receivedEnrollmentApprovals)
-    ? Number(receivedEnrollmentApprovals)
-    : undefined;
+  const required = data.requiredEnrollmentApprovals ?? data.required_enrollment_approvals;
+  const received = data.receivedEnrollmentApprovals ?? data.received_enrollment_approvals;
+  if (!Number.isInteger(required) || !Number.isInteger(received)) throw new Error("kitty_class_operation_failed");
+  const field = (camel: string, snake: string) => data[camel] !== undefined ? data[camel] : data[snake];
+  const occurrenceId = field("occurrenceId", "occurrence_id");
+  const changeType = field("changeType", "change_type");
+  const proposedStartsAt = field("proposedStartsAt", "proposed_starts_at");
+  const proposedEndsAt = field("proposedEndsAt", "proposed_ends_at");
+  const proposedTimezone = field("proposedTimezone", "proposed_timezone");
+  const payloadDigest = field("payloadDigest", "payload_digest");
+  const expiresAt = field("expiresAt", "expires_at");
+  const replacementOccurrenceId = field("replacementOccurrenceId", "replacement_occurrence_id");
   return {
-    ...safe,
-    status: data.status === "awaiting_counterparty" ? "awaiting_counterparties" : data.status,
-    requiredEnrollmentApprovals: required,
-    ...(received === undefined ? {} : { receivedEnrollmentApprovals: received }),
+    id: String(data.id),
+    ...(occurrenceId === undefined ? {} : { occurrenceId: String(occurrenceId) }),
+    ...(changeType === undefined ? {} : { changeType: String(changeType) }),
+    ...(data.scope === undefined ? {} : { scope: String(data.scope) }),
+    status: data.status === "awaiting_counterparty" ? "awaiting_counterparties" : String(data.status),
+    ...(proposedStartsAt === undefined ? {} : { proposedStartsAt: proposedStartsAt === null ? null : String(proposedStartsAt) }),
+    ...(proposedEndsAt === undefined ? {} : { proposedEndsAt: proposedEndsAt === null ? null : String(proposedEndsAt) }),
+    ...(proposedTimezone === undefined ? {} : { proposedTimezone: proposedTimezone === null ? null : String(proposedTimezone) }),
+    ...(payloadDigest === undefined ? {} : { payloadDigest: String(payloadDigest) }),
+    version: Number(data.version),
+    ...(expiresAt === undefined ? {} : { expiresAt: String(expiresAt) }),
+    ...(replacementOccurrenceId === undefined ? {} : {
+      replacementOccurrenceId: replacementOccurrenceId === null ? null : String(replacementOccurrenceId),
+    }),
+    requiredEnrollmentApprovals: Number(required),
+    receivedEnrollmentApprovals: Number(received),
   };
 }
 
