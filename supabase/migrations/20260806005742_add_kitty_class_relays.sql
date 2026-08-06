@@ -27,14 +27,12 @@ alter table public.kitty_class_notification_outbox
   ),
   add constraint kitty_class_outbox_relay_payload_check check (
     intent not in ('class_attendance_update', 'class_teacher_delay', 'class_operational_update')
-    or (
+    or coalesce(
       pg_catalog.jsonb_typeof(payload) = 'object'
-      and coalesce(
-        pg_catalog.jsonb_typeof(payload->'relaySummary') = 'string'
-        and pg_catalog.length(payload->>'relaySummary') between 1 and 500,
-        false
-      )
-      and not (payload ?| array['rawMessage', 'note', 'studentName', 'reason'])
+      and payload - 'relaySummary' = '{}'::jsonb
+      and pg_catalog.jsonb_typeof(payload->'relaySummary') = 'string'
+      and pg_catalog.length(payload->>'relaySummary') between 1 and 500,
+      false
     )
   );
 
@@ -49,42 +47,50 @@ alter table public.kitty_class_operational_relays
   add column payload_digest text not null
     check (payload_digest ~ '^[a-f0-9]{64}$'),
   add constraint kitty_class_relay_structured_payload_check check (
-    structured_payload - array[
-      'estimatedAt', 'mode', 'locationLabel', 'preparationCategory'
-    ] = '{}'::jsonb
-    and (
-      not (structured_payload ? 'estimatedAt')
-      or intent in ('student_late', 'student_leaving_early', 'teacher_late')
-    )
-    and (intent = 'mode_changed') = (structured_payload ? 'mode')
-    and (
-      not (structured_payload ? 'mode')
-      or coalesce(
-        pg_catalog.jsonb_typeof(structured_payload->'mode') = 'string'
-        and structured_payload->>'mode' in ('online', 'in_person'),
-        false
-      )
-    )
-    and (intent = 'location_changed') = (structured_payload ? 'locationLabel')
-    and (
-      not (structured_payload ? 'locationLabel')
-      or coalesce(
-        pg_catalog.jsonb_typeof(structured_payload->'locationLabel') = 'string'
-        and pg_catalog.length(structured_payload->>'locationLabel') between 1 and 120
-        and pg_catalog.btrim(structured_payload->>'locationLabel') <> '',
-        false
-      )
-    )
-    and (intent = 'preparation_note') = (structured_payload ? 'preparationCategory')
-    and (
-      not (structured_payload ? 'preparationCategory')
-      or coalesce(
-        pg_catalog.jsonb_typeof(structured_payload->'preparationCategory') = 'string'
-        and structured_payload->>'preparationCategory' in (
-          'bring_materials', 'complete_assigned_work', 'review_prior_material', 'bring_device'
-        ),
-        false
-      )
+    coalesce(
+      pg_catalog.jsonb_typeof(structured_payload) = 'object'
+      and (
+        (
+          intent in ('student_absent', 'class_status_requested', 'meeting_link_requested', 'substitute_teacher')
+          and structured_payload = '{}'::jsonb
+        )
+        or (
+          intent in ('student_late', 'student_leaving_early', 'teacher_late')
+          and structured_payload - 'estimatedAt' = '{}'::jsonb
+          and (
+            not (structured_payload ? 'estimatedAt')
+            or coalesce(
+              structured_payload @@ '$.estimatedAt.type() == "string" && $.estimatedAt.datetime() != null',
+              false
+            )
+          )
+        )
+        or (
+          intent = 'mode_changed'
+          and structured_payload ? 'mode'
+          and structured_payload - 'mode' = '{}'::jsonb
+          and pg_catalog.jsonb_typeof(structured_payload->'mode') = 'string'
+          and structured_payload->>'mode' in ('online', 'in_person')
+        )
+        or (
+          intent = 'location_changed'
+          and structured_payload ? 'locationLabel'
+          and structured_payload - 'locationLabel' = '{}'::jsonb
+          and pg_catalog.jsonb_typeof(structured_payload->'locationLabel') = 'string'
+          and pg_catalog.length(structured_payload->>'locationLabel') between 1 and 120
+          and pg_catalog.btrim(structured_payload->>'locationLabel') <> ''
+        )
+        or (
+          intent = 'preparation_note'
+          and structured_payload ? 'preparationCategory'
+          and structured_payload - 'preparationCategory' = '{}'::jsonb
+          and pg_catalog.jsonb_typeof(structured_payload->'preparationCategory') = 'string'
+          and structured_payload->>'preparationCategory' in (
+            'bring_materials', 'complete_assigned_work', 'review_prior_material', 'bring_device'
+          )
+        )
+      ),
+      false
     )
   );
 
