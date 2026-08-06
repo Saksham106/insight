@@ -95,7 +95,7 @@ This setting removes Hermes's duplicate phone allowlist; it does not make the Ac
 
 ## Isolated Kitty group class calendar
 
-Kitty Classes is a separate calendar owned by Kitty. It does not create or edit Academy sessions, assignments, availability, lesson-ledger evidence, settlements, Google Calendar events, or ordinary chats. A class has one teacher and one or more independently configured student enrollments. Each enrollment may notify the student, one or more parents or guardians, or both. Apply the reviewed Kitty migrations from `20260805120000_add_kitty_class_calendar.sql` through `20260806042747_add_kitty_class_attention_lifecycle.sql`, deploy `/api/hermes/class-tools` and `/api/cron/kitty-classes`, install the `kitty-classes` skill in both relevant profiles, and configure:
+Kitty Classes is a separate calendar owned by Kitty. It does not create or edit Academy sessions, assignments, availability, lesson-ledger evidence, settlements, Google Calendar events, or ordinary chats. A class has one teacher and one or more independently configured student enrollments. Each enrollment may notify the student, one or more parents or guardians, or both. Apply the complete reviewed Kitty migration chain from `20260805120000_add_kitty_class_calendar.sql` through `20260806114049_index_kitty_foreign_keys.sql`, deploy `/api/hermes/class-tools` and `/api/cron/kitty-classes`, install the `kitty-classes` skill in both relevant profiles, and configure:
 
 ```dotenv
 KITTY_CLASS_CALENDAR_ENABLED=false
