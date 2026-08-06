@@ -186,3 +186,105 @@ test("enrollment routes preserve explicit add/end temporal scopes", async () => 
     delete require.cache[routePath];
   }
 });
+
+test("admin item GET enforces auth and flag and wires the requested occurrence", async () => {
+  const routePath = path.join(process.cwd(), "src/app/api/admin/hermes/classes/[id]/route.ts");
+  const originalLoad = Module._load;
+  const previousFlag = process.env.KITTY_CLASS_CALENDAR_ENABLED;
+  let profile = null;
+  let item = { id: "occurrence-42", title: "Maths" };
+  const calls = [];
+  Module._load = function load(request, parent, isMain) {
+    if (request === "next/server") return { NextResponse: { json(value, init) { return new Response(JSON.stringify(value), { status: init?.status ?? 200, headers: { "content-type": "application/json" } }); } } };
+    if (request === "@/lib/auth/get-user-profile") return { getUserProfile: async () => profile };
+    if (request === "@/lib/hermes/kitty-class-service") return {
+      getKittyClassOccurrence: async (client, actor, id) => {
+        calls.push({ client, actor, id });
+        if (item instanceof Error) throw item;
+        return item;
+      },
+    };
+    if (request === "@/lib/supabase/admin") return { createAdminClient: () => ({ marker: "admin-client" }) };
+    return originalLoad(request, parent, isMain);
+  };
+  delete require.cache[routePath];
+  try {
+    const { GET } = require(routePath);
+    const context = { params: Promise.resolve({ id: "occurrence-42" }) };
+    process.env.KITTY_CLASS_CALENDAR_ENABLED = "true";
+    assert.equal((await GET(new Request("https://insight.test"), context)).status, 403);
+    profile = { id: "admin-9", role: "admin" };
+    process.env.KITTY_CLASS_CALENDAR_ENABLED = "false";
+    assert.equal((await GET(new Request("https://insight.test"), context)).status, 503);
+    process.env.KITTY_CLASS_CALENDAR_ENABLED = "true";
+    const success = await GET(new Request("https://insight.test"), context);
+    assert.equal(success.status, 200);
+    assert.deepEqual((await success.json()).class, item);
+    assert.deepEqual(calls[0], {
+      client: { marker: "admin-client" },
+      actor: { kind: "admin", profileId: "admin-9", channel: "dashboard" },
+      id: "occurrence-42",
+    });
+    item = new Error("not_found");
+    assert.equal((await GET(new Request("https://insight.test"), context)).status, 404);
+  } finally {
+    Module._load = originalLoad;
+    if (previousFlag === undefined) delete process.env.KITTY_CLASS_CALENDAR_ENABLED;
+    else process.env.KITTY_CLASS_CALENDAR_ENABLED = previousFlag;
+    delete require.cache[routePath];
+  }
+});
+
+test("admin retry PATCH executes failed delivery and rejects blocked delivery", async () => {
+  const routePath = path.join(process.cwd(), "src/app/api/admin/hermes/classes/route.ts");
+  const originalLoad = Module._load;
+  const previousFlag = process.env.KITTY_CLASS_CALENDAR_ENABLED;
+  let profile = null;
+  let retryError = null;
+  const calls = [];
+  Module._load = function load(request, parent, isMain) {
+    if (request === "next/server") return { NextResponse: { json(value, init) { return new Response(JSON.stringify(value), { status: init?.status ?? 200, headers: { "content-type": "application/json" } }); } } };
+    if (request === "@/lib/auth/get-user-profile") return { getUserProfile: async () => profile };
+    if (request === "@/lib/hermes/kitty-classes") return { kittyLocalDateTimeToUtc: () => "" };
+    if (request === "@/lib/hermes/kitty-class-tools") return { normalizeKittyClassCreatePayload: (value) => value };
+    if (request === "@/lib/hermes/kitty-class-service") return {
+      createKittyClass: async () => ({}), listKittyClasses: async () => [],
+      retryKittyClassNotification: async (client, actor, notificationId) => {
+        calls.push({ client, actor, notificationId });
+        if (retryError) throw retryError;
+        return { id: notificationId, status: "pending" };
+      },
+    };
+    if (request === "@/lib/supabase/admin") return { createAdminClient: () => ({ marker: "admin-client" }) };
+    return originalLoad(request, parent, isMain);
+  };
+  delete require.cache[routePath];
+  const request = () => new Request("https://insight.test/api/admin/hermes/classes", {
+    method: "PATCH", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "retry_notification", notificationId: "notice-7" }),
+  });
+  try {
+    const { PATCH } = require(routePath);
+    process.env.KITTY_CLASS_CALENDAR_ENABLED = "true";
+    assert.equal((await PATCH(request())).status, 403);
+    profile = { id: "admin-9", role: "admin" };
+    process.env.KITTY_CLASS_CALENDAR_ENABLED = "false";
+    assert.equal((await PATCH(request())).status, 503);
+    process.env.KITTY_CLASS_CALENDAR_ENABLED = "true";
+    const success = await PATCH(request());
+    assert.equal(success.status, 200);
+    assert.deepEqual((await success.json()).notification, { id: "notice-7", status: "pending" });
+    assert.deepEqual(calls[0], {
+      client: { marker: "admin-client" },
+      actor: { kind: "admin", profileId: "admin-9", channel: "dashboard" },
+      notificationId: "notice-7",
+    });
+    retryError = new Error("notification_not_retryable");
+    assert.equal((await PATCH(request())).status, 400);
+  } finally {
+    Module._load = originalLoad;
+    if (previousFlag === undefined) delete process.env.KITTY_CLASS_CALENDAR_ENABLED;
+    else process.env.KITTY_CLASS_CALENDAR_ENABLED = previousFlag;
+    delete require.cache[routePath];
+  }
+});

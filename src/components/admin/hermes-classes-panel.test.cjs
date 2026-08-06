@@ -36,9 +36,19 @@ test("classes panel exposes group roster creation and occurrence administration"
 test("group form begins with one enrollment and can add students and parent rows", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/components/admin/hermes-classes-panel.tsx"), "utf8");
   assert.match(source, /INITIAL_ENROLLMENTS/);
-  assert.match(source, /useState<EnrollmentDraft\[\]>\(INITIAL_ENROLLMENTS\)/);
-  assert.match(source, /setEnrollments\(\(current\)/);
+  assert.match(source, /useState<KittyEnrollmentDraft\[\]>\(INITIAL_ENROLLMENTS\)/);
+  assert.match(source, /reduceKittyEnrollmentDrafts/);
   assert.match(source, /contacts:\s*\[/);
   assert.match(source, /role:\s*"student"/);
   assert.match(source, /role:\s*"parent_guardian"/);
+});
+
+test("occurrence-only roster additions expose a fixed occurrence date and extracted behaviors", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/components/admin/hermes-classes-panel.tsx"), "utf8");
+  assert.match(source, /function AddEnrollmentForm/);
+  assert.match(source, /value=\{scope\}/);
+  assert.match(source, /value=\{detail\.localDate\}[\s\S]*min=\{detail\.localDate\}[\s\S]*max=\{detail\.localDate\}[\s\S]*readOnly/);
+  assert.match(source, /normalizeKittyEnrollmentMutationTiming/);
+  assert.match(source, /canRetryKittyNotification/);
+  assert.match(source, /shouldLoadKittyOccurrenceDetail/);
 });

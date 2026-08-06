@@ -45,3 +45,69 @@ test("Needs Attention excludes ordinary scheduled classes without issues", () =>
     ["blocked"],
   );
 });
+
+test("admin attention loader consumes only bounded structured issue rows", async () => {
+  const { loadKittyAdminAttentionIssues } = require(adminPath);
+  const calls = [];
+  const client = { rpc: async (name, payload) => {
+    calls.push({ name, payload });
+    return { data: [{
+      source_id: "source-1", occurrence_id: "occurrence-1", series_id: null,
+      kind: "ambiguous_scope", metadata: { raw: "must not project" },
+    }], error: null };
+  } };
+  const issues = await loadKittyAdminAttentionIssues(client, 25);
+  assert.equal(calls[0].name, "get_kitty_class_admin_attention_issues");
+  assert.equal(calls[0].payload.p_limit, 25);
+  assert.deepEqual(issues, [{ id: "source-1", occurrenceId: "occurrence-1", seriesId: null, kind: "ambiguous_scope" }]);
+  assert.doesNotMatch(JSON.stringify(issues), /raw|metadata/);
+});
+
+test("multi-roster draft reducer adds and removes students and parents immutably", () => {
+  const { reduceKittyEnrollmentDrafts } = require(adminPath);
+  const initial = [{ id: 0, parentIds: [] }];
+  const withStudent = reduceKittyEnrollmentDrafts(initial, { type: "add_enrollment", id: 1 });
+  const withParent = reduceKittyEnrollmentDrafts(withStudent, { type: "add_parent", enrollmentId: 1, parentId: 2 });
+  assert.deepEqual(initial, [{ id: 0, parentIds: [] }]);
+  assert.deepEqual(withParent, [{ id: 0, parentIds: [] }, { id: 1, parentIds: [2] }]);
+  assert.deepEqual(reduceKittyEnrollmentDrafts(withParent, { type: "remove_parent", enrollmentId: 1, parentId: 2 }), [{ id: 0, parentIds: [] }, { id: 1, parentIds: [] }]);
+  assert.deepEqual(reduceKittyEnrollmentDrafts(withParent, { type: "remove_enrollment", id: 1 }), [{ id: 0, parentIds: [] }]);
+});
+
+test("enrollment timing pins occurrence-only add date and enforces recurring end scope", () => {
+  const { normalizeKittyEnrollmentMutationTiming } = require(adminPath);
+  assert.deepEqual(normalizeKittyEnrollmentMutationTiming({
+    action: "add_enrollment", seriesId: "series-1", localDate: "2026-08-12",
+    scope: "occurrence", effectiveDate: "2026-08-20",
+  }), { scope: "occurrence", effectiveDate: "2026-08-12" });
+  assert.deepEqual(normalizeKittyEnrollmentMutationTiming({
+    action: "add_enrollment", seriesId: "series-1", localDate: "2026-08-12",
+    scope: "this_and_future", effectiveDate: "2026-08-20",
+  }), { scope: "this_and_future", effectiveDate: "2026-08-20" });
+  assert.throws(() => normalizeKittyEnrollmentMutationTiming({
+    action: "end_enrollment", seriesId: "series-1", localDate: "2026-08-12",
+    scope: "occurrence", effectiveDate: "2026-08-12",
+  }), /invalid_scope/);
+});
+
+test("retry visibility and detail expansion states are executable", () => {
+  const { canRetryKittyNotification, shouldLoadKittyOccurrenceDetail } = require(adminPath);
+  assert.equal(canRetryKittyNotification("failed"), true);
+  for (const status of ["blocked", "pending", "sending", "sent"]) assert.equal(canRetryKittyNotification(status), false);
+  assert.equal(shouldLoadKittyOccurrenceDetail({ open: true, hasDetail: false, isLoading: false }), true);
+  assert.equal(shouldLoadKittyOccurrenceDetail({ open: false, hasDetail: false, isLoading: false }), false);
+  assert.equal(shouldLoadKittyOccurrenceDetail({ open: true, hasDetail: true, isLoading: false }), false);
+  assert.equal(shouldLoadKittyOccurrenceDetail({ open: true, hasDetail: true, isLoading: false, force: true }), true);
+});
+
+test("admin page filters current and history rows before their independent limits", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/app/(dashboard)/admin/hermes/page.tsx"), "utf8");
+  const upcoming = source.indexOf('.in("status", ["scheduled", "change_requested"])');
+  const upcomingDate = source.indexOf('.gte("ends_at"', upcoming);
+  const upcomingLimit = source.indexOf('.limit(200)', upcoming);
+  const history = source.indexOf('.in("status", ["completed", "cancelled", "rescheduled"])', upcomingLimit);
+  const historyLimit = source.indexOf('.limit(50)', history);
+  assert.ok(upcoming >= 0 && upcomingDate > upcoming && upcomingLimit > upcomingDate);
+  assert.ok(history > upcomingLimit && historyLimit > history);
+  assert.match(source, /attentionOccurrenceIds[\s\S]*\.in\("id", attentionOccurrenceIds\)/);
+});

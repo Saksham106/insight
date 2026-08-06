@@ -200,6 +200,10 @@ class AcademyProfileTests(unittest.TestCase):
             "never forward raw inbound text",
             "enrollmenthandle",
             "never accept a raw enrollment id",
+            "report_class_ambiguity",
+            "1–5 candidate occurrence ids",
+            "never include message text",
+            "resolves the structured attention item",
         ):
             self.assertIn(required, combined)
 

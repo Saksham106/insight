@@ -157,6 +157,7 @@ function fixtureClient() {
     rpcCalls,
     from(table) { return new Query(table); },
     async rpc(name, payload) {
+      if (name === "resolve_kitty_class_scope_ambiguities") return { data: 0, error: null };
       rpcCalls.push({ name, payload });
       if (name === "request_kitty_group_class_change") {
         return { data: {

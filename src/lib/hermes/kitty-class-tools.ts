@@ -17,12 +17,13 @@ import {
   listKittyClasses,
   overrideKittyClass,
   proposeKittyClassReplacement,
+  recordKittyClassAmbiguity,
   recordKittyAttendance,
   type KittyClassActor,
 } from "./kitty-class-service";
 
 export const ADMIN_CLASS_ACTIONS = ["preview_class", "create_class", "list_classes", "get_class", "edit_class", "override_class", "add_enrollment", "end_enrollment"] as const;
-export const CONTACT_CLASS_ACTIONS = ["find_my_classes", "find_my_pending_changes", "confirm_class_selection", "record_class_attendance", "correct_class_attendance", "relay_class_update", "request_class_change", "decide_class_change", "propose_replacement_time"] as const;
+export const CONTACT_CLASS_ACTIONS = ["find_my_classes", "find_my_pending_changes", "confirm_class_selection", "report_class_ambiguity", "record_class_attendance", "correct_class_attendance", "relay_class_update", "request_class_change", "decide_class_change", "propose_replacement_time"] as const;
 export type KittyClassToolAction = (typeof ADMIN_CLASS_ACTIONS)[number] | (typeof CONTACT_CLASS_ACTIONS)[number];
 
 type Payload = Record<string, unknown>;
@@ -163,6 +164,11 @@ export async function executeKittyClassTool(
     }
     case "find_my_pending_changes": return { changeRequests: await findMyPendingKittyChanges(client, actor, typeof payload.referenceCode === "string" ? payload.referenceCode : undefined) };
     case "confirm_class_selection": return { confirmation: await confirmKittyClassSelection(client, actor, { occurrenceId: text(payload, "occurrenceId"), version: number(payload, "occurrenceVersion") }), confirmed: true };
+    case "report_class_ambiguity": return { attention: await recordKittyClassAmbiguity(client, actor, {
+      candidateOccurrenceIds: payload.candidateOccurrenceIds as string[],
+      ambiguityKind: payload.ambiguityKind as "class" | "scope",
+      clientRequestId: clientRequestId(payload, context.clientRequestId),
+    }) };
     case "record_class_attendance": return { attendance: await recordKittyAttendance(client, actor, {
       occurrenceId: text(payload, "occurrenceId"), enrollmentHandle: contactEnrollmentHandle(payload),
       status: payload.status as Parameters<typeof recordKittyAttendance>[2]["status"],

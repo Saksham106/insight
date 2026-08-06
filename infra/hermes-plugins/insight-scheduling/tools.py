@@ -43,6 +43,7 @@ ACTIONS = (
     "find_my_classes",
     "find_my_pending_changes",
     "confirm_class_selection",
+    "report_class_ambiguity",
     "record_class_attendance",
     "correct_class_attendance",
     "relay_class_update",
@@ -52,7 +53,7 @@ ACTIONS = (
 )
 
 CLASS_ACTIONS = frozenset((
-    "find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change",
+    "find_my_classes", "find_my_pending_changes", "confirm_class_selection", "report_class_ambiguity", "request_class_change",
     "record_class_attendance", "correct_class_attendance", "relay_class_update", "decide_class_change",
     "propose_replacement_time",
 ))

@@ -13,7 +13,11 @@ do $$ begin create role anon; exception when duplicate_object then null; end $$;
 do $$ begin create role authenticated; exception when duplicate_object then null; end $$;
 do $$ begin create role service_role; exception when duplicate_object then null; end $$;
 create table public.profiles (id uuid primary key);
-create table public.hermes_contacts (id uuid primary key);
+create table public.hermes_contacts (
+  id uuid primary key,
+  is_active boolean not null default true,
+  deleted_at timestamptz
+);
 create table public.hermes_messages (id uuid primary key);
 create function public.is_admin() returns boolean language sql stable as $$ select true $$;
 create function public.set_updated_at() returns trigger language plpgsql as $$
@@ -151,6 +155,20 @@ test("admin hardening migration scopes roster edits, audit detail, and retry eli
   for (const entityType of ["occurrence", "attendance_update", "change_request", "notification"]) {
     assert.ok(migration.includes(`'${entityType}'`), `missing ${entityType} audit scope`);
   }
+});
+
+test("attention lifecycle migration is bounded, structured, active-contact-aware, and service-only", () => {
+  const migration = read("supabase/migrations/20260806042747_add_kitty_class_attention_lifecycle.sql").toLowerCase();
+  assert.match(migration, /create function public\.record_kitty_class_scope_ambiguity/);
+  assert.match(migration, /create function public\.resolve_kitty_class_scope_ambiguities/);
+  assert.match(migration, /create function public\.get_kitty_class_admin_attention_issues/);
+  assert.match(migration, /contact\.is_active[\s\S]*contact\.deleted_at is null/);
+  assert.match(migration, /where request\.status in \('expired', 'rejected'\)[\s\S]*limit 100/);
+  assert.match(migration, /where enrollment\.is_active[\s\S]*limit 100/);
+  assert.match(migration, /created_at >= p_reference_at - interval '48 hours'/);
+  assert.match(migration, /revoke execute[\s\S]*from public, anon, authenticated/);
+  assert.match(migration, /grant execute[\s\S]*to service_role/);
+  assert.doesNotMatch(migration, /raw_message|message_text|contact_name/);
 });
 
 test("group RPC runtime behavior is repeatable in disposable databases", {
@@ -414,6 +432,46 @@ test("admin hardening RPCs enforce temporal scopes, linked audit, and failed-onl
     );
     assert.equal(probe.status, 0, `${probe.stdout}\n${probe.stderr}`);
     assert.match(probe.stdout, /kitty class admin runtime probe passed/);
+  } finally {
+    const droppedAfter = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
+    assert.equal(droppedAfter.status, 0, `${droppedAfter.stdout}\n${droppedAfter.stderr}`);
+  }
+});
+
+test("attention lifecycle RPCs deduplicate, resolve, filter before limits, and require active contacts", {
+  skip: !process.env.KITTY_SCHEMA_TEST_CONTAINER,
+  timeout: 30_000,
+}, () => {
+  const container = process.env.KITTY_SCHEMA_TEST_CONTAINER;
+  const database = `kitty_attention_probe_${process.pid}`;
+  const migrations = [
+    ["predecessor migration", read("supabase/migrations/20260805120000_add_kitty_class_calendar.sql")],
+    ["group foundation migration", read("supabase/migrations/20260805222827_add_kitty_group_classes.sql")],
+    ["group service migration", read("supabase/migrations/20260805235110_add_kitty_group_class_services.sql")],
+    ["attendance and relay migration", read("supabase/migrations/20260806005742_add_kitty_class_relays.sql")],
+    ["group change migration", read("supabase/migrations/20260806020109_coordinate_kitty_group_class_changes.sql")],
+  ];
+
+  const droppedBefore = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
+  assert.equal(droppedBefore.status, 0, `${droppedBefore.stdout}\n${droppedBefore.stderr}`);
+  const created = runContainerCommand([container, "createdb", "-U", "postgres", database]);
+  assert.equal(created.status, 0, `${created.stdout}\n${created.stderr}`);
+  try {
+    for (const [label, sql] of [["bootstrap", migrationProbeBootstrap], ...migrations]) {
+      const result = runProbeSql(container, database, sql);
+      assert.equal(result.status, 0, `${label} failed:\n${result.stdout}\n${result.stderr}`);
+    }
+    const fixture = runProbeSql(container, database, read("src/lib/hermes/kitty-class-group-service-runtime-probe.sql"));
+    assert.equal(fixture.status, 0, `${fixture.stdout}\n${fixture.stderr}`);
+    for (const [label, sql] of [
+      ["admin hardening migration", read("supabase/migrations/20260806040937_harden_kitty_class_admin.sql")],
+      ["attention lifecycle migration", read("supabase/migrations/20260806042747_add_kitty_class_attention_lifecycle.sql")],
+      ["attention lifecycle probe", read("src/lib/hermes/kitty-class-attention-runtime-probe.sql")],
+    ]) {
+      const result = runProbeSql(container, database, sql);
+      assert.equal(result.status, 0, `${label} failed:\n${result.stdout}\n${result.stderr}`);
+      if (label === "attention lifecycle probe") assert.match(result.stdout, /kitty class attention runtime probe passed/);
+    }
   } finally {
     const droppedAfter = runContainerCommand([container, "dropdb", "--if-exists", "--force", "-U", "postgres", database]);
     assert.equal(droppedAfter.status, 0, `${droppedAfter.stdout}\n${droppedAfter.stderr}`);

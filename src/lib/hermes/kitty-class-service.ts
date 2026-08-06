@@ -37,6 +37,7 @@ function dbError(error: { message?: string } | null) {
     "invalid_change_scope", "change_not_permitted", "stale_change_request",
     "request_unavailable", "enrollment_approvals_required", "teacher_confirmation_required",
     "invalid_scope", "notification_not_retryable",
+    "invalid_ambiguity", "ambiguity_not_permitted",
   ]) if (error.message?.includes(code)) throw new Error(code);
   throw new Error("kitty_class_operation_failed");
 }
@@ -551,6 +552,11 @@ export async function confirmKittyClassSelection(client: Client, actor: KittyCla
     },
   });
   dbError(error);
+  const { error: resolutionError } = await client.rpc("resolve_kitty_class_scope_ambiguities", {
+    p_actor_contact_id: actor.contactId,
+    p_occurrence_id: input.occurrenceId,
+  });
+  dbError(resolutionError);
   return {
     occurrence,
     selectionToken,
@@ -560,6 +566,33 @@ export async function confirmKittyClassSelection(client: Client, actor: KittyCla
       studentName,
     })),
   };
+}
+
+export async function recordKittyClassAmbiguity(client: Client, actor: KittyClassActor, input: {
+  candidateOccurrenceIds: string[];
+  ambiguityKind: "class" | "scope";
+  clientRequestId: string;
+}) {
+  if (actor.kind !== "contact") throw new Error("contact_required");
+  const candidateIds = Array.isArray(input.candidateOccurrenceIds)
+    ? [...new Set(input.candidateOccurrenceIds)]
+    : [];
+  if (candidateIds.length < 1 || candidateIds.length > 5
+    || candidateIds.length !== input.candidateOccurrenceIds.length
+    || candidateIds.some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))
+    || !["class", "scope"].includes(input.ambiguityKind)
+    || !nonEmpty(input.clientRequestId)
+    || input.clientRequestId.trim().length > 200) {
+    throw new Error("invalid_ambiguity");
+  }
+  const { data, error } = await client.rpc("record_kitty_class_scope_ambiguity", {
+    p_actor_contact_id: actor.contactId,
+    p_candidate_occurrence_ids: candidateIds,
+    p_ambiguity_kind: input.ambiguityKind,
+    p_client_request_id: input.clientRequestId.trim(),
+  });
+  dbError(error);
+  return data;
 }
 
 function assertContactRelayInput(actor: KittyClassActor, input: {

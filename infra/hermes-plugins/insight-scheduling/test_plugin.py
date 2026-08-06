@@ -94,11 +94,18 @@ class PluginTests(unittest.TestCase):
         self.assertIn("Do not claim", source)
 
     def test_exposes_confirmation_first_class_change_actions(self):
-        for action in ("find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"):
+        for action in ("find_my_classes", "find_my_pending_changes", "confirm_class_selection", "report_class_ambiguity", "request_class_change", "decide_class_change", "propose_replacement_time"):
             self.assertIn(action, self.tools.ACTIONS)
         source = (PLUGIN_DIR / "__init__.py").read_text()
         self.assertLess(source.index("find_my_classes"), source.index("confirm_class_selection"))
         self.assertIn("exact occurrence", source)
+
+    def test_ambiguity_escalation_is_bounded_and_contains_no_free_text(self):
+        self.assertIn("report_class_ambiguity", self.tools.CLASS_ACTIONS)
+        source = (PLUGIN_DIR / "__init__.py").read_text()
+        for required in ("1–5", "ambiguityKind", "class or scope", "Never include message text"):
+            self.assertIn(required, source)
+        self.assertNotIn("report_class_ambiguity={candidateOccurrenceIds,reason", source)
 
     def test_exposes_group_class_attendance_and_bounded_relay_actions(self):
         for action in (
