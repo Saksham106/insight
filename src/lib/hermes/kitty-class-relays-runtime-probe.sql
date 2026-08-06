@@ -360,6 +360,11 @@ begin
     'relay-runtime-existing-outbox-unaffected'
   );
   foreach v_invalid_estimate in array array[
+    '2026-08-10T24:00:00Z',
+    '2026-08-10T23:60:00Z',
+    '2026-08-10T23:59:61Z',
+    '2026-08-10T23:59:59+24:00',
+    '2026-08-10T23:59:59+05:60',
     '2026-08-10',
     '16:10:00Z',
     '2026-08-10T16:10:00',
@@ -381,8 +386,12 @@ begin
     end;
   end loop;
   foreach v_valid_estimate in array array[
+    '2026-08-10T00:00:00Z',
+    '2026-08-10T23:59:59Z',
+    '2026-08-10T16:10:00.123456Z',
     '2026-08-10T16:10:00Z',
-    '2026-08-10T21:40:00+05:30'
+    '2026-08-10T21:40:00+05:30',
+    '2026-08-10T12:10:00-04:00'
   ] loop
     insert into public.kitty_class_operational_relays(
       occurrence_id, enrollment_id, sent_by_contact_id, intent, structured_payload,

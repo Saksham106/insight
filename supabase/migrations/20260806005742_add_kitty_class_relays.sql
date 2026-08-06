@@ -62,7 +62,7 @@ alter table public.kitty_class_operational_relays
             or coalesce(
               pg_catalog.jsonb_typeof(structured_payload->'estimatedAt') = 'string'
               and structured_payload->>'estimatedAt'
-                ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
+                ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]+)?(Z|[+-](0[0-9]|1[0-9]|2[0-3]):[0-5][0-9])$'
               and pg_catalog.pg_input_is_valid(
                 structured_payload->>'estimatedAt',
                 'timestamp with time zone'
