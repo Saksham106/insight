@@ -149,13 +149,37 @@ function projectCurrentChangeRequest(
   roster: Awaited<ReturnType<typeof loadOccurrenceRoster>>,
 ) {
   if (!changeRequest || actor.kind === "admin") return changeRequest;
-  if (changeRequest.scope !== "individual_attendance" && changeRequest.scope !== "individual_reschedule") return changeRequest;
-  if (String(roster.teacher?.contact_id ?? "") === actor.contactId) return changeRequest;
-  const enrollmentId = String(changeRequest.enrollment_id ?? "");
-  return roster.enrollments.some((enrollment) =>
-    enrollment.id === enrollmentId
-      && enrollment.contacts.some((contact) => contact.contactId === actor.contactId),
-  ) ? changeRequest : null;
+  const individual = changeRequest.scope === "individual_attendance" || changeRequest.scope === "individual_reschedule";
+  if (individual && String(roster.teacher?.contact_id ?? "") !== actor.contactId) {
+    const enrollmentId = String(changeRequest.enrollment_id ?? "");
+    const represented = roster.enrollments.some((enrollment) =>
+      enrollment.id === enrollmentId
+        && enrollment.contacts.some((contact) => contact.contactId === actor.contactId),
+    );
+    if (!represented) return null;
+  }
+  const optionalText = (key: string) => changeRequest[key] === undefined
+    ? {}
+    : { [key]: changeRequest[key] === null ? null : String(changeRequest[key]) };
+  return {
+    id: String(changeRequest.id),
+    changeType: String(changeRequest.change_type),
+    scope: String(changeRequest.scope),
+    status: String(changeRequest.status),
+    version: Number(changeRequest.version),
+    ...optionalText("proposedStartsAt"),
+    ...optionalText("proposedEndsAt"),
+    ...optionalText("proposedTimezone"),
+    ...(changeRequest.proposed_starts_at === undefined ? {} : {
+      proposedStartsAt: changeRequest.proposed_starts_at === null ? null : String(changeRequest.proposed_starts_at),
+    }),
+    ...(changeRequest.proposed_ends_at === undefined ? {} : {
+      proposedEndsAt: changeRequest.proposed_ends_at === null ? null : String(changeRequest.proposed_ends_at),
+    }),
+    ...(changeRequest.proposed_timezone === undefined ? {} : {
+      proposedTimezone: changeRequest.proposed_timezone === null ? null : String(changeRequest.proposed_timezone),
+    }),
+  };
 }
 
 export async function listKittyClasses(client: Client, actor: KittyClassActor, options: {
