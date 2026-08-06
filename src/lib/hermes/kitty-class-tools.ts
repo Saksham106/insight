@@ -23,6 +23,7 @@ export const CONTACT_CLASS_ACTIONS = ["find_my_classes", "find_my_pending_change
 export type KittyClassToolAction = (typeof ADMIN_CLASS_ACTIONS)[number] | (typeof CONTACT_CLASS_ACTIONS)[number];
 
 type Payload = Record<string, unknown>;
+type KittyClassToolContext = { clientRequestId?: string };
 
 export function isKittyClassToolAction(value: unknown): value is KittyClassToolAction {
   return typeof value === "string" && ([...ADMIN_CLASS_ACTIONS, ...CONTACT_CLASS_ACTIONS] as string[]).includes(value);
@@ -40,9 +41,45 @@ function number(payload: Payload, key: string) {
   return Number(value);
 }
 
-function adminCreateInput(payload: Payload) {
-  if ("participants" in payload || !Array.isArray(payload.enrollments)) throw new Error("invalid_payload");
-  const enrollments = validateKittyEnrollments(payload.enrollments as KittyEnrollmentInput[]);
+function clientRequestId(payload: Payload, fallback?: string) {
+  const value = typeof payload.clientRequestId === "string" && payload.clientRequestId.trim()
+    ? payload.clientRequestId.trim()
+    : fallback?.trim();
+  if (!value || value.length > 200) throw new Error("invalid_payload");
+  return value;
+}
+
+function legacyGroupRoster(payload: Payload) {
+  if (!Array.isArray(payload.participants) || payload.participants.length < 2) throw new Error("invalid_payload");
+  const participants = payload.participants as Array<Record<string, unknown>>;
+  const teachers = participants.filter((participant) => participant?.role === "teacher");
+  const students = participants.filter((participant) => participant?.role === "student");
+  const family = participants.filter((participant) => participant?.role === "student" || participant?.role === "parent_guardian");
+  if (teachers.length !== 1 || students.length !== 1 || family.length !== participants.length - 1
+    || teachers[0].decisionSide !== "teacher"
+    || family.some((participant) => participant.decisionSide !== "student")) throw new Error("invalid_payload");
+  const enrollment = {
+    studentContactId: String(students[0].contactId ?? ""),
+    contacts: family.map((participant) => ({
+      contactId: String(participant.contactId ?? ""),
+      role: participant.role as "student" | "parent_guardian",
+      receivesNotifications: participant.receivesNotifications,
+      confirmsCancellation: participant.confirmsCancellation,
+      confirmsReschedule: participant.confirmsReschedule,
+    })) as KittyEnrollmentInput["contacts"],
+  };
+  return {
+    teacherContactId: String(teachers[0].contactId ?? ""),
+    enrollments: validateKittyEnrollments([enrollment]),
+  };
+}
+
+export function normalizeKittyClassCreatePayload(payload: Payload, fallbackClientRequestId?: string) {
+  if (Array.isArray(payload.enrollments) && "participants" in payload) throw new Error("invalid_payload");
+  const native = Array.isArray(payload.enrollments) && !("participants" in payload);
+  const roster = native
+    ? { teacherContactId: text(payload, "teacherContactId"), enrollments: validateKittyEnrollments(payload.enrollments as KittyEnrollmentInput[]) }
+    : legacyGroupRoster(payload);
   return {
     kind: payload.kind === "weekly" ? "weekly" as const : "one_off" as const,
     title: text(payload, "title"), subject: typeof payload.subject === "string" ? payload.subject : null,
@@ -53,23 +90,29 @@ function adminCreateInput(payload: Payload) {
     durationMinutes: typeof payload.durationMinutes === "number" ? payload.durationMinutes : undefined,
     effectiveStart: typeof payload.effectiveStart === "string" ? payload.effectiveStart : undefined,
     effectiveEnd: typeof payload.effectiveEnd === "string" ? payload.effectiveEnd : null,
-    teacherContactId: text(payload, "teacherContactId"),
-    enrollments,
-    clientRequestId: text(payload, "clientRequestId"),
+    teacherContactId: roster.teacherContactId,
+    enrollments: roster.enrollments,
+    clientRequestId: clientRequestId(payload, fallbackClientRequestId),
   };
 }
 
-export async function executeKittyClassTool(client: SupabaseClient, actor: KittyClassActor, action: KittyClassToolAction, payload: Payload) {
+export async function executeKittyClassTool(
+  client: SupabaseClient,
+  actor: KittyClassActor,
+  action: KittyClassToolAction,
+  payload: Payload,
+  context: KittyClassToolContext = {},
+) {
   const isAdminAction = (ADMIN_CLASS_ACTIONS as readonly string[]).includes(action);
   const isContactAction = (CONTACT_CLASS_ACTIONS as readonly string[]).includes(action);
   if ((isAdminAction && actor.kind !== "admin") || (isContactAction && actor.kind !== "contact")) throw new Error("action_not_allowed");
 
   switch (action) {
     case "preview_class": {
-      const input = adminCreateInput(payload);
+      const input = normalizeKittyClassCreatePayload(payload, context.clientRequestId);
       return { preview: input, requiresConfirmation: true, saved: false };
     }
-    case "create_class": return { class: await createKittyClass(client, actor, adminCreateInput(payload)) };
+    case "create_class": return { class: await createKittyClass(client, actor, normalizeKittyClassCreatePayload(payload, context.clientRequestId)) };
     case "list_classes": return { classes: await listKittyClasses(client, actor, { view: payload.view === "history" || payload.view === "attention" ? payload.view : "upcoming", limit: typeof payload.limit === "number" ? payload.limit : 50 }) };
     case "get_class": return { class: await getKittyClassOccurrence(client, actor, text(payload, "occurrenceId")) };
     case "edit_class": return { class: await editKittyClass(client, actor, {

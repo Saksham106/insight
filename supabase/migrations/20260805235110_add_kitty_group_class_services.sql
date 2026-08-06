@@ -11,8 +11,16 @@ set search_path = ''
 as $$
 declare
   v_enrollment jsonb;
+  v_contact jsonb;
   v_contacts jsonb;
   v_normalized jsonb := '[]'::jsonb;
+  v_normalized_contacts jsonb;
+  v_student_contact_id text;
+  v_contact_id text;
+  v_student_contact_ids text[] := '{}'::text[];
+  v_contact_ids text[];
+  v_student_count integer;
+  v_has_reschedule_decider boolean;
 begin
   if pg_catalog.jsonb_typeof(p_enrollments) is distinct from 'array'
     or pg_catalog.jsonb_array_length(p_enrollments) = 0
@@ -20,17 +28,9 @@ begin
     raise exception 'enrollment_required';
   end if;
 
-  if (
-    select pg_catalog.count(distinct item->>'studentContactId')
-    from pg_catalog.jsonb_array_elements(p_enrollments) item
-  ) <> pg_catalog.jsonb_array_length(p_enrollments) then
-    raise exception 'duplicate_student';
-  end if;
-
   for v_enrollment in
     select item
     from pg_catalog.jsonb_array_elements(p_enrollments) item
-    order by item->>'studentContactId'
   loop
     if pg_catalog.jsonb_typeof(v_enrollment) is distinct from 'object'
       or coalesce(pg_catalog.btrim(v_enrollment->>'studentContactId'), '') = ''
@@ -40,75 +40,74 @@ begin
       raise exception 'invalid_enrollment';
     end if;
 
-    -- Cast once during validation so malformed identifiers cannot reach writes.
-    perform (v_enrollment->>'studentContactId')::uuid;
-
-    if (
-      select pg_catalog.count(distinct contact->>'contactId')
-      from pg_catalog.jsonb_array_elements(v_enrollment->'contacts') contact
-    ) <> pg_catalog.jsonb_array_length(v_enrollment->'contacts') then
-      raise exception 'duplicate_enrollment_contact';
+    v_student_contact_id := (pg_catalog.btrim(v_enrollment->>'studentContactId'))::uuid::text;
+    if v_student_contact_id = any(v_student_contact_ids) then
+      raise exception 'duplicate_student';
     end if;
+    v_student_contact_ids := pg_catalog.array_append(v_student_contact_ids, v_student_contact_id);
 
-    if exists (
-      select 1
+    v_normalized_contacts := '[]'::jsonb;
+    v_contact_ids := '{}'::text[];
+    v_student_count := 0;
+    v_has_reschedule_decider := false;
+    for v_contact in
+      select contact
       from pg_catalog.jsonb_array_elements(v_enrollment->'contacts') contact
-      where pg_catalog.jsonb_typeof(contact) is distinct from 'object'
-        or coalesce(pg_catalog.btrim(contact->>'contactId'), '') = ''
-        or contact->>'role' is null
-        or contact->>'role' not in ('student', 'parent_guardian')
-        or pg_catalog.jsonb_typeof(contact->'receivesNotifications') is distinct from 'boolean'
-        or pg_catalog.jsonb_typeof(contact->'confirmsCancellation') is distinct from 'boolean'
-        or pg_catalog.jsonb_typeof(contact->'confirmsReschedule') is distinct from 'boolean'
-    ) then
-      raise exception 'invalid_enrollment_contact';
-    end if;
+    loop
+      if pg_catalog.jsonb_typeof(v_contact) is distinct from 'object'
+        or coalesce(pg_catalog.btrim(v_contact->>'contactId'), '') = ''
+        or v_contact->>'role' is null
+        or v_contact->>'role' not in ('student', 'parent_guardian')
+        or pg_catalog.jsonb_typeof(v_contact->'receivesNotifications') is distinct from 'boolean'
+        or pg_catalog.jsonb_typeof(v_contact->'confirmsCancellation') is distinct from 'boolean'
+        or pg_catalog.jsonb_typeof(v_contact->'confirmsReschedule') is distinct from 'boolean'
+      then
+        raise exception 'invalid_enrollment_contact';
+      end if;
 
-    perform (contact->>'contactId')::uuid
-    from pg_catalog.jsonb_array_elements(v_enrollment->'contacts') contact;
-
-    if (
-      select pg_catalog.count(*)
-      from pg_catalog.jsonb_array_elements(v_enrollment->'contacts') contact
-      where contact->>'role' = 'student'
-        and contact->>'contactId' = v_enrollment->>'studentContactId'
-    ) <> 1 or exists (
-      select 1
-      from pg_catalog.jsonb_array_elements(v_enrollment->'contacts') contact
-      where contact->>'role' = 'student'
-        and contact->>'contactId' <> v_enrollment->>'studentContactId'
-    ) then
-      raise exception 'student_contact_required';
-    end if;
-
-    if not exists (
-      select 1
-      from pg_catalog.jsonb_array_elements(v_enrollment->'contacts') contact
-      where (contact->>'confirmsReschedule')::boolean
-    ) then
+      v_contact_id := (pg_catalog.btrim(v_contact->>'contactId'))::uuid::text;
+      if v_contact_id = any(v_contact_ids) then
+        raise exception 'duplicate_enrollment_contact';
+      end if;
+      v_contact_ids := pg_catalog.array_append(v_contact_ids, v_contact_id);
+      if v_contact->>'role' = 'student' then
+        v_student_count := v_student_count + 1;
+        if v_contact_id <> v_student_contact_id then
+          raise exception 'student_contact_required';
+        end if;
+      end if;
+      v_has_reschedule_decider := v_has_reschedule_decider
+        or (v_contact->>'confirmsReschedule')::boolean;
+      v_normalized_contacts := v_normalized_contacts || pg_catalog.jsonb_build_array(
+        pg_catalog.jsonb_build_object(
+          'contactId', v_contact_id,
+          'role', v_contact->>'role',
+          'receivesNotifications', (v_contact->>'receivesNotifications')::boolean,
+          'confirmsCancellation', (v_contact->>'confirmsCancellation')::boolean,
+          'confirmsReschedule', (v_contact->>'confirmsReschedule')::boolean
+        )
+      );
+    end loop;
+    if v_student_count <> 1 then raise exception 'student_contact_required'; end if;
+    if not v_has_reschedule_decider then
       raise exception 'reschedule_decision_maker_required';
     end if;
 
-    select pg_catalog.jsonb_agg(
-      pg_catalog.jsonb_build_object(
-        'contactId', contact->>'contactId',
-        'role', contact->>'role',
-        'receivesNotifications', (contact->>'receivesNotifications')::boolean,
-        'confirmsCancellation', (contact->>'confirmsCancellation')::boolean,
-        'confirmsReschedule', (contact->>'confirmsReschedule')::boolean
-      )
-      order by contact->>'contactId'
-    ) into v_contacts
-    from pg_catalog.jsonb_array_elements(v_enrollment->'contacts') contact;
+    select pg_catalog.jsonb_agg(contact order by contact->>'contactId')
+      into v_contacts
+    from pg_catalog.jsonb_array_elements(v_normalized_contacts) contact;
 
     v_normalized := v_normalized || pg_catalog.jsonb_build_array(
       pg_catalog.jsonb_build_object(
-        'studentContactId', v_enrollment->>'studentContactId',
+        'studentContactId', v_student_contact_id,
         'contacts', v_contacts
       )
     );
   end loop;
 
+  select pg_catalog.jsonb_agg(enrollment order by enrollment->>'studentContactId')
+    into v_normalized
+  from pg_catalog.jsonb_array_elements(v_normalized) enrollment;
   return v_normalized;
 end;
 $$;
@@ -257,7 +256,9 @@ begin
     occurrence_key, title, subject, starts_at, ends_at, local_date, timezone,
     origin_channel, created_by_profile_id
   ) values (
-    'group-one-off:' || v_payload_digest,
+    'group-one-off:' || pg_catalog.encode(
+      public.digest(pg_catalog.convert_to(v_request_id, 'UTF8'), 'sha256'), 'hex'
+    ),
     pg_catalog.btrim(p_title), nullif(pg_catalog.btrim(p_subject), ''),
     p_starts_at, p_ends_at, p_local_date, pg_catalog.btrim(p_timezone),
     p_origin_channel, p_created_by
@@ -466,6 +467,7 @@ as $$
 declare
   v_occurrence public.kitty_class_occurrences;
   v_series public.kitty_class_series;
+  v_series_id uuid;
   v_normalized jsonb;
 begin
   if p_occurrence_id is null
@@ -475,10 +477,28 @@ begin
   then
     raise exception 'invalid_class';
   end if;
-  select * into v_occurrence
-  from public.kitty_class_occurrences
-  where id = p_occurrence_id
-  for update;
+  select occurrence.series_id into v_series_id
+  from public.kitty_class_occurrences occurrence
+  where occurrence.id = p_occurrence_id;
+  if not found then raise exception 'class_not_found'; end if;
+  if v_series_id is null then
+    select * into v_occurrence
+    from public.kitty_class_occurrences
+    where id = p_occurrence_id
+      and series_id is null
+    for update;
+  else
+    select * into v_series
+    from public.kitty_class_series
+    where id = v_series_id
+    for update;
+    if not found then raise exception 'class_not_found'; end if;
+    select * into v_occurrence
+    from public.kitty_class_occurrences
+    where id = p_occurrence_id
+      and series_id = v_series_id
+    for update;
+  end if;
   if not found then raise exception 'class_not_found'; end if;
   if v_occurrence.version <> p_expected_version then raise exception 'stale_class'; end if;
   if v_occurrence.status not in ('scheduled', 'change_requested') then
@@ -507,10 +527,6 @@ begin
       null, v_occurrence.id, p_effective_date, v_normalized
     );
   else
-    select * into v_series
-    from public.kitty_class_series
-    where id = v_occurrence.series_id
-    for update;
     if p_effective_date < v_occurrence.local_date
       or p_effective_date < v_series.effective_start
       or (v_series.effective_end is not null and p_effective_date > v_series.effective_end)
@@ -559,6 +575,8 @@ set search_path = ''
 as $$
 declare
   v_occurrence public.kitty_class_occurrences;
+  v_series public.kitty_class_series;
+  v_series_id uuid;
   v_enrollment public.kitty_class_enrollments;
 begin
   if p_occurrence_id is null
@@ -569,10 +587,28 @@ begin
   then
     raise exception 'invalid_class';
   end if;
-  select * into v_occurrence
-  from public.kitty_class_occurrences
-  where id = p_occurrence_id
-  for update;
+  select occurrence.series_id into v_series_id
+  from public.kitty_class_occurrences occurrence
+  where occurrence.id = p_occurrence_id;
+  if not found then raise exception 'class_not_found'; end if;
+  if v_series_id is null then
+    select * into v_occurrence
+    from public.kitty_class_occurrences
+    where id = p_occurrence_id
+      and series_id is null
+    for update;
+  else
+    select * into v_series
+    from public.kitty_class_series
+    where id = v_series_id
+    for update;
+    if not found then raise exception 'class_not_found'; end if;
+    select * into v_occurrence
+    from public.kitty_class_occurrences
+    where id = p_occurrence_id
+      and series_id = v_series_id
+    for update;
+  end if;
   if not found then raise exception 'class_not_found'; end if;
   if v_occurrence.version <> p_expected_version then raise exception 'stale_class'; end if;
   if v_occurrence.status not in ('scheduled', 'change_requested') then

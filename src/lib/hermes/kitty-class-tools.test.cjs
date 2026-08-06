@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const Module = require("node:module");
 const path = require("node:path");
 const test = require("node:test");
 const ts = require("typescript");
@@ -66,6 +67,126 @@ test("class preview consumes teacher, enrollments, and client request id without
   assert.deepEqual(result.preview.enrollments, [enrollment]);
   assert.equal(result.preview.clientRequestId, "imessage:create:7");
   assert.equal("participants" in result.preview, false);
+});
+
+test("legacy one-student participant payload adapts to the native group contract", async () => {
+  const { executeKittyClassTool } = require(toolsPath);
+  const result = await executeKittyClassTool(
+    {},
+    { kind: "admin", profileId: "profile-1", channel: "imessage" },
+    "preview_class",
+    {
+      kind: "weekly", title: "Legacy maths", timezone: "America/New_York",
+      durationMinutes: 60, effectiveStart: "2026-08-11",
+      recurrence: { frequency: "weekly", weekdays: [2], localTime: "16:00", intervalWeeks: 1 },
+      participants: [
+        { contactId: "teacher-1", role: "teacher", decisionSide: "teacher", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
+        { contactId: "student-1", role: "student", decisionSide: "student", receivesNotifications: true, confirmsCancellation: false, confirmsReschedule: true },
+        { contactId: "parent-1", role: "parent_guardian", decisionSide: "student", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
+      ],
+    },
+    { clientRequestId: "hermes-request-legacy-1" },
+  );
+
+  assert.equal(result.preview.teacherContactId, "teacher-1");
+  assert.equal(result.preview.clientRequestId, "hermes-request-legacy-1");
+  assert.deepEqual(result.preview.enrollments, [{
+    studentContactId: "student-1",
+    contacts: [
+      { contactId: "student-1", role: "student", receivesNotifications: true, confirmsCancellation: false, confirmsReschedule: true },
+      { contactId: "parent-1", role: "parent_guardian", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
+    ],
+  }]);
+  assert.equal("participants" in result.preview, false);
+});
+
+test("create payload cannot mix native enrollments with legacy participants", async () => {
+  const { executeKittyClassTool } = require(toolsPath);
+  await assert.rejects(() => executeKittyClassTool(
+    {},
+    { kind: "admin", profileId: "profile-1", channel: "imessage" },
+    "preview_class",
+    {
+      kind: "one_off", title: "Mixed contract", timezone: "UTC",
+      startsAt: "2026-08-12T20:00:00.000Z", endsAt: "2026-08-12T21:00:00.000Z", localDate: "2026-08-12",
+      teacherContactId: "teacher-1", enrollments: [enrollment], clientRequestId: "native-1",
+      participants: [
+        { contactId: "teacher-1", role: "teacher", decisionSide: "teacher", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
+        { contactId: "student-a", role: "student", decisionSide: "student", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
+      ],
+    },
+  ), /invalid_payload/);
+});
+
+test("verified Kitty route supplies its stable request id to legacy creation", async () => {
+  const routePath = path.join(process.cwd(), "src/app/api/hermes/class-tools/route.ts");
+  const calls = [];
+  const client = {
+    from() {
+      return {
+        insert: async () => ({ error: null }),
+        update() { return { eq: async () => ({ error: null }) }; },
+      };
+    },
+    rpc: async (name, payload) => {
+      calls.push({ name, payload });
+      return { data: {
+        id: "occurrence-legacy", series_id: null, title: "Legacy tool maths", subject: "Math",
+        starts_at: "2026-08-12T20:00:00.000Z", ends_at: "2026-08-12T21:00:00.000Z",
+        local_date: "2026-08-12", timezone: "America/New_York", status: "scheduled", version: 1,
+      }, error: null };
+    },
+  };
+  const originalLoad = Module._load;
+  const previous = {
+    flag: process.env.KITTY_CLASS_CALENDAR_ENABLED,
+    secret: process.env.HERMES_ADMIN_TOOL_SHARED_SECRET,
+  };
+  Module._load = function load(request, parent, isMain) {
+    if (request === "next/server") return { NextResponse: { json(value, init) { return new Response(JSON.stringify(value), { status: init?.status ?? 200 }); } } };
+    if (request === "@/lib/hermes/auth") return { verifyServiceRequest: () => ({ requestId: "hermes-legacy-request-1" }) };
+    if (request === "@/lib/hermes/cases") return {
+      communicationDecision: () => ({ allowed: true }),
+      parseIMessageAdminActor: () => ({ e164: "+15555550123" }),
+      parseWhatsAppToolActor: () => null,
+    };
+    if (request === "@/lib/hermes/kitty-class-tools") return originalLoad(toolsPath, parent, isMain);
+    if (request === "@/lib/supabase/admin") return { createAdminClient: () => client };
+    return originalLoad(request, parent, isMain);
+  };
+  process.env.KITTY_CLASS_CALENDAR_ENABLED = "true";
+  process.env.HERMES_ADMIN_TOOL_SHARED_SECRET = "test-secret";
+  delete require.cache[routePath];
+  try {
+    const { POST } = require(routePath);
+    const response = await POST(new Request("https://insight.test/api/hermes/class-tools", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: { platform: "photon" }, action: "create_class",
+        payload: {
+          kind: "one_off", title: "Legacy tool maths", subject: "Math", timezone: "America/New_York",
+          startsAt: "2026-08-12T20:00:00.000Z", endsAt: "2026-08-12T21:00:00.000Z", localDate: "2026-08-12",
+          participants: [
+            { contactId: "teacher-1", role: "teacher", decisionSide: "teacher", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
+            { contactId: "student-1", role: "student", decisionSide: "student", receivesNotifications: true, confirmsCancellation: true, confirmsReschedule: true },
+          ],
+        },
+      }),
+    }));
+
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].payload.p_client_request_id, "hermes-legacy-request-1");
+    assert.equal(calls[0].payload.p_teacher_contact_id, "teacher-1");
+    assert.equal(calls[0].payload.p_enrollments[0].studentContactId, "student-1");
+  } finally {
+    Module._load = originalLoad;
+    if (previous.flag === undefined) delete process.env.KITTY_CLASS_CALENDAR_ENABLED;
+    else process.env.KITTY_CLASS_CALENDAR_ENABLED = previous.flag;
+    if (previous.secret === undefined) delete process.env.HERMES_ADMIN_TOOL_SHARED_SECRET;
+    else process.env.HERMES_ADMIN_TOOL_SHARED_SECRET = previous.secret;
+    delete require.cache[routePath];
+  }
 });
 
 test("enrollment actions require a version and effective date", async () => {
