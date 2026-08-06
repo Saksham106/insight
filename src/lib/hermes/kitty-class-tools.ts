@@ -177,19 +177,28 @@ export async function executeKittyClassTool(
       const occurrenceId = text(payload, "occurrenceId");
       const occurrenceVersion = number(payload, "occurrenceVersion");
       const changeType = payload.changeType === "reschedule" ? "reschedule" : "cancel";
-      return { changeRequest: await beginKittyClassChange(client, actor, {
-        occurrenceId, occurrenceVersion, changeType, selectionToken: text(payload, "selectionToken"),
-        reason: typeof payload.reason === "string" ? payload.reason : undefined,
+      if (payload.scope !== "individual_reschedule" && payload.scope !== "whole_occurrence") throw new Error("invalid_payload");
+      const changeRequest = await beginKittyClassChange(client, actor, {
+        occurrenceId, occurrenceVersion, changeType, scope: payload.scope,
+        enrollmentId: typeof payload.enrollmentId === "string" ? payload.enrollmentId : undefined,
+        selectionToken: text(payload, "selectionToken"),
+        clientRequestId: clientRequestId(payload, context.clientRequestId),
         proposedStartsAt: typeof payload.proposedStartsAt === "string" ? payload.proposedStartsAt : undefined,
         proposedEndsAt: typeof payload.proposedEndsAt === "string" ? payload.proposedEndsAt : undefined,
         proposedTimezone: typeof payload.proposedTimezone === "string" ? payload.proposedTimezone : undefined,
-      }), counterpartyNotificationReserved: true };
+      });
+      return {
+        changeRequest,
+        counterpartyNotificationReserved: changeRequest.status !== "finalized",
+        finalNotificationsReserved: changeRequest.status === "finalized",
+      };
     }
     case "propose_replacement_time": return { changeRequest: await proposeKittyClassReplacement(client, actor, {
       requestId: text(payload, "requestId"), requestVersion: number(payload, "requestVersion"),
       payloadDigest: text(payload, "payloadDigest"),
       proposedStartsAt: text(payload, "proposedStartsAt"), proposedEndsAt: text(payload, "proposedEndsAt"),
       proposedTimezone: typeof payload.proposedTimezone === "string" ? payload.proposedTimezone : undefined,
+      clientRequestId: clientRequestId(payload, context.clientRequestId),
     }), counterpartyNotificationReserved: true };
     case "decide_class_change": {
       const decided = await decideKittyClassChange(client, actor, {
@@ -197,6 +206,7 @@ export async function executeKittyClassTool(
         payloadDigest: text(payload, "payloadDigest"),
         decision: payload.decision === "approved" ? "approved" : "rejected",
         providerMessageId: typeof payload.providerMessageId === "string" ? payload.providerMessageId : undefined,
+        clientRequestId: clientRequestId(payload, context.clientRequestId),
       });
       return { changeRequest: decided, finalNotificationsReserved: decided.status === "finalized" };
     }
