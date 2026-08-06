@@ -20,6 +20,13 @@ interface CommitContact {
   profileId?: string | null;
 }
 
+interface ImportRowError {
+  operation: "create" | "update" | "restore";
+  contactId?: string;
+  displayName: string;
+  message: string;
+}
+
 function assignableRole(role: unknown): role is Exclude<HermesContactRole, "unclassified"> {
   return typeof role === "string" && ROLES.has(role as HermesContactRole) && role !== "unclassified";
 }
@@ -65,6 +72,11 @@ export async function POST(request: Request) {
   const supabase = createAdminClient();
   let created = 0;
   let skipped = 0;
+  const rowErrors: ImportRowError[] = [];
+  const displayNames = new Map<string, string>();
+  for (const row of previewRows) {
+    if (row?.existing?.id) displayNames.set(row.existing.id, row.existing.displayName || row.displayName || "Contact");
+  }
 
   if (contacts.length > 0) {
     const { data, error } = await supabase.rpc("import_hermes_contacts", {
@@ -72,13 +84,17 @@ export async function POST(request: Request) {
       p_source_sha256: token.digest,
       p_contacts: contacts,
     });
-    if (error) return NextResponse.json({ error: "The contacts were not imported." }, { status: 500 });
-    created = Number((data as { created?: number })?.created ?? 0);
-    skipped = Number((data as { skipped?: number })?.skipped ?? 0);
+    if (error || !data) {
+      for (const contact of contacts) {
+        rowErrors.push({ operation: "create", displayName: contact.displayName, message: "Could not be imported." });
+      }
+    } else {
+      created = Number((data as { created?: number })?.created ?? 0);
+      skipped = Number((data as { skipped?: number })?.skipped ?? 0);
+    }
   }
 
   let updated = 0;
-  let firstFailure: string | null = null;
   for (const update of updates) {
     const { data, error } = await supabase
       .from("hermes_contacts")
@@ -87,11 +103,15 @@ export async function POST(request: Request) {
       .is("deleted_at", null)
       .select("id")
       .maybeSingle();
-    if (error) {
-      firstFailure ??= "One or more contact updates failed.";
+    if (error || !data) {
+      rowErrors.push({
+        operation: "update",
+        contactId: update.contactId,
+        displayName: displayNames.get(update.contactId) ?? "Contact",
+        message: "Could not be updated.",
+      });
       continue;
     }
-    if (!data) continue;
     updated += 1;
     await supabase.from("hermes_audit_events").insert({
       actor_type: "admin", actor_profile_id: profile.id, event_type: "contact_updated",
@@ -110,18 +130,22 @@ export async function POST(request: Request) {
       .eq("id", restore.contactId)
       .select("id, display_name, communication_policy, consent_status")
       .maybeSingle();
-    if (error) {
+    if (error || !data) {
       // Restoring a contact whose profile_id is still set can collide with
       // the partial unique index (profile_id where deleted_at is null) if a
       // later import linked that same Insight profile to a different
       // contact while this one was removed. Name the fix, not a bare 500.
-      firstFailure ??=
-        error.code === "23505"
-          ? "This contact's linked Insight profile is now linked to another contact. Unlink that contact first, then restore this one."
-          : "One or more contact restores failed.";
+      rowErrors.push({
+        operation: "restore",
+        contactId: restore.contactId,
+        displayName: displayNames.get(restore.contactId) ?? "Contact",
+        message:
+          error?.code === "23505"
+            ? "Its linked Insight profile is already used by another contact. Unlink that contact first."
+            : "Could not be restored.",
+      });
       continue;
     }
-    if (!data) continue;
     restored += 1;
     // A contact restored to the directory may still be opted out from an earlier
     // WhatsApp "STOP" received while removed; surface that so the admin knows.
@@ -137,6 +161,11 @@ export async function POST(request: Request) {
   }
 
   const result = { created, skipped, updated, restored };
-  if (firstFailure) return NextResponse.json({ error: firstFailure, result, restoredMuted }, { status: 500 });
+  if (rowErrors.length > 0) {
+    return NextResponse.json(
+      { error: "One or more contact changes failed.", result, restoredMuted, rowErrors },
+      { status: 500 },
+    );
+  }
   return NextResponse.json({ result, restoredMuted });
 }

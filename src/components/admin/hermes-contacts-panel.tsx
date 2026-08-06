@@ -197,7 +197,12 @@ function ContactActions({ contact }: { contact: HermesAdminContact }) {
             ? undefined
             : `${contact.display_name}'s messaging is set to ${readable(contact.communication_policy)}; Pause and Resume are disabled`
         }
-        onClick={() => send("PATCH", { communicationPolicy: paused ? "direct" : "paused" })}
+        onClick={() =>
+          send("PATCH", {
+            communicationPolicy: paused ? "direct" : "paused",
+            expectedCommunicationPolicy: contact.communication_policy,
+          })
+        }
       >
         {paused ? "Resume" : "Pause"}
       </Button>

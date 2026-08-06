@@ -14,7 +14,6 @@ declare
   v_contact_id uuid;
   v_created integer := 0;
   v_skipped integer := 0;
-  v_existing uuid;
   v_role text;
   v_profile_id uuid;
 begin
@@ -51,10 +50,7 @@ begin
       raise exception 'invalid_profile_link';
     end if;
 
-    select id into v_existing
-    from public.hermes_contacts
-    where whatsapp_e164 = v_item->>'normalizedPhone';
-
+    v_contact_id := null;
     insert into public.hermes_contacts (
       display_name,
       whatsapp_e164,
@@ -92,25 +88,26 @@ begin
       true,
       null
     )
-    on conflict (whatsapp_e164) do update set
-      display_name = public.hermes_contacts.display_name
+    on conflict (whatsapp_e164) do nothing
     returning id into v_contact_id;
 
-    if v_existing is null then v_created := v_created + 1;
-    else v_skipped := v_skipped + 1;
+    if v_contact_id is not null then
+      v_created := v_created + 1;
+      insert into public.hermes_audit_events (
+        actor_type, actor_profile_id, event_type, entity_type, entity_id, metadata
+      ) values (
+        'admin', p_imported_by, 'contact_imported', 'hermes_contact', v_contact_id,
+        jsonb_build_object('batch_id', v_batch_id, 'linked_profile', v_profile_id is not null)
+      );
+    else
+      v_skipped := v_skipped + 1;
     end if;
-
-    insert into public.hermes_audit_events (
-      actor_type, actor_profile_id, event_type, entity_type, entity_id, metadata
-    ) values (
-      'admin', p_imported_by, 'contact_imported', 'hermes_contact', v_contact_id,
-      jsonb_build_object('batch_id', v_batch_id, 'linked_profile', v_profile_id is not null)
-    );
   end loop;
 
   update public.hermes_import_batches
   set created_count = v_created,
-      updated_count = v_skipped,
+      updated_count = 0,
+      skipped_count = v_skipped,
       summary = jsonb_build_object('created', v_created, 'skipped', v_skipped)
   where id = v_batch_id;
 

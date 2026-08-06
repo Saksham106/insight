@@ -13,6 +13,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   const { id } = await context.params;
   const body = await request.json();
   const update: Record<string, unknown> = {};
+  let expectedCommunicationPolicy: CommunicationPolicy | null = null;
 
   let restoring = false;
   if (body.restore === true) {
@@ -44,6 +45,10 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   }
   if (body.communicationPolicy !== undefined) {
     if (!POLICIES.has(body.communicationPolicy)) return NextResponse.json({ error: "Invalid communication policy." }, { status: 400 });
+    if (body.expectedCommunicationPolicy === undefined || !POLICIES.has(body.expectedCommunicationPolicy)) {
+      return NextResponse.json({ error: "The current communication policy is required." }, { status: 400 });
+    }
+    expectedCommunicationPolicy = body.expectedCommunicationPolicy;
     update.communication_policy = body.communicationPolicy;
     if (body.communicationPolicy === "opted_out") update.consent_status = "withdrawn";
   }
@@ -65,6 +70,9 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   let query = supabase.from("hermes_contacts").update(update).eq("id", id);
   // Every field except restore refuses to edit a contact that was removed.
   if (!restoring) query = query.is("deleted_at", null);
+  if (body.expectedCommunicationPolicy !== undefined) {
+    query = query.eq("communication_policy", expectedCommunicationPolicy);
+  }
   const { data, error } = await query
     .select("id, display_name, preferred_name, role, profile_id, communication_policy, consent_status")
     .maybeSingle();
@@ -80,6 +88,12 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
       );
     }
     return NextResponse.json({ error: "Could not update the contact." }, { status: 500 });
+  }
+  if (!data && body.expectedCommunicationPolicy !== undefined) {
+    return NextResponse.json(
+      { error: "This contact changed since you opened the page. Refresh and try again." },
+      { status: 409 },
+    );
   }
   if (!data) return NextResponse.json({ error: "Could not update the contact." }, { status: 500 });
   await supabase.from("hermes_audit_events").insert({

@@ -182,3 +182,22 @@ test("admin import routes authenticate before privileged database access", () =>
     assert.match(source, /profile\.role !== "admin"/);
   }
 });
+
+test("the import commit reports every failed row and the UI names each one", () => {
+  const route = fs.readFileSync(
+    path.join(__dirname, "../../app/api/admin/hermes/import/commit/route.ts"),
+    "utf8",
+  );
+  const panel = fs.readFileSync(
+    path.join(__dirname, "../../components/admin/hermes-contact-import.tsx"),
+    "utf8",
+  );
+
+  assert.match(route, /const rowErrors: ImportRowError\[\] = \[\]/);
+  assert.match(route, /if \(error \|\| !data\)/, "a missing update result is a failure, not a silent skip");
+  assert.match(route, /\{ error: "One or more contact changes failed\.", result, restoredMuted, rowErrors \}/);
+  assert.doesNotMatch(route, /firstFailure/);
+  assert.match(panel, /data\.rowErrors/);
+  assert.match(panel, /rowError\.displayName/);
+  assert.match(panel, /rowError\.message/);
+});

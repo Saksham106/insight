@@ -44,6 +44,11 @@ interface RestoredMutedContact {
   communicationPolicy: string;
 }
 
+interface ImportRowError {
+  displayName: string;
+  message: string;
+}
+
 const rowCard: CSSProperties = {
   border: "1px solid var(--color-border)",
   borderRadius: "10px",
@@ -186,7 +191,11 @@ export function HermesContactImport() {
       const progress = data.result
         ? ` ${created} added, ${updated} updated, ${restored} restored${skippedNote} before the failure.`
         : "";
-      setStatus(`${data.error ?? "The contacts were not imported."}${progress}${mutedNote}`);
+      const rowErrors = (data.rowErrors ?? []) as ImportRowError[];
+      const rowErrorNote = rowErrors.length > 0
+        ? ` ${rowErrors.map((rowError) => `${rowError.displayName}: ${rowError.message}`).join(" ")}`
+        : "";
+      setStatus(`${data.error ?? "The contacts were not imported."}${progress}${rowErrorNote}${mutedNote}`);
       router.refresh();
       return;
     }

@@ -30,6 +30,11 @@ test("Pause/Resume cannot overwrite a deliberately chosen messaging policy", () 
     "the toggle is limited to the two policies it can actually round-trip",
   );
   assert.match(panel, /disabled=\{busy \|\| !canToggleCommunication\}/, "the gate reaches the button");
+  assert.match(
+    panel,
+    /expectedCommunicationPolicy: contact\.communication_policy/,
+    "the server can reject a stale toggle instead of overwriting a newer policy",
+  );
   assert.doesNotMatch(
     panel,
     /communication_policy === "opted_out"/,

@@ -311,8 +311,9 @@ test("restarting an open lesson cycle adds tutors without removing earlier selec
 
 test("import RPC preserves contacts that already exist", () => {
   const sql = readMigration("_preserve_known_hermes_contacts_on_import.sql");
-  // The conflict branch must be a no-op self-assignment, never an overwrite.
-  assert.match(sql, /on conflict \(whatsapp_e164\) do update set\s+display_name = public\.hermes_contacts\.display_name/);
+  // A duplicate must neither overwrite the row nor fire its update trigger.
+  assert.match(sql, /on conflict \(whatsapp_e164\) do nothing/);
+  assert.doesNotMatch(sql, /on conflict \(whatsapp_e164\) do update/);
   for (const clobbered of [
     "role = excluded.role",
     "profile_id = excluded.profile_id",
@@ -324,6 +325,9 @@ test("import RPC preserves contacts that already exist", () => {
   ]) {
     assert.doesNotMatch(sql, new RegExp(clobbered.replace(/[.()]/g, "\\$&")));
   }
+  assert.match(sql, /if v_contact_id is not null then[\s\S]+contact_imported/);
+  assert.match(sql, /updated_count = 0/);
+  assert.match(sql, /skipped_count = v_skipped/);
   assert.match(sql, /'skipped', v_skipped/);
 });
 

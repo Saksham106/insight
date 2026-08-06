@@ -25,6 +25,13 @@ test("the contact PATCH route accepts a messaging name and a reset", () => {
   assert.match(route, /select\("id, display_name, preferred_name/, "the response carries it back");
 });
 
+test("the contact PATCH route atomically guards communication policy changes", () => {
+  const route = read("src/app/api/admin/hermes/contacts/[id]/route.ts");
+  assert.match(route, /body\.expectedCommunicationPolicy !== undefined/);
+  assert.match(route, /query = query\.eq\("communication_policy", expectedCommunicationPolicy\)/);
+  assert.match(route, /status: 409/);
+});
+
 test("the migration adds a nullable, length-checked preferred_name", () => {
   const migration = readMigration("_add_hermes_contact_preferred_name.sql");
   assert.match(migration, /add column if not exists preferred_name text/);
