@@ -176,6 +176,31 @@ class AcademyProfileTests(unittest.TestCase):
         self.assertIn("cannot create", combined)
         self.assertIn("notification", combined)
 
+    def test_group_class_policy_is_scope_explicit_and_enrollment_private(self):
+        agents = (PROFILE_DIR / "AGENTS.md").read_text().lower()
+        skill = (
+            PROFILE_DIR.parents[1] / "hermes-skills" / "kitty-classes" / "SKILL.md"
+        ).read_text().lower()
+        combined = f"{agents}\n{skill}"
+
+        for required in (
+            "record_class_attendance",
+            "correct_class_attendance",
+            "relay_class_update",
+            "individual student",
+            "whole class",
+            "confirm the exact scope",
+            "do not identify an absent student to other families",
+            "shared guardian",
+            "open-ended",
+            "bring_materials",
+            "complete_assigned_work",
+            "review_prior_material",
+            "bring_device",
+            "never forward raw inbound text",
+        ):
+            self.assertIn(required, combined)
+
 
 if __name__ == "__main__":
     unittest.main()
