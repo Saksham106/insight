@@ -297,13 +297,16 @@ export async function listKittyClasses(client: Client, actor: KittyClassActor, o
 
   let query = client
     .from("kitty_class_occurrences")
-    .select("id, series_id, title, subject, starts_at, ends_at, local_date, timezone, status, version")
-    .order("starts_at", { ascending: options.view !== "history" })
-    .limit(limit);
+    .select("id, series_id, title, subject, starts_at, ends_at, local_date, timezone, status, version");
   if (options.view === "attention") query = query.eq("status", "change_requested");
   else if (options.view === "history") query = query.in("status", ["completed", "cancelled", "rescheduled"]);
-  else query = query.in("status", ["scheduled", "change_requested"]);
+  else query = query
+    .in("status", ["scheduled", "change_requested"])
+    .gte("ends_at", new Date().toISOString());
   if (contactFilterClauses) query = query.or(contactFilterClauses.join(","));
+  query = query
+    .order("starts_at", { ascending: options.view !== "history" })
+    .limit(limit);
   const { data, error } = await query;
   dbError(error);
   const visible = actor.kind === "contact"
@@ -552,11 +555,11 @@ export async function confirmKittyClassSelection(client: Client, actor: KittyCla
     },
   });
   dbError(error);
-  const { error: resolutionError } = await client.rpc("resolve_kitty_class_scope_ambiguities", {
-    p_actor_contact_id: actor.contactId,
-    p_occurrence_id: input.occurrenceId,
+  await resolveKittyAmbiguities(client, actor, {
+    occurrenceId: input.occurrenceId,
+    ambiguityKind: "class",
+    resolutionScope: "occurrence_selection",
   });
-  dbError(resolutionError);
   return {
     occurrence,
     selectionToken,
@@ -593,6 +596,30 @@ export async function recordKittyClassAmbiguity(client: Client, actor: KittyClas
   });
   dbError(error);
   return data;
+}
+
+type KittyAmbiguityResolutionScope =
+  | "occurrence_selection"
+  | "individual_attendance"
+  | "individual_relay"
+  | "whole_occurrence_relay"
+  | "individual_reschedule"
+  | "whole_occurrence"
+  | "change_confirmation"
+  | "replacement_proposal";
+
+async function resolveKittyAmbiguities(client: Client, actor: Extract<KittyClassActor, { kind: "contact" }>, input: {
+  occurrenceId: string;
+  ambiguityKind: "class" | "scope";
+  resolutionScope: KittyAmbiguityResolutionScope;
+}) {
+  const { error } = await client.rpc("resolve_kitty_class_scope_ambiguities", {
+    p_actor_contact_id: actor.contactId,
+    p_occurrence_id: input.occurrenceId,
+    p_ambiguity_kind: input.ambiguityKind,
+    p_resolution_scope: input.resolutionScope,
+  });
+  dbError(error);
 }
 
 function assertContactRelayInput(actor: KittyClassActor, input: {
@@ -714,7 +741,13 @@ export async function recordKittyAttendance(client: Client, actor: KittyClassAct
     p_client_request_id: input.clientRequestId.trim(),
   });
   dbError(error);
-  return projectKittyAttendanceMutation(Array.isArray(data) ? data[0] : data);
+  const result = projectKittyAttendanceMutation(Array.isArray(data) ? data[0] : data);
+  await resolveKittyAmbiguities(client, actor, {
+    occurrenceId: input.occurrenceId,
+    ambiguityKind: "scope",
+    resolutionScope: "individual_attendance",
+  });
+  return result;
 }
 
 export async function correctKittyAttendance(client: Client, actor: KittyClassActor, input: {
@@ -743,7 +776,13 @@ export async function correctKittyAttendance(client: Client, actor: KittyClassAc
     p_client_request_id: input.clientRequestId.trim(),
   });
   dbError(error);
-  return projectKittyAttendanceMutation(Array.isArray(data) ? data[0] : data);
+  const result = projectKittyAttendanceMutation(Array.isArray(data) ? data[0] : data);
+  await resolveKittyAmbiguities(client, actor, {
+    occurrenceId: input.occurrenceId,
+    ambiguityKind: "scope",
+    resolutionScope: "individual_attendance",
+  });
+  return result;
 }
 
 export async function createKittyOperationalRelay(client: Client, actor: KittyClassActor, input: {
@@ -780,7 +819,13 @@ export async function createKittyOperationalRelay(client: Client, actor: KittyCl
     p_client_request_id: input.clientRequestId.trim(),
   });
   dbError(error);
-  return projectKittyRelayMutation(Array.isArray(data) ? data[0] : data);
+  const result = projectKittyRelayMutation(Array.isArray(data) ? data[0] : data);
+  await resolveKittyAmbiguities(client, actor, {
+    occurrenceId: input.occurrenceId,
+    ambiguityKind: "scope",
+    resolutionScope: enrollmentScoped ? "individual_relay" : "whole_occurrence_relay",
+  });
+  return result;
 }
 
 export async function beginKittyClassChange(client: Client, actor: KittyClassActor, input: {
@@ -819,7 +864,13 @@ export async function beginKittyClassChange(client: Client, actor: KittyClassAct
     p_client_request_id: input.clientRequestId.trim(),
   });
   dbError(error);
-  return projectKittyChangeRequest(Array.isArray(data) ? data[0] : data);
+  const result = projectKittyChangeRequest(Array.isArray(data) ? data[0] : data);
+  await resolveKittyAmbiguities(client, actor, {
+    occurrenceId: input.occurrenceId,
+    ambiguityKind: "scope",
+    resolutionScope: input.scope,
+  });
+  return result;
 }
 
 type KittyChangeRequestProjection = {
@@ -886,7 +937,15 @@ export async function decideKittyClassChange(client: Client, actor: KittyClassAc
     p_client_request_id: input.clientRequestId.trim(),
   });
   dbError(error);
-  return projectKittyChangeRequest(Array.isArray(data) ? data[0] : data);
+  const result = projectKittyChangeRequest(Array.isArray(data) ? data[0] : data);
+  if (result.occurrenceId) {
+    await resolveKittyAmbiguities(client, actor, {
+      occurrenceId: result.occurrenceId,
+      ambiguityKind: "scope",
+      resolutionScope: "change_confirmation",
+    });
+  }
+  return result;
 }
 
 export async function proposeKittyClassReplacement(client: Client, actor: KittyClassActor, input: {
@@ -903,7 +962,15 @@ export async function proposeKittyClassReplacement(client: Client, actor: KittyC
     p_client_request_id: input.clientRequestId.trim(),
   });
   dbError(error);
-  return projectKittyChangeRequest(Array.isArray(data) ? data[0] : data);
+  const result = projectKittyChangeRequest(Array.isArray(data) ? data[0] : data);
+  if (result.occurrenceId) {
+    await resolveKittyAmbiguities(client, actor, {
+      occurrenceId: result.occurrenceId,
+      ambiguityKind: "scope",
+      resolutionScope: "replacement_proposal",
+    });
+  }
+  return result;
 }
 
 export async function findMyPendingKittyChanges(client: Client, actor: KittyClassActor, referenceCode?: string) {

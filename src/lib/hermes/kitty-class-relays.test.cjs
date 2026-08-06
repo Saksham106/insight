@@ -130,7 +130,7 @@ test("notification template projection ignores raw and attendance note fields", 
   assert.doesNotMatch(JSON.stringify(data), /medical|verbatim|Student A/);
 });
 
-test("attendance, correction, and relay services use one actor-bound transactional RPC", async () => {
+test("attendance, correction, and relay services mutate before resolving bounded scope ambiguity", async () => {
   const { recordKittyAttendance, correctKittyAttendance, createKittyOperationalRelay } = require(servicePath);
   const calls = [];
   const selectionToken = "a".repeat(64);
@@ -172,14 +172,20 @@ test("attendance, correction, and relay services use one actor-bound transaction
 
   assert.deepEqual(calls.map((call) => call.name), [
     "record_kitty_class_attendance",
+    "resolve_kitty_class_scope_ambiguities",
     "correct_kitty_class_attendance",
+    "resolve_kitty_class_scope_ambiguities",
     "create_kitty_class_operational_relay",
+    "resolve_kitty_class_scope_ambiguities",
   ]);
+  const mutationCalls = calls.filter((call) => call.name !== "resolve_kitty_class_scope_ambiguities");
   assert.ok(calls.every((call) => call.payload.p_actor_contact_id === "student-a"));
-  assert.ok(calls.every((call) => call.payload.p_enrollment_id === "enrollment-a"));
+  assert.ok(mutationCalls.every((call) => call.payload.p_enrollment_id === "enrollment-a"));
   assert.ok(calls.every((call) => !("actorContactId" in call.payload) && !("role" in call.payload)));
   assert.equal(calls[0].payload.p_note, "Family conflict");
-  assert.equal(calls[1].payload.p_supersedes_attendance_id, "attendance-1");
+  assert.equal(calls[2].payload.p_supersedes_attendance_id, "attendance-1");
+  assert.ok(calls.filter((call) => call.name === "resolve_kitty_class_scope_ambiguities")
+    .every((call) => call.payload.p_ambiguity_kind === "scope"));
 });
 
 test("relay RPCs lock and derive membership, bind replay payloads, append corrections, and are service-role-only", () => {

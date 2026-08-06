@@ -150,6 +150,7 @@ declare
   v_series public.kitty_class_series;
   v_series_id uuid;
   v_enrollment public.kitty_class_enrollments;
+  v_coverage_through date;
 begin
   if p_occurrence_id is null
     or p_enrollment_id is null
@@ -245,19 +246,36 @@ begin
     update public.kitty_class_enrollments enrollment
     set active_until = p_effective_date
     where enrollment.id = v_enrollment.id;
+
+    if v_series.effective_end is null then
+      select pg_catalog.min(remaining.active_from)
+      into v_coverage_through
+      from public.kitty_class_enrollments remaining
+      where remaining.series_id = v_occurrence.series_id
+        and remaining.is_active
+        and remaining.active_until is null;
+      if v_coverage_through is null then
+        raise exception 'enrollment_required';
+      end if;
+    else
+      v_coverage_through := v_series.effective_end;
+    end if;
+
     if exists (
       select 1
-      from public.kitty_class_occurrences future_occurrence
-      where future_occurrence.series_id = v_occurrence.series_id
-        and future_occurrence.local_date > p_effective_date
-        and future_occurrence.status in ('scheduled', 'change_requested')
+      from pg_catalog.generate_series(
+        greatest(p_effective_date + 1, v_series.effective_start)::timestamp,
+        v_coverage_through::timestamp,
+        interval '1 day'
+      ) candidate(local_date)
+      where extract(dow from candidate.local_date)::smallint = any(v_series.weekdays)
         and not exists (
           select 1
           from public.kitty_class_enrollments remaining
           where remaining.series_id = v_occurrence.series_id
             and remaining.is_active
-            and remaining.active_from <= future_occurrence.local_date
-            and (remaining.active_until is null or remaining.active_until >= future_occurrence.local_date)
+            and remaining.active_from <= candidate.local_date::date
+            and (remaining.active_until is null or remaining.active_until >= candidate.local_date::date)
         )
     ) then
       raise exception 'enrollment_required';

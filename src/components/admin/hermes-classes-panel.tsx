@@ -8,6 +8,7 @@ import { Empty, formatMessageTime, PanelCard } from "@/components/admin/hermes-d
 import {
   canRetryKittyNotification,
   filterKittyAttentionClasses,
+  filterKittyClassesForView,
   kittyClassAttentionReasons,
   normalizeKittyEnrollmentMutationTiming,
   reduceKittyEnrollmentDrafts,
@@ -238,8 +239,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
   );
   const visible = useMemo(() => {
     if (view === "attention") return filterKittyAttentionClasses(classes, notificationIssues, attentionIssues);
-    if (view === "history") return classes.filter((item) => ["completed", "cancelled", "rescheduled"].includes(item.status));
-    return classes.filter((item) => ["scheduled", "change_requested"].includes(item.status));
+    return filterKittyClassesForView(classes, view);
   }, [attentionIssues, classes, notificationIssues, view]);
 
   function showMessage(value: string, isError = false) {

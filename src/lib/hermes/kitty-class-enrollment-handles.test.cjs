@@ -125,6 +125,7 @@ function fixtureClient() {
     select() { return this; }
     eq(key, value) { this.filters.push([key, value]); return this; }
     in(key, values) { this.inFilters.push([key, values]); return this; }
+    gte() { return this; }
     or() { return this; }
     order() { return this; }
     limit(value) { this.maximum = value; return this; }
