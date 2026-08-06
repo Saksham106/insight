@@ -15,6 +15,8 @@ declare
   v_student_token_digest text;
   v_teacher_token_digest text;
   v_open_ended_preparation text;
+  v_task4_outbox_intent text;
+  v_malformed_payload jsonb;
 begin
   if has_function_privilege(
     'anon',
@@ -299,6 +301,87 @@ begin
       'class_operational_update', '{}'::jsonb, 'relay-runtime-missing-summary'
     );
     raise exception 'relay outbox accepted a missing summary';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.kitty_class_operational_relays(
+      occurrence_id, enrollment_id, sent_by_contact_id, intent, structured_payload,
+      client_request_id, payload_digest
+    ) values (
+      v_occurrence.id, v_enrollment_a, '10000000-0000-0000-0000-000000000001',
+      'student_late', jsonb_build_object('estimatedAt', 42),
+      'relay-runtime-numeric-estimate', repeat('d', 64)
+    );
+    raise exception 'relay table accepted a numeric estimatedAt';
+  exception when check_violation then null;
+  end;
+  foreach v_task4_outbox_intent in array array[
+    'class_attendance_update', 'class_teacher_delay', 'class_operational_update'
+  ] loop
+    begin
+      insert into public.kitty_class_notification_outbox(
+        occurrence_id, contact_id, intent, payload, idempotency_key
+      ) values (
+        v_occurrence.id, '10000000-0000-0000-0000-000000000002',
+        v_task4_outbox_intent,
+        jsonb_build_object(
+          'relaySummary', 'Canonical summary',
+          'medicalDetails', 'ADHD accommodation'
+        ),
+        'relay-runtime-extra-outbox-key:' || v_task4_outbox_intent
+      );
+      raise exception 'Task 4 outbox accepted an extra sensitive payload key';
+    exception when check_violation then null;
+    end;
+  end loop;
+  foreach v_malformed_payload in array array[
+    '[]'::jsonb, '"Canonical summary"'::jsonb, 'null'::jsonb
+  ] loop
+    begin
+      insert into public.kitty_class_notification_outbox(
+        occurrence_id, contact_id, intent, payload, idempotency_key
+      ) values (
+        v_occurrence.id, '10000000-0000-0000-0000-000000000002',
+        'class_operational_update', v_malformed_payload,
+        'relay-runtime-malformed-outbox:' || md5(v_malformed_payload::text)
+      );
+      raise exception 'Task 4 outbox accepted a non-object payload';
+    exception when check_violation then null;
+    end;
+  end loop;
+  insert into public.kitty_class_notification_outbox(
+    occurrence_id, contact_id, intent, payload, idempotency_key
+  ) values (
+    v_occurrence.id, '10000000-0000-0000-0000-000000000002',
+    'class_change_request',
+    jsonb_build_object('existingClassChangeField', 'preserved'),
+    'relay-runtime-existing-outbox-unaffected'
+  );
+  begin
+    insert into public.kitty_class_operational_relays(
+      occurrence_id, enrollment_id, sent_by_contact_id, intent, structured_payload,
+      client_request_id, payload_digest
+    ) values (
+      v_occurrence.id, v_enrollment_a, '10000000-0000-0000-0000-000000000001',
+      'student_late', jsonb_build_object('estimatedAt', 'not-a-timestamp'),
+      'relay-runtime-invalid-estimate', repeat('e', 64)
+    );
+    raise exception 'relay table accepted an invalid estimatedAt';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.kitty_class_operational_relays(
+      occurrence_id, enrollment_id, sent_by_contact_id, intent, structured_payload,
+      client_request_id, payload_digest
+    ) values (
+      v_occurrence.id, v_enrollment_a, '10000000-0000-0000-0000-000000000001',
+      'student_late', jsonb_build_object(
+        'estimatedAt', (current_date + 5 + time '16:10') at time zone 'UTC',
+        'medicalDetails', 'ADHD accommodation'
+      ),
+      'relay-runtime-extra-structured-key', repeat('f', 64)
+    );
+    raise exception 'relay table accepted an extra structured payload key';
   exception when check_violation then null;
   end;
 
