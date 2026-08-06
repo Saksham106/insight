@@ -2,7 +2,7 @@ import { HermesAssistantDashboard } from "@/components/admin/hermes-assistant-da
 import { parseHermesTab } from "@/components/admin/hermes-dashboard-shared";
 import { requireRole } from "@/lib/auth/require-role";
 import { loadAdminLessonCycles } from "@/lib/hermes/lesson-ledger-admin";
-import type { KittyAdminAttentionIssue } from "@/lib/hermes/kitty-class-admin";
+import { loadKittyAdminAttentionIssues } from "@/lib/hermes/kitty-class-admin";
 import {
   attachAndSortConversationSummaries,
   loadConversationSummaries,
@@ -36,12 +36,11 @@ export default async function HermesAdminPage({
     settlements,
     summaryResult,
     lessonResult,
-    classOccurrences,
+    classUpcomingOccurrences,
+    classHistoryOccurrences,
     classSeries,
     classNotificationIssues,
-    classChangeAttention,
-    classAmbiguityEvents,
-    classEnrollmentDecisionContacts,
+    classAttentionResult,
   ] =
     await Promise.all([
       supabase
@@ -79,8 +78,16 @@ export default async function HermesAdminPage({
       supabase
         .from("kitty_class_occurrences")
         .select("id, series_id, title, subject, starts_at, ends_at, timezone, status, version")
+        .in("status", ["scheduled", "change_requested"])
+        .gte("ends_at", new Date().toISOString())
         .order("starts_at", { ascending: true })
         .limit(200),
+      supabase
+        .from("kitty_class_occurrences")
+        .select("id, series_id, title, subject, starts_at, ends_at, timezone, status, version")
+        .in("status", ["completed", "cancelled", "rescheduled"])
+        .order("starts_at", { ascending: false })
+        .limit(50),
       supabase
         .from("kitty_class_series")
         .select("id, title, weekdays, local_time, timezone, status")
@@ -91,61 +98,28 @@ export default async function HermesAdminPage({
         .in("status", ["failed", "blocked"])
         .order("updated_at", { ascending: false })
         .limit(50),
-      supabase
-        .from("kitty_class_change_requests")
-        .select("id, occurrence_id, status")
-        .order("updated_at", { ascending: false })
-        .limit(500),
-      supabase
-        .from("kitty_class_audit_events")
-        .select("id, event_type, entity_type, entity_id")
-        .in("event_type", ["ambiguous_scope", "scope_ambiguous"])
-        .order("created_at", { ascending: false })
-        .limit(100),
-      supabase
-        .from("kitty_class_enrollments")
-        .select("id, series_id, occurrence_id, contacts:kitty_class_enrollment_contacts(confirms_reschedule, is_active)")
-        .eq("is_active", true)
-        .limit(500),
+      loadKittyAdminAttentionIssues(supabase)
+        .then((data) => ({ data, error: false }))
+        .catch(() => ({ data: [], error: true })),
     ]);
 
-  const changeOccurrenceById = new Map(
-    (classChangeAttention.data ?? []).map((request) => [request.id, request.occurrence_id]),
-  );
-  const classAttentionIssues: KittyAdminAttentionIssue[] = [
-    ...(classChangeAttention.data ?? []).flatMap((request) => {
-      if (request.status !== "expired" && request.status !== "rejected") return [];
-      return [{
-        id: request.id,
-        occurrenceId: request.occurrence_id,
-        seriesId: null,
-        kind: request.status === "expired" ? "expired_request" as const : "rejected_proposal" as const,
-      }];
-    }),
-    ...(classAmbiguityEvents.data ?? []).flatMap((event) => {
-      const occurrenceId = event.entity_type === "occurrence"
-        ? event.entity_id
-        : event.entity_type === "change_request"
-          ? changeOccurrenceById.get(event.entity_id) ?? null
-          : null;
-      return occurrenceId ? [{
-        id: event.id,
-        occurrenceId,
-        seriesId: null,
-        kind: "ambiguous_scope" as const,
-      }] : [];
-    }),
-    ...(classEnrollmentDecisionContacts.data ?? []).flatMap((enrollment) => {
-      const contacts = Array.isArray(enrollment.contacts) ? enrollment.contacts : [];
-      const hasDecisionMaker = contacts.some((contact) => contact.is_active && contact.confirms_reschedule);
-      return hasDecisionMaker ? [] : [{
-        id: `missing-decision-maker:${enrollment.id}`,
-        occurrenceId: enrollment.occurrence_id,
-        seriesId: enrollment.series_id,
-        kind: "missing_decision_maker" as const,
-      }];
-    }),
+  const classAttentionIssues = classAttentionResult.data;
+  const primaryOccurrences = [
+    ...(classUpcomingOccurrences.data ?? []),
+    ...(classHistoryOccurrences.data ?? []),
   ];
+  const primaryOccurrenceIds = new Set(primaryOccurrences.map((occurrence) => occurrence.id));
+  const attentionOccurrenceIds = [...new Set(classAttentionIssues.flatMap((issue: { occurrenceId: string | null }) =>
+    issue.occurrenceId && !primaryOccurrenceIds.has(issue.occurrenceId) ? [issue.occurrenceId] : [],
+  ))].slice(0, 200);
+  const classAttentionOccurrences = attentionOccurrenceIds.length
+    ? await supabase
+        .from("kitty_class_occurrences")
+        .select("id, series_id, title, subject, starts_at, ends_at, timezone, status, version")
+        .in("id", attentionOccurrenceIds)
+        .limit(200)
+    : { data: [], error: null };
+  const classOccurrences = [...primaryOccurrences, ...(classAttentionOccurrences.data ?? [])];
 
   // The query above returns active and removed contacts together so the
   // Contacts tab can offer restore. Every other consumer on this page
@@ -197,8 +171,8 @@ export default async function HermesAdminPage({
         lessonResult.error ? "Lesson ledger temporarily unavailable." : null
       }
       settlements={settlements.data ?? []}
-      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error || classOccurrences.error || classSeries.error || classNotificationIssues.error || classChangeAttention.error || classAmbiguityEvents.error || classEnrollmentDecisionContacts.error ? "Some Kitty information could not be loaded." : null}
-      classOccurrences={classOccurrences.data ?? []}
+      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error || classUpcomingOccurrences.error || classHistoryOccurrences.error || classSeries.error || classNotificationIssues.error || classAttentionResult.error || classAttentionOccurrences.error ? "Some Kitty information could not be loaded." : null}
+      classOccurrences={classOccurrences}
       classSeries={classSeries.data ?? []}
       classNotificationIssues={classNotificationIssues.data ?? []}
       classAttentionIssues={classAttentionIssues}

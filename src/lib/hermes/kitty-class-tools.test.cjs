@@ -26,7 +26,7 @@ test("class tool actions retain their admin and contact authority split", () => 
   for (const action of ["preview_class", "create_class", "list_classes", "get_class", "edit_class", "override_class", "add_enrollment", "end_enrollment"]) {
     assert.ok(tools.includes(`"${action}"`));
   }
-  for (const action of ["find_my_classes", "find_my_pending_changes", "confirm_class_selection", "request_class_change", "decide_class_change", "propose_replacement_time"]) {
+  for (const action of ["find_my_classes", "find_my_pending_changes", "confirm_class_selection", "report_class_ambiguity", "request_class_change", "decide_class_change", "propose_replacement_time"]) {
     assert.ok(tools.includes(`"${action}"`));
   }
   assert.match(route, /verifyServiceRequest/);
@@ -34,6 +34,22 @@ test("class tool actions retain their admin and contact authority split", () => 
   assert.match(route, /parseWhatsAppToolActor/);
   assert.match(route, /KITTY_CLASS_CALENDAR_ENABLED/);
   assert.match(route, /communicationDecision/);
+});
+
+test("ambiguity reporting is contact-only and forwards only structured identifiers", async () => {
+  const { ADMIN_CLASS_ACTIONS, CONTACT_CLASS_ACTIONS, executeKittyClassTool } = require(toolsPath);
+  const occurrenceId = "11111111-1111-4111-8111-111111111111";
+  const calls = [];
+  const client = { rpc: async (name, payload) => { calls.push({ name, payload }); return { data: { created: true }, error: null }; } };
+  assert.equal(CONTACT_CLASS_ACTIONS.includes("report_class_ambiguity"), true);
+  assert.equal(ADMIN_CLASS_ACTIONS.includes("report_class_ambiguity"), false);
+  await executeKittyClassTool(client, { kind: "contact", contactId: "student-a", channel: "whatsapp" }, "report_class_ambiguity", {
+    candidateOccurrenceIds: [occurrenceId], ambiguityKind: "scope", clientRequestId: "message-17",
+  });
+  assert.deepEqual(calls[0], { name: "record_kitty_class_scope_ambiguity", payload: {
+    p_actor_contact_id: "student-a", p_candidate_occurrence_ids: [occurrenceId],
+    p_ambiguity_kind: "scope", p_client_request_id: "message-17",
+  } });
 });
 
 test("enrollment management actions are admin-only", async () => {

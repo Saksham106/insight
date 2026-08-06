@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     await supabase.from("kitty_class_audit_events").update({ event_type: "class_tool_completed" }).eq("id", auditId);
     return NextResponse.json(result);
   } catch (error) {
-    const category = error instanceof Error && ["action_not_allowed", "class_not_found", "stale_class", "invalid_payload", "change_not_permitted"].includes(error.message)
+    const category = error instanceof Error && ["action_not_allowed", "class_not_found", "stale_class", "invalid_payload", "change_not_permitted", "invalid_ambiguity", "ambiguity_not_permitted"].includes(error.message)
       ? error.message : "class_tool_failed";
     await supabase.from("kitty_class_audit_events").update({ event_type: "class_tool_rejected", metadata: { action: body.action, category } }).eq("id", auditId);
     return response(category, category === "class_not_found" ? 404 : category === "stale_class" ? 409 : 400);

@@ -6,9 +6,14 @@ import { CalendarDays, Plus } from "lucide-react";
 
 import { Empty, formatMessageTime, PanelCard } from "@/components/admin/hermes-dashboard-shared";
 import {
+  canRetryKittyNotification,
   filterKittyAttentionClasses,
   kittyClassAttentionReasons,
+  normalizeKittyEnrollmentMutationTiming,
+  reduceKittyEnrollmentDrafts,
+  shouldLoadKittyOccurrenceDetail,
   type KittyAdminAttentionIssue,
+  type KittyEnrollmentDraft,
 } from "@/lib/hermes/kitty-class-admin";
 import { createKittyClassDashboardSubmitter } from "@/lib/hermes/kitty-class-dashboard-submit";
 
@@ -57,7 +62,6 @@ type OccurrenceDetail = {
     errorCode: string | null; messageId: string | null; updatedAt: string;
   }>;
 };
-type EnrollmentDraft = { id: number; parentIds: number[] };
 type View = "upcoming" | "attention" | "recurring" | "history";
 
 const VIEW_LABELS: Array<[View, string]> = [
@@ -67,7 +71,7 @@ const VIEW_LABELS: Array<[View, string]> = [
   ["history", "History"],
 ];
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const INITIAL_ENROLLMENTS: EnrollmentDraft[] = [{ id: 0, parentIds: [] }];
+const INITIAL_ENROLLMENTS: KittyEnrollmentDraft[] = [{ id: 0, parentIds: [] }];
 
 function normalizedEventName(value: string) {
   return value.replaceAll("_", " ");
@@ -77,7 +81,7 @@ function formChecked(form: FormData, name: string) {
   return form.get(name) === "on";
 }
 
-function enrollmentFromForm(form: FormData, prefix: string, draft: EnrollmentDraft) {
+function enrollmentFromForm(form: FormData, prefix: string, draft: KittyEnrollmentDraft) {
   const studentContactId = String(form.get(`${prefix}.${draft.id}.studentId`) ?? "");
   const contacts: EnrollmentContact[] = [{
     contactId: studentContactId,
@@ -116,7 +120,7 @@ function ContactControls({ prefix, defaultReschedule = false }: { prefix: string
 function EnrollmentFields({
   draft, ordinal, prefix, contacts, canRemove, onAddParent, onRemoveParent, onRemoveEnrollment,
 }: {
-  draft: EnrollmentDraft;
+  draft: KittyEnrollmentDraft;
   ordinal: number;
   prefix: string;
   contacts: Contact[];
@@ -173,6 +177,40 @@ function ConfigurationSummary({ contact }: { contact: EnrollmentContact }) {
   return <span className="text-xs text-muted">{labels.length ? labels.join(" · ") : "no notifications or confirmations"}</span>;
 }
 
+function AddEnrollmentForm({ detail, activeStudents, activeParents, enabled, pending, onSubmit }: {
+  detail: OccurrenceDetail;
+  activeStudents: Contact[];
+  activeParents: Contact[];
+  enabled: boolean;
+  pending: boolean;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const [scope, setScope] = useState<"occurrence" | "this_and_future">(
+    detail.seriesId ? "this_and_future" : "occurrence",
+  );
+  return (
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, marginTop: 10 }}>
+      <label className="text-sm">Add scope<select className="input" name="scope" required value={scope} onChange={(event) => setScope(event.currentTarget.value as "occurrence" | "this_and_future")}>
+        <option value="occurrence">Occurrence only</option>
+        {detail.seriesId ? <option value="this_and_future">This and future occurrences</option> : null}
+      </select></label>
+      <p className="text-xs text-muted">{scope === "occurrence"
+        ? "This student is added only to this occurrence; its date is fixed."
+        : "This student joins the recurring roster from the selected date onward."}</p>
+      <label className="text-sm">Student<select className="input" name="studentContactId" required><option value="">Select student</option>{activeStudents.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}</select></label>
+      <ContactControls prefix="student" defaultReschedule />
+      <label className="text-sm">Parent contact (optional)<select className="input" name="parentContactId"><option value="">No parent contact</option>{activeParents.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}</select></label>
+      <ContactControls prefix="parent" defaultReschedule />
+      {scope === "occurrence" ? (
+        <label className="text-sm">Occurrence date<input className="input" type="date" name="effectiveDate" value={detail.localDate} min={detail.localDate} max={detail.localDate} readOnly required /></label>
+      ) : (
+        <label className="text-sm">Effective date<input className="input" type="date" name="effectiveDate" min={detail.localDate} defaultValue={detail.localDate} required /></label>
+      )}
+      <button type="submit" className="btn btn-secondary" disabled={!enabled || pending}>Add student</button>
+    </form>
+  );
+}
+
 export function HermesClassesPanel({ classes, series, contacts, notificationIssues, attentionIssues, enabled }: {
   classes: ClassOccurrence[];
   series: ClassSeries[];
@@ -185,7 +223,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
   const nextDraftId = useRef(1);
   const [view, setView] = useState<View>("upcoming");
   const [kind, setKind] = useState<"one_off" | "weekly">("weekly");
-  const [enrollments, setEnrollments] = useState<EnrollmentDraft[]>(INITIAL_ENROLLMENTS);
+  const [enrollments, setEnrollments] = useState<KittyEnrollmentDraft[]>(INITIAL_ENROLLMENTS);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageIsError, setMessageIsError] = useState(false);
@@ -211,28 +249,20 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
 
   function addEnrollment() {
     const id = nextDraftId.current++;
-    setEnrollments((current) => [...current, { id, parentIds: [] }]);
+    setEnrollments((current) => reduceKittyEnrollmentDrafts(current, { type: "add_enrollment", id }));
   }
 
   function addParent(enrollmentId: number) {
     const parentId = nextDraftId.current++;
-    setEnrollments((current) => current.map((enrollment) =>
-      enrollment.id === enrollmentId
-        ? { ...enrollment, parentIds: [...enrollment.parentIds, parentId] }
-        : enrollment,
-    ));
+    setEnrollments((current) => reduceKittyEnrollmentDrafts(current, { type: "add_parent", enrollmentId, parentId }));
   }
 
   function removeParent(enrollmentId: number, parentId: number) {
-    setEnrollments((current) => current.map((enrollment) =>
-      enrollment.id === enrollmentId
-        ? { ...enrollment, parentIds: enrollment.parentIds.filter((id) => id !== parentId) }
-        : enrollment,
-    ));
+    setEnrollments((current) => reduceKittyEnrollmentDrafts(current, { type: "remove_parent", enrollmentId, parentId }));
   }
 
   async function loadOccurrenceDetails(occurrenceId: string, force = false) {
-    if ((!force && details[occurrenceId]) || loadingDetails[occurrenceId]) return;
+    if (!shouldLoadKittyOccurrenceDetail({ open: true, hasDetail: Boolean(details[occurrenceId]), isLoading: Boolean(loadingDetails[occurrenceId]), force })) return;
     setLoadingDetails((current) => ({ ...current, [occurrenceId]: true }));
     setDetailErrors((current) => ({ ...current, [occurrenceId]: "" }));
     try {
@@ -278,14 +308,21 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
     const detail = details[occurrenceId];
     const effectiveDate = String(form.get("effectiveDate") ?? "");
     const scope = String(form.get("scope") ?? "");
-    const body: Record<string, unknown> = { action, version: detail.version, effectiveDate };
+    let timing;
+    try {
+      timing = normalizeKittyEnrollmentMutationTiming({ action, seriesId: detail.seriesId, localDate: detail.localDate, scope, effectiveDate });
+    } catch {
+      setPending(false);
+      showMessage("Choose a valid enrollment scope and date.", true);
+      return;
+    }
+    const body: Record<string, unknown> = { action, version: detail.version, ...timing };
     if (action === "add_enrollment") {
       if (scope !== "occurrence" && scope !== "this_and_future") {
         setPending(false);
         showMessage("Choose when this student joins the roster.", true);
         return;
       }
-      body.scope = scope;
       const studentContactId = String(form.get("studentContactId") ?? "");
       const parentContactId = String(form.get("parentContactId") ?? "");
       body.enrollment = {
@@ -312,7 +349,6 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
         return;
       }
       body.enrollmentId = enrollmentId;
-      body.scope = scope;
     }
     try {
       const response = await fetch(`/api/admin/hermes/classes/${occurrenceId}`, {
@@ -399,7 +435,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
             return <article key={issue.id} className="border border-border" style={{ borderRadius: 10, padding: 14 }}>
               <strong>{occurrence?.title ?? "Class notification"}</strong>
               <p className="text-sm text-muted">Delivery {issue.status}: {issue.last_error_code ?? "unknown error"}</p>
-              {issue.status === "failed"
+              {canRetryKittyNotification(issue.status)
                 ? <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => retryNotification(issue.id)}>Retry notification</button>
                 : <p className="text-xs text-muted">Reconciliation required before another send.</p>}
             </article>;
@@ -429,7 +465,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
                   {kittyClassAttentionReasons(item, notificationIssues, attentionIssues).join(" · ")}
                 </p>
               ) : null}
-              <details onToggle={(event) => { if (event.currentTarget.open) void loadOccurrenceDetails(item.id); }} style={{ marginTop: 10 }}>
+              <details onToggle={(event) => { if (shouldLoadKittyOccurrenceDetail({ open: event.currentTarget.open, hasDetail: Boolean(details[item.id]), isLoading: Boolean(loadingDetails[item.id]) })) void loadOccurrenceDetails(item.id); }} style={{ marginTop: 10 }}>
                 <summary className="text-sm font-semibold text-navy" style={{ cursor: "pointer" }}>Roster and occurrence details</summary>
                 {loadingDetails[item.id] ? <p className="text-sm text-muted" role="status">Loading class details…</p> : null}
                 {detailErrors[item.id] ? <p className="text-sm text-error" role="alert">{detailErrors[item.id]}</p> : null}
@@ -470,18 +506,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
 
                     <details>
                       <summary className="text-sm font-semibold text-navy">Add student</summary>
-                      <form onSubmit={(event) => mutateEnrollment(event, item.id, "add_enrollment")} style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                        <label className="text-sm">Add scope<select className="input" name="scope" required defaultValue={detail.seriesId ? "this_and_future" : "occurrence"}>
-                          <option value="occurrence">Occurrence only</option>
-                          {detail.seriesId ? <option value="this_and_future">This and future occurrences</option> : null}
-                        </select></label>
-                        <label className="text-sm">Student<select className="input" name="studentContactId" required><option value="">Select student</option>{activeStudents.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}</select></label>
-                        <ContactControls prefix="student" defaultReschedule />
-                        <label className="text-sm">Parent contact (optional)<select className="input" name="parentContactId"><option value="">No parent contact</option>{activeParents.map((contact) => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}</select></label>
-                        <ContactControls prefix="parent" defaultReschedule />
-                        <label className="text-sm">Effective date<input className="input" type="date" name="effectiveDate" min={detail.localDate} defaultValue={detail.localDate} required /></label>
-                        <button type="submit" className="btn btn-secondary" disabled={!enabled || pending}>Add student</button>
-                      </form>
+                      <AddEnrollmentForm detail={detail} activeStudents={activeStudents} activeParents={activeParents} enabled={enabled} pending={pending} onSubmit={(event) => mutateEnrollment(event, item.id, "add_enrollment")} />
                     </details>
 
                     <section aria-labelledby={`approvals-${item.id}`}>
@@ -502,7 +527,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
                         <article key={failure.id} className="border border-border" style={{ borderRadius: 8, padding: 10 }}>
                           <p className="text-sm">{normalizedEventName(failure.intent)} to {contactsById.get(failure.contactId)?.display_name ?? "Unavailable contact"} · {failure.status} · attempt {failure.attemptCount}</p>
                           <p className="text-xs text-muted">Error: {failure.errorCode ?? "unknown"} · message record: {failure.messageId ?? "not created"}</p>
-                          {failure.status === "failed"
+                          {canRetryKittyNotification(failure.status)
                             ? <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => retryNotification(failure.id, item.id)}>Retry notification</button>
                             : <p className="text-xs text-muted">Reconciliation required before another send.</p>}
                         </article>
@@ -544,7 +569,7 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
                 canRemove={enrollments.length > 1}
                 onAddParent={() => addParent(draft.id)}
                 onRemoveParent={(parentId) => removeParent(draft.id, parentId)}
-                onRemoveEnrollment={() => setEnrollments((current) => current.filter((enrollment) => enrollment.id !== draft.id))}
+                onRemoveEnrollment={() => setEnrollments((current) => reduceKittyEnrollmentDrafts(current, { type: "remove_enrollment", id: draft.id }))}
               />
             ))}
             <button type="button" className="btn btn-secondary" onClick={addEnrollment}>Add student</button>

@@ -403,6 +403,65 @@ test("notification retry is server-guarded to failed rows only", async () => {
   }
 });
 
+test("a contact can record a bounded structured ambiguity and exact confirmation resolves it", async () => {
+  const { confirmKittyClassSelection, recordKittyClassAmbiguity } = require(servicePath);
+  const occurrenceId = "11111111-1111-4111-8111-111111111111";
+  const otherId = "22222222-2222-4222-8222-222222222222";
+  const calls = [];
+  const client = rosterClient(null, {
+    kitty_class_occurrences: {
+      id: occurrenceId, series_id: "series-1", title: "Group piano", subject: null,
+      starts_at: "2026-08-12T20:00:00.000Z", ends_at: "2026-08-12T21:00:00.000Z",
+      local_date: "2026-08-12", timezone: "America/New_York", status: "scheduled", version: 3,
+    },
+    hermes_contacts: [{ id: "student-a", display_name: "Student A", preferred_name: null }],
+  });
+  const baseRpc = client.rpc.bind(client);
+  client.rpc = async (name, payload) => {
+    calls.push({ name, payload });
+    if (name === "record_kitty_class_scope_ambiguity") return { data: { ambiguityGroupId: "group-1", created: true }, error: null };
+    if (name === "resolve_kitty_class_scope_ambiguities") return { data: 2, error: null };
+    return baseRpc(name, payload);
+  };
+  const baseFrom = client.from.bind(client);
+  client.from = (table) => {
+    if (table === "kitty_class_audit_events") return {
+      insert: async () => ({ error: null }),
+    };
+    return baseFrom(table);
+  };
+
+  const actor = { kind: "contact", contactId: "student-a", channel: "whatsapp" };
+  await recordKittyClassAmbiguity(client, actor, {
+    candidateOccurrenceIds: [occurrenceId, otherId], ambiguityKind: "class", clientRequestId: "message-42",
+  });
+  await confirmKittyClassSelection(client, actor, { occurrenceId, version: 3 });
+
+  assert.deepEqual(calls[0], { name: "record_kitty_class_scope_ambiguity", payload: {
+    p_actor_contact_id: "student-a", p_candidate_occurrence_ids: [occurrenceId, otherId],
+    p_ambiguity_kind: "class", p_client_request_id: "message-42",
+  } });
+  assert.deepEqual(calls.at(-1), { name: "resolve_kitty_class_scope_ambiguities", payload: {
+    p_actor_contact_id: "student-a", p_occurrence_id: occurrenceId,
+  } });
+});
+
+test("ambiguity reporting rejects duplicate, oversized, and non-contact inputs before RPC", async () => {
+  const { recordKittyClassAmbiguity } = require(servicePath);
+  const id = "11111111-1111-4111-8111-111111111111";
+  let rpcCalls = 0;
+  const client = { rpc: async () => { rpcCalls += 1; return { data: null, error: null }; } };
+  for (const input of [
+    { candidateOccurrenceIds: [id, id], ambiguityKind: "class", clientRequestId: "request-1" },
+    { candidateOccurrenceIds: Array.from({ length: 6 }, (_, index) => `${index + 1}1111111-1111-4111-8111-111111111111`), ambiguityKind: "class", clientRequestId: "request-2" },
+    { candidateOccurrenceIds: [id], ambiguityKind: "freeform", clientRequestId: "request-3" },
+  ]) await assert.rejects(() => recordKittyClassAmbiguity(client, { kind: "contact", contactId: "student-a", channel: "whatsapp" }, input), /invalid_ambiguity/);
+  await assert.rejects(() => recordKittyClassAmbiguity(client, admin, {
+    candidateOccurrenceIds: [id], ambiguityKind: "class", clientRequestId: "request-4",
+  }), /contact_required/);
+  assert.equal(rpcCalls, 0);
+});
+
 test("group class RPCs bind replay payloads and expose only the service role", () => {
   const migration = fs.readFileSync(
     path.join(process.cwd(), "supabase/migrations/20260805235110_add_kitty_group_class_services.sql"),
