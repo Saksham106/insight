@@ -99,3 +99,44 @@ test("normalizes selected tutors and report identifiers", () => {
     reportId: "report-1",
   });
 });
+
+test("a delivered availability request advances that participant to contacted", () => {
+  const route = fs.readFileSync(
+    path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"),
+    "utf8",
+  );
+  const block = route.slice(route.indexOf('intent === "availability_request"'));
+  assert.match(block, /rpc\("mark_hermes_participant_contacted"/);
+  assert.match(block, /participant_transition_failed/,
+    "a delivered request must not report success when its state transition fails");
+  assert.ok(
+    route.indexOf("response.ok && intent ===") > route.indexOf("const result = await response.json()"),
+    "the transition only happens after the send succeeds",
+  );
+});
+
+test("recording availability marks the participant responded and touches the case", () => {
+  const route = fs.readFileSync(
+    path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"),
+    "utf8",
+  );
+  const block = route.slice(
+    route.indexOf('case "record_availability"'),
+    route.indexOf('case "request_reschedule"'),
+  );
+  assert.match(block, /response_status: "responded"/);
+  assert.match(block, /hermes_scheduling_cases"\)\.update\(\{ updated_at/,
+    "the case's last meaningful update moves so the dashboard reflects the reply");
+});
+
+test("a reminder can be sent without opening a scheduling case", () => {
+  const route = fs.readFileSync(
+    path.join(process.cwd(), "src/app/api/hermes/tools/route.ts"),
+    "utf8",
+  );
+  assert.match(route, /const transportIntent = \["class_reminder", "human_attention"\]/);
+  assert.match(route, /resolveGuardianMessageContact\(supabase, contactId\)/,
+    "guardian-only reminder recipients are resolved from the directory link before sending");
+  // Coordination intents still go through the required-string path.
+  assert.match(route, /: stringValue\(payload, "caseId", 80\)/);
+});

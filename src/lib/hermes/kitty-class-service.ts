@@ -17,6 +17,7 @@ import {
   type KittyRelayIntent,
   type KittyRelayMode,
 } from "./kitty-class-relays";
+import { applyGuardianDefaults, type RoutingContact, type RoutingRelationship } from "./guardian-routing";
 
 export type KittyClassActor =
   | { kind: "admin"; profileId: string | null; channel: "dashboard" | "imessage" }
@@ -417,17 +418,58 @@ export type CreateKittyClassInput = {
   clientRequestId: string;
 };
 
+async function withGuardianDefaults(client: Client, enrollments: KittyEnrollmentInput[]) {
+  const studentIds = enrollments.map((enrollment) => enrollment.studentContactId);
+  const studentResult = await client
+    .from("hermes_contacts")
+    .select("id, display_name, role, is_active, deleted_at, communication_policy, consent_status")
+    .in("id", studentIds);
+  dbError(studentResult.error);
+  const students = (studentResult.data ?? []) as RoutingContact[];
+  const studentById = new Map(students.map((student) => [student.id, student]));
+  const needsGuardian = enrollments.filter((enrollment) =>
+    !enrollment.contacts.some((contact) => contact.receivesNotifications)
+      || studentById.get(enrollment.studentContactId)?.communication_policy === "guardian_only",
+  );
+  if (!needsGuardian.length) return enrollments;
+  const needingStudentIds = needsGuardian.map((enrollment) => enrollment.studentContactId);
+  const relationshipResult = await client
+    .from("hermes_contact_relationships")
+    .select("source_contact_id, target_contact_id, relationship_type, is_active")
+    .in("target_contact_id", needingStudentIds)
+    .eq("relationship_type", "parent_guardian")
+    .eq("is_active", true);
+  dbError(relationshipResult.error);
+  const relationships = (relationshipResult.data ?? []) as RoutingRelationship[];
+  const contactIds = [...new Set([
+    ...relationships.map((relationship) => relationship.source_contact_id),
+  ])];
+  const guardianResult = contactIds.length
+    ? await client
+        .from("hermes_contacts")
+        .select("id, display_name, role, is_active, deleted_at, communication_policy, consent_status")
+        .in("id", contactIds)
+    : { data: [], error: null };
+  dbError(guardianResult.error);
+  return applyGuardianDefaults({
+    enrollments,
+    contacts: [...students, ...((guardianResult.data ?? []) as RoutingContact[])],
+    relationships,
+  });
+}
+
 export async function createKittyClass(client: Client, actor: KittyClassActor, input: CreateKittyClassInput) {
   assertAdmin(actor);
   if (!nonEmpty(input.title) || !nonEmpty(input.teacherContactId) || !nonEmpty(input.clientRequestId) || input.clientRequestId.trim().length > 200) throw new Error("invalid_class");
   validateKittyEnrollments(input.enrollments);
+  const enrollments = await withGuardianDefaults(client, input.enrollments);
   if (input.kind === "one_off") {
     if (!input.startsAt || !input.endsAt || !input.localDate) throw new Error("invalid_class");
     const { data, error } = await client.rpc("create_kitty_group_one_off", {
       p_title: input.title, p_subject: input.subject ?? null, p_starts_at: input.startsAt,
       p_ends_at: input.endsAt, p_local_date: input.localDate, p_timezone: input.timezone,
       p_origin_channel: actor.channel, p_created_by: actor.profileId,
-      p_teacher_contact_id: input.teacherContactId, p_enrollments: input.enrollments,
+      p_teacher_contact_id: input.teacherContactId, p_enrollments: enrollments,
       p_client_request_id: input.clientRequestId,
     });
     dbError(error);
@@ -443,7 +485,7 @@ export async function createKittyClass(client: Client, actor: KittyClassActor, i
     p_weekdays: recurrence.weekdays, p_effective_start: input.effectiveStart,
     p_effective_end: input.effectiveEnd ?? null, p_origin_channel: actor.channel,
     p_created_by: actor.profileId, p_teacher_contact_id: input.teacherContactId,
-    p_enrollments: input.enrollments, p_client_request_id: input.clientRequestId,
+    p_enrollments: enrollments, p_client_request_id: input.clientRequestId,
   });
   dbError(error);
   const series = Array.isArray(data) ? data[0] : data;
@@ -461,12 +503,13 @@ export async function addKittyClassEnrollment(client: Client, actor: KittyClassA
   if (!nonEmpty(input.occurrenceId) || !Number.isInteger(input.version) || input.version < 1
     || !["occurrence", "this_and_future"].includes(input.scope) || !validDate(input.effectiveDate)) throw new Error("invalid_scope");
   validateKittyEnrollments([input.enrollment]);
+  const [enrollment] = await withGuardianDefaults(client, [input.enrollment]);
   const { data, error } = await client.rpc("add_kitty_class_enrollment", {
     p_occurrence_id: input.occurrenceId,
     p_expected_version: input.version,
     p_effective_date: input.effectiveDate,
     p_scope: input.scope,
-    p_enrollment: input.enrollment,
+    p_enrollment: enrollment,
     p_profile_id: actor.profileId,
   });
   dbError(error);

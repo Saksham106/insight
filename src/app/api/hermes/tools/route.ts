@@ -5,6 +5,7 @@ import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
 import { academyInformation, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import { messagingName } from "@/lib/hermes/contact-name";
+import { resolveGuardianMessageContact } from "@/lib/hermes/guardian-routing";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
 import { projectLessonCycle, sanitizeLessonReport, sanitizeTutorContactIds } from "@/lib/hermes/lesson-ledger";
 import { projectOpenObjectives, type LessonObjectiveRecord, type PaymentObjectiveRecord } from "@/lib/hermes/open-objectives";
@@ -296,6 +297,9 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const { data: participant, error } = await supabase.from("hermes_case_participants").update({ availability, response_status: "responded" }).eq("case_id", caseId).eq("contact_id", contactId).select("id").maybeSingle();
         if (error) throw error;
         if (!participant) return rejectRequest("Contact is not a case participant", 403, "case_membership_denied");
+        // Touch the case so "last meaningful update" and the derived
+        // next-action on the dashboard move the moment somebody replies.
+        await supabase.from("hermes_scheduling_cases").update({ updated_at: new Date().toISOString() }).eq("id", caseId);
         await audit("availability_recorded", "scheduling_case", caseId, { contactId, windowCount: availability.length });
         return NextResponse.json({ recorded: true, windowCount: availability.length });
       }
@@ -756,12 +760,30 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         return NextResponse.json({ cycle: { id: cycle.id, status: cycle.status, closedAt: cycle.closed_at } });
       }
       case "send_message": {
-        const contactId = stringValue(payload, "contactId", 80);
+        let contactId = stringValue(payload, "contactId", 80);
         const intent = stringValue(payload, "intent", 40) as WhatsAppIntent;
         if (!["permission_request", "availability_request", "time_proposal", "class_confirmation", "reschedule_request", "class_reminder", "human_attention", "tutor_report_request", "family_invoice", "payment_reminder", "payment_received"].includes(intent)) return failure("Invalid intent");
+        if (intent === "class_reminder") {
+          try {
+            contactId = await resolveGuardianMessageContact(supabase, contactId);
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : "guardian_routing_unavailable";
+            return failure(reason === "ambiguous_guardian" ? "Choose which linked guardian should receive this reminder" : "Link an eligible guardian before sending this reminder", 409);
+          }
+        }
         const idempotencyKey = stringValue(payload, "idempotencyKey", 128);
         const financialIntent = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"].includes(intent);
-        const caseId = financialIntent ? undefined : stringValue(payload, "caseId", 80);
+        // A reminder or a nudge for Swati is one-way transport, not a
+        // coordination workflow. Requiring a caseId for those forced Kitty to
+        // open a scheduling case it would never work, which is where the
+        // stuck collecting_availability cases came from. Coordination intents
+        // still require one.
+        const transportIntent = ["class_reminder", "human_attention"].includes(intent);
+        const caseId = financialIntent
+          ? undefined
+          : transportIntent
+            ? undefined
+            : stringValue(payload, "caseId", 80);
         const settlementCycleId = typeof payload.settlementCycleId === "string" ? payload.settlementCycleId : undefined;
         const familyInvoiceId = typeof payload.familyInvoiceId === "string" ? payload.familyInvoiceId : undefined;
         if (intent === "class_confirmation") {
@@ -785,6 +807,15 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const senderRequestId = `${auth.requestId}-send`;
         const response = await fetch(new URL("/api/whatsapp/send", request.url), { method: "POST", headers: { "content-type": "application/json", "x-hermes-timestamp": timestamp, "x-hermes-request-id": senderRequestId, "x-hermes-signature": signServiceRequest(senderBody, timestamp, senderRequestId, senderSecret) }, body: senderBody });
         const result = await response.json();
+        if (response.ok && intent === "availability_request" && caseId) {
+          const transition = await supabase.rpc("mark_hermes_participant_contacted", {
+            p_case_id: caseId,
+            p_contact_id: contactId,
+          });
+          if (transition.error || transition.data !== true) {
+            throw new Error("participant_transition_failed");
+          }
+        }
         await audit(response.ok ? "message_requested" : "message_rejected", "contact", contactId, { caseId: caseId ?? null, settlementCycleId: settlementCycleId ?? null, familyInvoiceId: familyInvoiceId ?? null, intent, status: response.status });
         return NextResponse.json(result, { status: response.status });
       }

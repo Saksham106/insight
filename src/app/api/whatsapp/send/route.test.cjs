@@ -145,6 +145,7 @@ test("every Kitty relay delivery uses a sending outbox reservation and quarantin
     WHATSAPP_CLOUD_PHONE_NUMBER_ID: "phone-1",
     WHATSAPP_CLOUD_ACCESS_TOKEN: "token-1",
     KITTY_CLASS_CALENDAR_ENABLED: "true",
+    WHATSAPP_TEMPLATE_CLASS_REMINDER: "class_reminder",
     WHATSAPP_TEMPLATE_HUMAN_ATTENTION: "class_human_attention",
   });
   delete require.cache[routePath];
@@ -209,6 +210,22 @@ test("every Kitty relay delivery uses a sending outbox reservation and quarantin
       error: "Message delivery is indeterminate and requires reconciliation", blocked: true, indeterminate: true,
     });
     assert.equal(fetchCount, 4, "provider-indeterminate messages must never be automatically resent");
+
+    for (const [index, [intent, templateData]] of [
+      ["class_reminder", { classDescription: "group mathematics", scheduledDateTime: "Monday at 3 PM" }],
+      ["human_attention", { matter: "your mathematics schedule" }],
+    ].entries()) {
+      const key = `transport-${index}`;
+      providerResults.push({ messages: [{ id: `wamid-transport-${index}` }] });
+      const response = await POST(makeRequest(intent, key, `request-transport-${index}`, {
+        occurrenceId: undefined,
+        classOutboxId: undefined,
+        templateData,
+      }));
+      assert.equal(response.status, 200, `${intent}: ${JSON.stringify(await response.json())}`);
+      assert.equal(database.messages.at(-1).case_id, null, `${intent} must not require a phantom case`);
+    }
+    assert.equal(fetchCount, 6);
   } finally {
     Module._load = originalLoad;
     global.fetch = originalFetch;

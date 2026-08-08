@@ -301,6 +301,34 @@ test("lesson ledger mutations are transactional, audited, and service-role only"
   assert.doesNotMatch(sql, /metadata[^;]+reported_student_name/);
 });
 
+test("Kitty admin state transitions are atomic, audited, and service-role only", () => {
+  const sql = readMigration("_make_kitty_admin_mutations_atomic.sql");
+  for (const fn of [
+    "admin_upsert_hermes_guardian_relationship",
+    "admin_close_hermes_scheduling_case",
+    "admin_reconcile_hermes_phantom_case",
+    "mark_hermes_participant_contacted",
+  ]) {
+    assert.match(sql, new RegExp(`create function public\\.${fn}`));
+    assert.match(sql, new RegExp(`revoke execute on function public\\.${fn}`));
+    assert.match(sql, new RegExp(`grant execute on function public\\.${fn}[^;]+to service_role`));
+  }
+  assert.match(sql, /insert into public\.hermes_audit_events/);
+  assert.match(sql, /insert into public\.kitty_class_enrollment_contacts/,
+    "linking a sole guardian repairs active rosters that otherwise notify nobody");
+  assert.match(sql, /update public\.kitty_class_enrollment_contacts recipient[\s\S]+communication_policy = 'guardian_only'/,
+    "guardian-only students are removed from the real notification recipient set");
+  const relationshipSql = sql.slice(
+    sql.indexOf("create function public.admin_upsert_hermes_guardian_relationship"),
+    sql.indexOf("create function public.admin_close_hermes_scheduling_case"),
+  );
+  assert.doesNotMatch(relationshipSql, /upsert_academy_contact_relationship/,
+    "the admin wrapper must not create a second unattributed audit row");
+  assert.match(sql, /status = 'collecting_availability'/);
+  assert.match(sql, /response_status = 'pending'/);
+  assert.doesNotMatch(sql, /grant execute[^;]+to authenticated/);
+});
+
 test("restarting an open lesson cycle adds tutors without removing earlier selections", () => {
   const sql = readMigration("_make_lesson_cycle_tutors_additive.sql");
   assert.match(sql, /create or replace function public\.start_academy_lesson_cycle/);

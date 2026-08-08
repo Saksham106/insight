@@ -10,7 +10,6 @@ import {
   hermesTabHref,
   type HermesAdminContact,
   type HermesApproval,
-  type HermesCase,
   type HermesContactIdentity,
   type HermesMessage,
   type HermesSettlementCycle,
@@ -19,6 +18,10 @@ import {
 } from "@/components/admin/hermes-dashboard-shared";
 import { HermesSchedulingPanel } from "@/components/admin/hermes-scheduling-panel";
 import { HermesSettlementsPanel } from "@/components/admin/hermes-settlements-panel";
+import { buildHermesTabs } from "@/lib/hermes/admin-tabs";
+import { projectAttentionItems, type GuardianRoutingIssue } from "@/lib/hermes/attention";
+import type { RelationshipRow } from "@/lib/hermes/relationships";
+import type { SchedulingCaseView } from "@/lib/hermes/scheduling";
 import type { AdminLessonCycle } from "@/lib/hermes/lesson-ledger-admin";
 import type { KittyAdminAttentionIssue } from "@/lib/hermes/kitty-class-admin";
 
@@ -30,7 +33,7 @@ interface HermesAssistantDashboardProps {
   selectedContact: HermesContactIdentity | null;
   transcript: HermesTranscriptMessage[];
   transcriptError: string | null;
-  cases: HermesCase[];
+  cases: SchedulingCaseView[];
   approvals: HermesApproval[];
   messages: HermesMessage[];
   lessonCycles: AdminLessonCycle[];
@@ -42,6 +45,10 @@ interface HermesAssistantDashboardProps {
   classNotificationIssues: Array<{ id: string; occurrence_id: string; status: string; last_error_code: string | null; updated_at: string }>;
   classAttentionIssues: KittyAdminAttentionIssue[];
   classCalendarEnabled: boolean;
+  /** Guardian-routing exceptions raised when a class must reach a guardian. */
+  guardianIssues: GuardianRoutingIssue[];
+  /** Active parent/guardian links, for the Contact Directory. */
+  relationships: RelationshipRow[];
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
@@ -71,20 +78,40 @@ export function HermesAssistantDashboard({
   classNotificationIssues,
   classAttentionIssues,
   classCalendarEnabled,
+  guardianIssues,
+  relationships,
 }: HermesAssistantDashboardProps) {
-  const attentionContacts = contacts.filter((contact) =>
-    contact.role === "unclassified" || contact.profile_link_status === "suggested" || contact.communication_policy !== "direct",
-  );
-  const attentionCount = approvals.length + attentionContacts.length;
+  const attentionItems = projectAttentionItems({
+    approvals,
+    contacts,
+    messages,
+    cases: cases.map((item) => ({
+      id: item.id,
+      title: item.title,
+      status: item.status,
+      human_takeover: item.humanTakeover,
+    })),
+    classAttentionIssues,
+    guardianIssues,
+    occurrenceTitles: Object.fromEntries(
+      classOccurrences.map((occurrence) => [occurrence.id, occurrence.title]),
+    ),
+  });
+  const attentionCount = attentionItems.length;
 
-  const tabs: Array<{ id: HermesTab; label: string; icon: React.ReactNode; count?: number }> = [
-    { id: "conversations", label: "Conversations", icon: <Users size={16} />, count: contacts.length },
-    { id: "ledger", label: "Ledger", icon: <Banknote size={16} />, count: lessonCycles.length + settlements.length },
-    { id: "contacts", label: "Contacts", icon: <Contact size={16} /> },
-    { id: "classes", label: "Classes", icon: <CalendarDays size={16} />, count: classOccurrences.filter((item) => item.status === "scheduled" || item.status === "change_requested").length },
-    { id: "scheduling", label: "Scheduling", icon: <Clock3 size={16} />, count: cases.length },
-    { id: "attention", label: "Needs attention", icon: <AlertCircle size={16} />, count: attentionCount },
-  ];
+  const tabIcons: Record<HermesTab, React.ReactNode> = {
+    conversations: <Users size={16} />,
+    ledger: <Banknote size={16} />,
+    contacts: <Contact size={16} />,
+    classes: <CalendarDays size={16} />,
+    scheduling: <Clock3 size={16} />,
+    attention: <AlertCircle size={16} />,
+  };
+  const tabs = buildHermesTabs({
+    ledgerItems: lessonCycles.length + settlements.length,
+    openSchedulingCases: cases.length,
+    attentionItems: attentionCount,
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -105,7 +132,8 @@ export function HermesAssistantDashboard({
       {loadError ? <p className="text-sm text-error">{loadError}</p> : null}
 
       <nav aria-label="Kitty sections" className="kitty-tabs">
-        {tabs.map(({ id, label, icon, count }) => {
+        {tabs.map(({ id, label, count }) => {
+          const icon = tabIcons[id];
           const active = tab === id;
           return (
             <Link
@@ -163,7 +191,7 @@ export function HermesAssistantDashboard({
       {tab === "attention" ? (
         <HermesAttentionPanel
           approvals={approvals}
-          attentionContacts={attentionContacts}
+          attentionItems={attentionItems}
           messages={messages}
         />
       ) : null}
@@ -178,7 +206,7 @@ export function HermesAssistantDashboard({
         />
       ) : null}
 
-      {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} /> : null}
+      {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} relationships={relationships} /> : null}
 
       {tab === "classes" ? <HermesClassesPanel classes={classOccurrences} series={classSeries} contacts={directoryContacts} notificationIssues={classNotificationIssues} attentionIssues={classAttentionIssues} enabled={classCalendarEnabled} /> : null}
     </div>

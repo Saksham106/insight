@@ -57,11 +57,14 @@ test("every section stays reachable from the tab bar", () => {
 });
 
 test("admins can select every contact and read a privacy-minimized transcript", () => {
-  const source = read("src/components/admin/hermes-conversations-panel.tsx");
-  assert.match(source, /import Link from "next\/link"/);
+  // The contact column is a client component so it can hold the search box;
+  // the transcript stays server-rendered. Both halves are checked together.
+  const list = read("src/components/admin/hermes-conversation-list.tsx");
+  const source = [read("src/components/admin/hermes-conversations-panel.tsx"), list].join("\n");
+  assert.match(list, /import Link from "next\/link"/);
   assert.doesNotMatch(source, /contacts\.slice\(0,\s*12\)/);
-  assert.match(source, /href=\{hermesTabHref\("conversations", contact\.id\)\}/);
-  assert.match(source, /aria-current=\{isSelected \? "page" : undefined\}/);
+  assert.match(list, /href=\{hermesTabHref\("conversations", contact\.id\)\}/);
+  assert.match(list, /aria-current=\{isSelected \? "page" : undefined\}/);
   assert.match(source, /No WhatsApp messages yet/);
   assert.match(source, /Select a contact to view their WhatsApp conversation/);
   assert.match(source, /Conversation with \{selectedContact\.display_name\}/);
@@ -95,7 +98,8 @@ test("admin page loads lesson cycles after authorization and wires the combined 
   assert.match(page, /\.from\("academy_settlement_cycles"\)/);
   assert.ok(shared.includes('"ledger"'));
   assert.doesNotMatch(shared, /"settlements"/);
-  assert.match(shell, /label: "Ledger"/);
+  const tabModel = read("src/lib/hermes/admin-tabs.ts");
+  assert.match(tabModel, /label: "Ledger"/);
   assert.match(shell, /tab === "ledger"/);
   assert.match(shell, /lessonCycles\.length \+ settlements\.length/);
 });
@@ -205,8 +209,8 @@ test("tab bar leads with the sections Swati opens most", () => {
     .map((quoted) => quoted.replaceAll('"', ""));
   assert.deepEqual(order, ["conversations", "ledger", "contacts", "classes", "scheduling", "attention"]);
 
-  const shell = read("src/components/admin/hermes-assistant-dashboard.tsx");
-  const rendered = [...shell.matchAll(/\{ id: "([a-z]+)", label:/g)].map((match) => match[1]);
+  const tabModel = read("src/lib/hermes/admin-tabs.ts");
+  const rendered = [...tabModel.matchAll(/\{ id: "([a-z]+)", label:/g)].map((match) => match[1]);
   assert.deepEqual(rendered, order, "rendered tab order must match HERMES_TABS");
 });
 
@@ -227,4 +231,137 @@ test("each tutor in the lesson ledger collapses to a summary row", () => {
   const collectionBlock = panel.slice(panel.indexOf("cycle.collections.map"));
   assert.match(collectionBlock.slice(0, 800), /<details/, "collections render as <details>");
   assert.doesNotMatch(collectionBlock, /<section/, "no collection is left permanently expanded");
+});
+
+test("the conversations list carries a search field above the contacts", () => {
+  const list = read("src/components/admin/hermes-conversation-list.tsx");
+  assert.match(list, /"use client"/, "search state is local, so the column is a client component");
+  assert.match(list, /filterConversationContacts/);
+  assert.match(list, /htmlFor="kitty-conversation-search"/, "the field is labelled, not placeholder-only");
+  assert.match(list, /id="kitty-conversation-search"/);
+  assert.ok(
+    list.indexOf("kitty-conversation-search") < list.indexOf("visible.map"),
+    "the search field renders above the contact list",
+  );
+  assert.match(list, /No contact matches that name or number/, "empty results explain themselves");
+  assert.match(list, /is still open but not in these results/, "a hidden selection is never a trap");
+  assert.match(list, /Clear search/);
+});
+
+test("searching narrows the contact list without touching the transcript", () => {
+  const panel = read("src/components/admin/hermes-conversations-panel.tsx");
+  // The transcript is rendered from the server-loaded `transcript` prop and is
+  // never passed through the filter, so searching cannot alter what is open.
+  assert.doesNotMatch(panel, /filterConversationContacts/);
+  assert.match(panel, /transcript\.map/);
+});
+
+test("Conversations and Classes tabs render no badge", () => {
+  const tabModel = read("src/lib/hermes/admin-tabs.ts");
+  const conversations = tabModel.match(/\{ id: "conversations",[^}]*\}/)[0];
+  const classes = tabModel.match(/\{ id: "classes",[^}]*\}/)[0];
+  assert.doesNotMatch(conversations, /count/, "a contact total is not an unread count");
+  assert.doesNotMatch(classes, /count/, "the tab only ever shows the next five");
+});
+
+test("the delivery log names the contact instead of restating the raw row", () => {
+  const panel = read("src/components/admin/hermes-attention-panel.tsx");
+  const page = read("src/app/(dashboard)/admin/hermes/page.tsx");
+  assert.match(panel, /projectDeliveryLog\(messages\)/);
+  assert.match(panel, /\{row\.who\}/, "each row reads 'To Priya' / 'From Priya'");
+  assert.doesNotMatch(
+    panel,
+    /message\.direction\} \{message\.message_kind\}/,
+    "the raw direction/kind pair is gone",
+  );
+  // The relation was already joined; it just was not used.
+  assert.match(page, /contact:contact_id\(display_name\)/);
+});
+
+test("the delivery log query selects no sensitive message columns", () => {
+  const page = read("src/app/(dashboard)/admin/hermes/page.tsx");
+  const after = page.slice(page.indexOf('.from("hermes_messages")'));
+  // Just the select() argument, so the surrounding comment does not count.
+  const columns = after.match(/\.select\("([^"]*)"\)/)[1];
+  for (const forbidden of ["error_detail", "meta_message_id", "idempotency_key"]) {
+    assert.ok(!columns.includes(forbidden), `delivery log must not select ${forbidden}`);
+  }
+  assert.ok(columns.includes("template_name"), "template name is available to the log");
+  assert.match(page, /\.limit\(25\)/, "the conservative 25-row bound is preserved");
+});
+
+test("relationship mutations are administrator-only and go through the RPC", () => {
+  const route = read("src/app/api/admin/hermes/relationships/route.ts");
+  // Same authorization shape as every other Kitty admin mutation.
+  const guards = route.match(/profile\.role !== "admin"/g) ?? [];
+  assert.equal(guards.length, 2, "both GET and POST are guarded");
+  assert.match(route, /status: 403/);
+  assert.match(route, /admin_upsert_hermes_guardian_relationship/, "rules and audit stay in one database transaction");
+  assert.match(route, /p_source_channel: RELATIONSHIP_SOURCE_CHANNEL/);
+  // Never a raw table write, and never a delete.
+  assert.doesNotMatch(route, /\.from\("hermes_contact_relationships"\)\s*\.(insert|update|upsert|delete)/);
+  assert.doesNotMatch(route, /\.delete\(\)/, "links are deactivated, never deleted");
+});
+
+test("relationship changes are audited against the signed-in administrator", () => {
+  const route = read("src/app/api/admin/hermes/relationships/route.ts");
+  assert.match(route, /admin_upsert_hermes_guardian_relationship/);
+  assert.match(route, /p_actor_profile_id: profile\.id/);
+});
+
+test("the service-role client is only ever created on the server route", () => {
+  const links = read("src/components/admin/hermes-contact-links.tsx");
+  assert.match(links, /"use client"/);
+  assert.doesNotMatch(links, /createAdminClient|SERVICE_ROLE/, "no service-role credential in the browser");
+  assert.match(links, /fetch\("\/api\/admin\/hermes\/relationships"/);
+});
+
+test("the directory offers links on parent and student cards with empty states", () => {
+  const panel = read("src/components/admin/hermes-contacts-panel.tsx");
+  const links = read("src/components/admin/hermes-contact-links.tsx");
+  assert.match(panel, /contact\.role === "parent" \|\| contact\.role === "student"/);
+  assert.match(links, /No children linked yet/);
+  assert.match(links, /No guardian linked yet/);
+  assert.match(links, /Remove the link to \$\{person\.displayName\}/, "the remove control is labelled");
+  assert.doesNotMatch(links, /window\.confirm/, "deactivation is reversible, so it needs no prompt");
+});
+
+test("scheduling shows the derived next action rather than a raw status", () => {
+  const panel = read("src/components/admin/hermes-scheduling-panel.tsx");
+  const page = read("src/app/(dashboard)/admin/hermes/page.tsx");
+  assert.match(panel, /\{item\.nextAction\}/);
+  assert.match(panel, /item\.participants\.map/, "participants and their states are shown");
+  // JSON.stringify appears only in the close-case request body, never in the
+  // rendered output: no <pre> dump of availability or proposed times.
+  assert.doesNotMatch(panel, /<pre/, "no raw payload is the primary UI");
+  assert.doesNotMatch(panel, /\{JSON\.stringify/, "nothing is rendered as raw JSON");
+  // The page must actually load participants, which it never used to.
+  assert.match(page, /\.from\("hermes_case_participants"\)/);
+  assert.match(page, /projectActiveSchedulingCases/);
+});
+
+test("an obsolete case can be closed without deleting it", () => {
+  const route = read("src/app/api/admin/hermes/cases/[id]/route.ts");
+  assert.match(route, /profile\.role !== "admin"/);
+  assert.match(route, /admin_close_hermes_scheduling_case/, "one RPC closes and audits atomically");
+  assert.doesNotMatch(route, /\.delete\(\)/, "the case row is kept");
+  assert.match(route, /admin_close_hermes_scheduling_case/, "the transition is validated in the database transaction");
+  assert.match(route, /p_actor_profile_id: profile\.id/, "the closing admin is audited");
+  assert.match(route, /status: stale \? 409 : 500/, "a stale close is refused");
+});
+
+test("no new case status was invented for closing", () => {
+  const cases = read("src/lib/hermes/cases.ts");
+  const statuses = cases.match(/export type HermesCaseStatus = ([^;]+);/)[1];
+  assert.equal(statuses.includes("dismissed"), false);
+  assert.equal(statuses.includes("closed"), false);
+  assert.match(statuses, /"cancelled"/);
+});
+
+test("phantom-case reconciliation has a previewable admin runner with database revalidation", () => {
+  const route = read("src/app/api/admin/hermes/cases/reconcile/route.ts");
+  assert.match(route, /profile\.role !== "admin"/);
+  assert.match(route, /planCaseReconciliation/);
+  assert.match(route, /body\.apply !== true/);
+  assert.match(route, /admin_reconcile_hermes_phantom_case/);
 });

@@ -185,11 +185,21 @@ test("verified Kitty route supplies its stable request id to legacy creation", a
   const routePath = path.join(process.cwd(), "src/app/api/hermes/class-tools/route.ts");
   const calls = [];
   const client = {
-    from() {
-      return {
+    from(table) {
+      const query = {
         insert: async () => ({ error: null }),
         update() { return { eq: async () => ({ error: null }) }; },
+        select() { return query; },
+        in() { return query; },
+        then(resolve, reject) {
+          const data = table === "hermes_contacts" ? [{
+            id: "student-1", display_name: "Student", role: "student", is_active: true,
+            deleted_at: null, communication_policy: "direct", consent_status: "attested",
+          }] : [];
+          return Promise.resolve({ data, error: null }).then(resolve, reject);
+        },
       };
+      return query;
     },
     rpc: async (name, payload) => {
       calls.push({ name, payload });

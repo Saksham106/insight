@@ -91,6 +91,28 @@ class DefaultInsightProfileTests(unittest.TestCase):
         self.assertIn("wait for Swati", combined)
         self.assertIn("separate from Academy sessions", combined)
 
+    def test_reminders_do_not_open_a_scheduling_case(self):
+        """A reminder is one-way transport, not a coordination workflow.
+
+        Instructing Kitty to open a case before every reminder left cases
+        stuck in collecting_availability with nobody contacted, which the
+        admin dashboard then showed as outstanding work.
+        """
+        agents = (PROFILE_DIR / "AGENTS.md").read_text()
+        reminder_line = next(
+            line for line in agents.splitlines() if "class reminder:" in line
+        )
+        self.assertNotIn("caseId", reminder_line)
+        self.assertNotIn("create or retrieve a scheduling case", agents)
+        self.assertIn("Do not create a scheduling case in order to send a reminder", agents)
+        # Coordination messages must still require a case.
+        self.assertIn("availability_request", agents)
+
+    def test_coordination_workflow_still_requires_a_case(self):
+        skill = (ROOT / "infra" / "hermes-skills" / "insight-scheduling" / "SKILL.md").read_text()
+        self.assertIn("Create one scheduling case", skill)
+        self.assertIn("never as a wrapper to carry a message", skill)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -48,10 +48,27 @@ export async function POST(request: Request) {
   const isLessonReportRequest = body.intent === "lesson_report_request";
   const isFinancial = financialIntents.includes(body.intent);
   const isClassNotification = classNotificationIntents.includes(body.intent);
+  const isTransport = body.intent === "class_reminder" || body.intent === "human_attention";
   let approved = false;
   let lessonContent: { body: string; bodyParameters: string[] } | null = null;
   let financialContent: { body: string; bodyParameters: string[] } | null = null;
-  if (isClassNotification) {
+  if (isTransport) {
+    if (body.caseId || body.classOutboxId || body.occurrenceId || body.lessonCycleId || body.settlementCycleId || body.familyInvoiceId) {
+      return NextResponse.json({ error: "Reminder transport cannot reference a workflow case" }, { status: 400 });
+    }
+    try {
+      if (body.templateData && typeof body.templateData === "object" && !Array.isArray(body.templateData)) {
+        const content = buildSchedulingMessageContent({ intent: body.intent, recipientName, templateData: body.templateData });
+        body.text = content.body;
+        body.bodyParameters = content.bodyParameters;
+      } else {
+        body.bodyParameters = validateSchedulingBodyParameters(body.intent, recipientName, body.bodyParameters ?? []);
+        if (!body.text?.trim()) return NextResponse.json({ error: "Reminder requires templateData or text" }, { status: 400 });
+      }
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "invalid_templateData" }, { status: 400 });
+    }
+  } else if (isClassNotification) {
     if (process.env.KITTY_CLASS_CALENDAR_ENABLED !== "true") return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (!body.classOutboxId || !body.occurrenceId || body.caseId || body.lessonCycleId || body.settlementCycleId || body.familyInvoiceId) return NextResponse.json({ error: "Class message requires one reserved outbox item" }, { status: 400 });
     const { data: outbox } = await supabase.from("kitty_class_notification_outbox")

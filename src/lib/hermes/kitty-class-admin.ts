@@ -6,7 +6,7 @@ export type KittyAdminAttentionIssue = {
 };
 
 type AttentionOccurrence = { id: string; series_id: string | null; status: string };
-type DatedOccurrence = AttentionOccurrence & { ends_at: string };
+type DatedOccurrence = AttentionOccurrence & { ends_at: string; starts_at?: string };
 type DeliveryIssue = { occurrence_id: string; status: string };
 
 export type KittyEnrollmentDraft = { id: number; parentIds: number[] };
@@ -56,24 +56,75 @@ export function filterKittyAttentionClasses<T extends AttentionOccurrence>(
   );
 }
 
+/**
+ * Upcoming answers "what is next", not "list the whole generated calendar".
+ * Two weekly series already generate 39 future occurrences in production, which
+ * buries the next class. Five is the whole simplification — occurrences are not
+ * collapsed by series, because two sittings of one weekly class are two
+ * genuinely separate events.
+ */
+export const KITTY_UPCOMING_CLASS_LIMIT = 5;
+
+export function collectKittyAttentionOccurrenceIds({
+  workflowIssues,
+  deliveryIssues,
+  changeRequestedOccurrences,
+  excludeIds = [],
+}: {
+  workflowIssues: readonly Pick<KittyAdminAttentionIssue, "occurrenceId">[];
+  deliveryIssues: readonly Pick<DeliveryIssue, "occurrence_id">[];
+  changeRequestedOccurrences: readonly { id: string }[];
+  excludeIds?: readonly string[];
+}) {
+  const excluded = new Set(excludeIds);
+  const ids = [
+    ...workflowIssues.flatMap((issue) => issue.occurrenceId ? [issue.occurrenceId] : []),
+    ...deliveryIssues.map((issue) => issue.occurrence_id),
+    ...changeRequestedOccurrences.map((occurrence) => occurrence.id),
+  ];
+  return [...new Set(ids)].filter((id) => !excluded.has(id));
+}
+
+/** Chronological key. Real rows always carry starts_at; ends_at is a fallback. */
+function occurrenceTime(occurrence: DatedOccurrence) {
+  return new Date(occurrence.starts_at ?? occurrence.ends_at).getTime();
+}
+
+/** Keeps the input order for rows whose timestamps cannot be compared. */
+function byTime(direction: "asc" | "desc") {
+  return (left: DatedOccurrence, right: DatedOccurrence) => {
+    const a = occurrenceTime(left);
+    const b = occurrenceTime(right);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+    return direction === "asc" ? a - b : b - a;
+  };
+}
+
 export function filterKittyClassesForView<T extends DatedOccurrence>(
   occurrences: readonly T[],
   view: "upcoming" | "attention" | "history" | "recurring",
   referenceAt = new Date().toISOString(),
 ) {
+  // Attention is deliberately uncapped and keeps past rows: an occurrence
+  // needing a decision must be reachable even when it is not one of the five.
   if (view === "attention") return [...occurrences];
   if (view === "history") {
-    return occurrences.filter((occurrence) =>
-      ["completed", "cancelled", "rescheduled"].includes(occurrence.status),
-    );
+    return occurrences
+      .filter((occurrence) => ["completed", "cancelled", "rescheduled"].includes(occurrence.status))
+      .sort(byTime("desc"));
   }
   if (view === "recurring") return [];
   const referenceTime = new Date(referenceAt).getTime();
   if (!Number.isFinite(referenceTime)) throw new Error("invalid_reference_time");
-  return occurrences.filter((occurrence) =>
-    ["scheduled", "change_requested"].includes(occurrence.status)
-      && new Date(occurrence.ends_at).getTime() >= referenceTime,
-  );
+  // Stale and non-eligible rows are dropped *before* the limit, so five past
+  // occurrences can never consume the whole list and leave Upcoming empty.
+  return occurrences
+    .filter((occurrence) =>
+      ["scheduled", "change_requested"].includes(occurrence.status)
+        && new Date(occurrence.ends_at).getTime() >= referenceTime,
+    )
+    .sort(byTime("asc"))
+    .slice(0, KITTY_UPCOMING_CLASS_LIMIT);
 }
 
 export async function loadKittyAdminAttentionIssues(client: SupabaseClient, limit = 200) {

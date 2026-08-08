@@ -56,9 +56,14 @@ export interface HermesMessage {
   id: string;
   direction: string;
   message_kind: string;
+  intent: string | null;
+  template_name: string | null;
+  body: string | null;
   status: string;
+  error_code: string | null;
   occurred_at: string;
-  contact: unknown;
+  /** Joined contact; null once the contact is removed. */
+  contact: { display_name: string | null } | Array<{ display_name: string | null }> | null;
 }
 
 export interface HermesSettlementCycle {
