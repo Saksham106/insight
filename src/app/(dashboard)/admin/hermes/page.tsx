@@ -2,7 +2,7 @@ import { HermesAssistantDashboard } from "@/components/admin/hermes-assistant-da
 import { parseHermesTab } from "@/components/admin/hermes-dashboard-shared";
 import { requireRole } from "@/lib/auth/require-role";
 import { loadAdminLessonCycles } from "@/lib/hermes/lesson-ledger-admin";
-import { loadKittyAdminAttentionIssues } from "@/lib/hermes/kitty-class-admin";
+import { KITTY_UPCOMING_CLASS_LIMIT, loadKittyAdminAttentionIssues } from "@/lib/hermes/kitty-class-admin";
 import {
   attachAndSortConversationSummaries,
   loadConversationSummaries,
@@ -75,13 +75,16 @@ export default async function HermesAdminPage({
       loadAdminLessonCycles(supabase)
         .then((data) => ({ data, error: false }))
         .catch(() => ({ data: [], error: true })),
+      // Bounded here rather than in the browser: Upcoming shows the next five,
+      // so there is no reason to ship 200 generated occurrences to the client
+      // and slice them there.
       supabase
         .from("kitty_class_occurrences")
         .select("id, series_id, title, subject, starts_at, ends_at, timezone, status, version")
         .in("status", ["scheduled", "change_requested"])
         .gte("ends_at", new Date().toISOString())
         .order("starts_at", { ascending: true })
-        .limit(200),
+        .limit(KITTY_UPCOMING_CLASS_LIMIT),
       supabase
         .from("kitty_class_occurrences")
         .select("id, series_id, title, subject, starts_at, ends_at, timezone, status, version")

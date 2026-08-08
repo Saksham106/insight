@@ -8,6 +8,7 @@ import { Empty, formatMessageTime, PanelCard } from "@/components/admin/hermes-d
 import {
   canRetryKittyNotification,
   filterKittyAttentionClasses,
+  KITTY_UPCOMING_CLASS_LIMIT,
   filterKittyClassesForView,
   kittyClassAttentionReasons,
   normalizeKittyEnrollmentMutationTiming,
@@ -426,6 +427,12 @@ export function HermesClassesPanel({ classes, series, contacts, notificationIssu
           <button key={id} type="button" aria-pressed={view === id} onClick={() => setView(id)} className="btn btn-secondary" style={{ opacity: view === id ? 1 : .65 }}>{label}</button>
         ))}
       </nav>
+
+      {view === "upcoming" && visible.length === KITTY_UPCOMING_CLASS_LIMIT ? (
+        <p className="text-xs text-muted" style={{ marginBottom: 10 }}>
+          Showing the next {KITTY_UPCOMING_CLASS_LIMIT} classes. Recurring shows the series behind them.
+        </p>
+      ) : null}
 
       {view === "attention" && notificationIssues.length ? (
         <section aria-labelledby="class-delivery-issues" style={{ display: "grid", gap: 10, marginBottom: 14 }}>
