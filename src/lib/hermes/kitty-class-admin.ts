@@ -65,6 +65,26 @@ export function filterKittyAttentionClasses<T extends AttentionOccurrence>(
  */
 export const KITTY_UPCOMING_CLASS_LIMIT = 5;
 
+export function collectKittyAttentionOccurrenceIds({
+  workflowIssues,
+  deliveryIssues,
+  changeRequestedOccurrences,
+  excludeIds = [],
+}: {
+  workflowIssues: readonly Pick<KittyAdminAttentionIssue, "occurrenceId">[];
+  deliveryIssues: readonly Pick<DeliveryIssue, "occurrence_id">[];
+  changeRequestedOccurrences: readonly { id: string }[];
+  excludeIds?: readonly string[];
+}) {
+  const excluded = new Set(excludeIds);
+  const ids = [
+    ...workflowIssues.flatMap((issue) => issue.occurrenceId ? [issue.occurrenceId] : []),
+    ...deliveryIssues.map((issue) => issue.occurrence_id),
+    ...changeRequestedOccurrences.map((occurrence) => occurrence.id),
+  ];
+  return [...new Set(ids)].filter((id) => !excluded.has(id));
+}
+
 /** Chronological key. Real rows always carry starts_at; ends_at is a fallback. */
 function occurrenceTime(occurrence: DatedOccurrence) {
   return new Date(occurrence.starts_at ?? occurrence.ends_at).getTime();

@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 /**
  * Deciding who a class message actually goes to.
  *
@@ -20,6 +22,7 @@ export interface RoutingContact {
   is_active: boolean;
   deleted_at: string | null;
   communication_policy: string;
+  consent_status: string;
 }
 
 export interface RoutingRelationship {
@@ -45,8 +48,131 @@ function isMessageable(contact: RoutingContact): boolean {
     contact.is_active
     && contact.deleted_at === null
     && contact.role === "parent"
-    && contact.communication_policy !== "opted_out"
+    && contact.communication_policy === "direct"
+    && contact.consent_status === "attested"
   );
+}
+
+type GuardianDefaultContact = {
+  contactId: string;
+  role: "student" | "parent_guardian";
+  receivesNotifications: boolean;
+  confirmsCancellation: boolean;
+  confirmsReschedule: boolean;
+};
+
+type GuardianDefaultEnrollment = {
+  studentContactId: string;
+  contacts: GuardianDefaultContact[];
+};
+
+/**
+ * Persists a unique directory guardian into a class enrollment before the
+ * atomic class RPC runs. Outbox generation reads enrollment contacts, so a
+ * pure dashboard projection is not enough to change the real recipient.
+ */
+export function applyGuardianDefaults<T extends GuardianDefaultEnrollment>({
+  enrollments,
+  contacts,
+  relationships,
+}: {
+  enrollments: readonly T[];
+  contacts: readonly RoutingContact[];
+  relationships: readonly RoutingRelationship[];
+}): T[] {
+  const byId = new Map(contacts.map((contact) => [contact.id, contact]));
+  return enrollments.map((enrollment) => {
+    const student = byId.get(enrollment.studentContactId);
+    if (!student) throw new Error("missing_student");
+    const notifiedStudent = enrollment.contacts.some(
+      (contact) => contact.role === "student" && contact.receivesNotifications,
+    );
+    const notifiedGuardian = enrollment.contacts.some(
+      (contact) => contact.role === "parent_guardian" && contact.receivesNotifications,
+    );
+    if (notifiedGuardian) return enrollment;
+    const guardianRequired = !notifiedStudent || student.communication_policy === "guardian_only";
+    if (!guardianRequired) return enrollment;
+    const recipient = resolveClassRecipient({
+      student,
+      contacts,
+      relationships,
+      enrollmentContactId: null,
+      requiresGuardian: true,
+    });
+    if (recipient.kind === "exception") throw new Error(recipient.reason);
+    const routedContacts = enrollment.contacts.map((contact) =>
+      contact.role === "student" && student.communication_policy === "guardian_only"
+        ? { ...contact, receivesNotifications: false }
+        : contact,
+    );
+    const existingGuardian = routedContacts.find((contact) => contact.contactId === recipient.contactId);
+    if (existingGuardian) {
+      return {
+        ...enrollment,
+        contacts: routedContacts.map((contact) => contact.contactId === recipient.contactId
+          ? { ...contact, role: "parent_guardian" as const, receivesNotifications: true, confirmsReschedule: true }
+          : contact),
+      };
+    }
+    return {
+      ...enrollment,
+      contacts: [
+        ...routedContacts,
+        {
+          contactId: recipient.contactId,
+          role: "parent_guardian" as const,
+          receivesNotifications: true,
+          confirmsCancellation: false,
+          confirmsReschedule: true,
+        },
+      ],
+    };
+  });
+}
+
+/** Resolve a one-way class reminder before it crosses the sender boundary. */
+export async function resolveGuardianMessageContact(
+  client: SupabaseClient,
+  requestedContactId: string,
+): Promise<string> {
+  const contactResult = await client
+    .from("hermes_contacts")
+    .select("id, display_name, role, is_active, deleted_at, communication_policy, consent_status")
+    .eq("id", requestedContactId)
+    .maybeSingle();
+  if (contactResult.error) throw new Error("guardian_routing_unavailable");
+  const student = contactResult.data as RoutingContact | null;
+  if (!student) throw new Error("recipient_unavailable");
+  if (student.role !== "student" || student.communication_policy !== "guardian_only") {
+    return requestedContactId;
+  }
+
+  const relationshipResult = await client
+    .from("hermes_contact_relationships")
+    .select("source_contact_id, target_contact_id, relationship_type, is_active")
+    .eq("target_contact_id", requestedContactId)
+    .eq("relationship_type", "parent_guardian")
+    .eq("is_active", true);
+  if (relationshipResult.error) throw new Error("guardian_routing_unavailable");
+  const relationships = (relationshipResult.data ?? []) as RoutingRelationship[];
+  const guardianIds = [...new Set(relationships.map((relationship) => relationship.source_contact_id))];
+  const guardiansResult = guardianIds.length
+    ? await client
+        .from("hermes_contacts")
+        .select("id, display_name, role, is_active, deleted_at, communication_policy, consent_status")
+        .in("id", guardianIds)
+    : { data: [], error: null };
+  if (guardiansResult.error) throw new Error("guardian_routing_unavailable");
+  const recipient = resolveClassRecipient({
+    student,
+    contacts: [student, ...((guardiansResult.data ?? []) as RoutingContact[])],
+    relationships,
+    enrollmentContactId: null,
+    requiresGuardian: true,
+  });
+  if (recipient.kind === "exception") throw new Error(recipient.reason);
+  return recipient.contactId;
 }
 
 export function activeGuardiansForStudent({

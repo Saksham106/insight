@@ -14,7 +14,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *
  * Both handlers are administrator-only and run through the service-role client
  * on the server; the browser never sees that credential. Writes go through
- * public.upsert_academy_contact_relationship rather than touching the table, so
+ * public.admin_upsert_hermes_guardian_relationship rather than touching the table, so
  * the role checks, the self-link refusal, and the active-contact requirement
  * stay in one place, and a repeated request is idempotent instead of an error.
  * Links are never deleted — removing one deactivates it and keeps the history.
@@ -56,35 +56,17 @@ export async function POST(request: Request) {
   const { parentContactId, studentContactId, active } = parsed.value;
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase.rpc("upsert_academy_contact_relationship", {
+  const { data, error } = await supabase.rpc("admin_upsert_hermes_guardian_relationship", {
     p_source_contact_id: parentContactId,
     p_target_contact_id: studentContactId,
-    p_relationship_type: RELATIONSHIP_TYPE,
     p_is_active: active,
+    p_actor_profile_id: profile.id,
     p_source_channel: RELATIONSHIP_SOURCE_CHANNEL,
   });
   if (error) {
     const response = relationshipErrorResponse(error.message);
     return NextResponse.json({ error: response.message }, { status: response.status });
   }
-
-  // The RPC writes its own audit event, but with no actor_profile_id. This
-  // second event is what ties the change to the administrator who made it.
-  const relationship = data as { id?: string } | null;
-  await supabase.from("hermes_audit_events").insert({
-    actor_type: "admin",
-    actor_profile_id: profile.id,
-    event_type: active ? "contact_relationship_linked" : "contact_relationship_unlinked",
-    entity_type: "contact_relationship",
-    entity_id: relationship?.id ?? null,
-    metadata: {
-      relationshipType: RELATIONSHIP_TYPE,
-      sourceChannel: RELATIONSHIP_SOURCE_CHANNEL,
-      parentContactId,
-      studentContactId,
-      active,
-    },
-  });
 
   return NextResponse.json({ relationship: data });
 }

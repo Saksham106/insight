@@ -2,7 +2,7 @@ import { HermesAssistantDashboard } from "@/components/admin/hermes-assistant-da
 import { parseHermesTab } from "@/components/admin/hermes-dashboard-shared";
 import { requireRole } from "@/lib/auth/require-role";
 import { loadAdminLessonCycles } from "@/lib/hermes/lesson-ledger-admin";
-import { KITTY_UPCOMING_CLASS_LIMIT, loadKittyAdminAttentionIssues } from "@/lib/hermes/kitty-class-admin";
+import { collectKittyAttentionOccurrenceIds, KITTY_UPCOMING_CLASS_LIMIT, loadKittyAdminAttentionIssues } from "@/lib/hermes/kitty-class-admin";
 import {
   attachAndSortConversationSummaries,
   loadConversationSummaries,
@@ -114,14 +114,22 @@ export default async function HermesAdminPage({
     ]);
 
   const classAttentionIssues = classAttentionResult.data;
+  const classChangeRequestedOccurrences = await supabase
+    .from("kitty_class_occurrences")
+    .select("id")
+    .eq("status", "change_requested")
+    .limit(200);
   const primaryOccurrences = [
     ...(classUpcomingOccurrences.data ?? []),
     ...(classHistoryOccurrences.data ?? []),
   ];
   const primaryOccurrenceIds = new Set(primaryOccurrences.map((occurrence) => occurrence.id));
-  const attentionOccurrenceIds = [...new Set(classAttentionIssues.flatMap((issue: { occurrenceId: string | null }) =>
-    issue.occurrenceId && !primaryOccurrenceIds.has(issue.occurrenceId) ? [issue.occurrenceId] : [],
-  ))].slice(0, 200);
+  const attentionOccurrenceIds = collectKittyAttentionOccurrenceIds({
+    workflowIssues: classAttentionIssues,
+    deliveryIssues: classNotificationIssues.data ?? [],
+    changeRequestedOccurrences: classChangeRequestedOccurrences.data ?? [],
+    excludeIds: [...primaryOccurrenceIds],
+  }).slice(0, 200);
   const classAttentionOccurrences = attentionOccurrenceIds.length
     ? await supabase
         .from("kitty_class_occurrences")
@@ -134,6 +142,11 @@ export default async function HermesAdminPage({
   // Guardian routing for the classes actually coming up. Bounded to the
   // upcoming occurrences so this never walks the whole enrollment history.
   const upcomingOccurrenceIds = (classUpcomingOccurrences.data ?? []).map((occurrence) => occurrence.id);
+  const upcomingSeriesIds = [...new Set((classUpcomingOccurrences.data ?? []).flatMap((occurrence) => occurrence.series_id ? [occurrence.series_id] : []))];
+  const enrollmentScope = [
+    upcomingOccurrenceIds.length ? `occurrence_id.in.(${upcomingOccurrenceIds.join(",")})` : null,
+    upcomingSeriesIds.length ? `series_id.in.(${upcomingSeriesIds.join(",")})` : null,
+  ].filter(Boolean).join(",");
   const openCaseIds = (cases.data ?? []).map((item: { id: string }) => item.id);
   const [relationshipRows, enrollmentRows, participantRows] = await Promise.all([
     supabase
@@ -142,11 +155,11 @@ export default async function HermesAdminPage({
       .eq("relationship_type", "parent_guardian")
       .eq("is_active", true)
       .limit(1000),
-    upcomingOccurrenceIds.length
+    enrollmentScope
       ? supabase
           .from("kitty_class_enrollments")
           .select("id, student_contact_id, occurrence_id, is_active, contacts:kitty_class_enrollment_contacts(enrollment_id, contact_id, contact_role, receives_notifications, is_active)")
-          .in("occurrence_id", upcomingOccurrenceIds)
+          .or(enrollmentScope)
           .eq("is_active", true)
           .limit(200)
       : { data: [], error: null },
@@ -237,7 +250,7 @@ export default async function HermesAdminPage({
         lessonResult.error ? "Lesson ledger temporarily unavailable." : null
       }
       settlements={settlements.data ?? []}
-      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error || classUpcomingOccurrences.error || classHistoryOccurrences.error || classSeries.error || classNotificationIssues.error || classAttentionResult.error || classAttentionOccurrences.error ? "Some Kitty information could not be loaded." : null}
+      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error || classUpcomingOccurrences.error || classHistoryOccurrences.error || classSeries.error || classNotificationIssues.error || classAttentionResult.error || classChangeRequestedOccurrences.error || classAttentionOccurrences.error || relationshipRows.error || enrollmentRows.error || participantRows.error ? "Some Kitty information could not be loaded." : null}
       classOccurrences={classOccurrences}
       classSeries={classSeries.data ?? []}
       classNotificationIssues={classNotificationIssues.data ?? []}

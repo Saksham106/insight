@@ -16,6 +16,8 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 const {
   resolveClassRecipient,
   activeGuardiansForStudent,
+  applyGuardianDefaults,
+  resolveGuardianMessageContact,
 } = require(path.join(__dirname, "guardian-routing.ts"));
 
 function person(id, overrides = {}) {
@@ -26,6 +28,7 @@ function person(id, overrides = {}) {
     is_active: overrides.is_active ?? true,
     deleted_at: overrides.deleted_at ?? null,
     communication_policy: overrides.communication_policy ?? "direct",
+    consent_status: overrides.consent_status ?? "attested",
   };
 }
 
@@ -93,6 +96,23 @@ test("an opted-out guardian is not eligible to be messaged", () => {
   const guardians = activeGuardiansForStudent({
     studentId: "student-1",
     contacts: [STUDENT, person("mum", { communication_policy: "opted_out" })],
+    relationships: [link("mum", "student-1")],
+  });
+  assert.deepEqual(guardians, []);
+});
+
+test("paused, approval-required, guardian-only, and unattested guardians are not eligible defaults", () => {
+  for (const communication_policy of ["paused", "approval_required", "guardian_only"]) {
+    const guardians = activeGuardiansForStudent({
+      studentId: "student-1",
+      contacts: [STUDENT, person("mum", { communication_policy })],
+      relationships: [link("mum", "student-1")],
+    });
+    assert.deepEqual(guardians, [], communication_policy);
+  }
+  const guardians = activeGuardiansForStudent({
+    studentId: "student-1",
+    contacts: [STUDENT, person("mum", { consent_status: "unknown" })],
     relationships: [link("mum", "student-1")],
   });
   assert.deepEqual(guardians, []);
@@ -194,6 +214,97 @@ test("two links where only one guardian is eligible resolves to that one", () =>
 test("an exception names the student so Swati knows whose class it is", () => {
   const result = route({ requiresGuardian: true, relationships: [] });
   assert.equal(result.studentName, "student-1");
+});
+
+test("a sole linked guardian is persisted as the recipient default", () => {
+  const result = applyGuardianDefaults({
+    enrollments: [{
+      studentContactId: "student-1",
+      contacts: [{
+        contactId: "student-1", role: "student", receivesNotifications: false,
+        confirmsCancellation: false, confirmsReschedule: true,
+      }],
+    }],
+    contacts: [STUDENT, MUM],
+    relationships: [link("mum", "student-1")],
+  });
+  assert.deepEqual(result[0].contacts[1], {
+    contactId: "mum", role: "parent_guardian", receivesNotifications: true,
+    confirmsCancellation: false, confirmsReschedule: true,
+  });
+});
+
+test("guardian-only policy disables the student recipient and persists the sole guardian", () => {
+  const result = applyGuardianDefaults({
+    enrollments: [{
+      studentContactId: "student-1",
+      contacts: [{
+        contactId: "student-1", role: "student", receivesNotifications: true,
+        confirmsCancellation: false, confirmsReschedule: true,
+      }],
+    }],
+    contacts: [person("student-1", { role: "student", communication_policy: "guardian_only" }), MUM],
+    relationships: [link("mum", "student-1")],
+  });
+  assert.equal(result[0].contacts[0].receivesNotifications, false);
+  assert.equal(result[0].contacts[1].contactId, "mum");
+});
+
+test("a class reminder addressed to a guardian-only student resolves to the linked parent", async () => {
+  const rows = {
+    hermes_contacts: [
+      person("student-1", { role: "student", communication_policy: "guardian_only" }),
+      MUM,
+    ],
+    hermes_contact_relationships: [link("mum", "student-1")],
+  };
+  const client = { from(table) {
+    let id = null;
+    const query = {
+      select() { return query; }, eq(column, value) { if (column === "id") id = value; return query; }, in() { return query; },
+      maybeSingle() { return Promise.resolve({ data: rows[table].find((row) => row.id === id) ?? null, error: null }); },
+      then(resolve, reject) { return Promise.resolve({ data: rows[table], error: null }).then(resolve, reject); },
+    };
+    return query;
+  } };
+  assert.equal(await resolveGuardianMessageContact(client, "student-1"), "mum");
+});
+
+test("an explicit notifying guardian is never replaced by a directory default", () => {
+  const explicit = {
+    contactId: "dad", role: "parent_guardian", receivesNotifications: true,
+    confirmsCancellation: true, confirmsReschedule: true,
+  };
+  const result = applyGuardianDefaults({
+    enrollments: [{
+      studentContactId: "student-1",
+      contacts: [
+        { contactId: "student-1", role: "student", receivesNotifications: false, confirmsCancellation: false, confirmsReschedule: true },
+        explicit,
+      ],
+    }],
+    contacts: [STUDENT, MUM, DAD],
+    relationships: [link("mum", "student-1"), link("dad", "student-1")],
+  });
+  assert.deepEqual(result[0].contacts, [
+    { contactId: "student-1", role: "student", receivesNotifications: false, confirmsCancellation: false, confirmsReschedule: true },
+    explicit,
+  ]);
+});
+
+test("missing and ambiguous guardian defaults refuse to create a silent non-delivery", () => {
+  const input = {
+    enrollments: [{
+      studentContactId: "student-1",
+      contacts: [{ contactId: "student-1", role: "student", receivesNotifications: false, confirmsCancellation: false, confirmsReschedule: true }],
+    }],
+    contacts: [STUDENT, MUM, DAD],
+  };
+  assert.throws(() => applyGuardianDefaults({ ...input, relationships: [] }), /missing_guardian/);
+  assert.throws(() => applyGuardianDefaults({
+    ...input,
+    relationships: [link("mum", "student-1"), link("dad", "student-1")],
+  }), /ambiguous_guardian/);
 });
 
 const { projectGuardianIssues } = require(path.join(__dirname, "guardian-routing.ts"));

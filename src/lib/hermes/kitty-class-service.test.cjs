@@ -32,6 +32,30 @@ const enrollments = [
   },
 ];
 
+function withDirectStudentLookup(client) {
+  return {
+    ...client,
+    from(table) {
+      assert.equal(table, "hermes_contacts");
+      let ids = [];
+      const query = {
+        select() { return query; },
+        in(_column, values) { ids = values; return query; },
+        then(resolve, reject) {
+          return Promise.resolve({
+            data: ids.map((id) => ({
+              id, display_name: id, role: "student", is_active: true, deleted_at: null,
+              communication_policy: "direct", consent_status: "attested",
+            })),
+            error: null,
+          }).then(resolve, reject);
+        },
+      };
+      return query;
+    },
+  };
+}
+
 function oneOff(overrides = {}) {
   return {
     kind: "one_off",
@@ -99,12 +123,12 @@ test("creation rejects the removed flat participant contract", async () => {
 test("one teacher and two enrollments are created through one atomic RPC", async () => {
   const { createKittyClass } = require(servicePath);
   const calls = [];
-  const client = {
+  const client = withDirectStudentLookup({
     rpc: async (name, payload) => {
       calls.push({ name, payload });
       return { data: { id: "occurrence-1", title: "Group piano", starts_at: "2026-08-12T20:00:00.000Z", ends_at: "2026-08-12T21:00:00.000Z", local_date: "2026-08-12", timezone: "America/New_York", status: "scheduled", version: 1 }, error: null };
     },
-  };
+  });
 
   const created = await createKittyClass(client, admin, oneOff());
 
@@ -115,6 +139,45 @@ test("one teacher and two enrollments are created through one atomic RPC", async
   assert.deepEqual(calls[0].payload.p_enrollments, enrollments);
   assert.equal(calls[0].payload.p_client_request_id, "dashboard:create:42");
   assert.equal("p_participants" in calls[0].payload, false);
+});
+
+test("class creation persists a sole linked guardian when the student is not notified", async () => {
+  const { createKittyClass } = require(servicePath);
+  const calls = [];
+  const rows = {
+    hermes_contact_relationships: [{
+      source_contact_id: "parent-1", target_contact_id: "student-a",
+      relationship_type: "parent_guardian", is_active: true,
+    }],
+    hermes_contacts: [
+      { id: "student-a", display_name: "Aarav", role: "student", is_active: true, deleted_at: null, communication_policy: "guardian_only", consent_status: "attested" },
+      { id: "parent-1", display_name: "Priya", role: "parent", is_active: true, deleted_at: null, communication_policy: "direct", consent_status: "attested" },
+    ],
+  };
+  const client = {
+    from(table) {
+      const query = {
+        select() { return query; }, eq() { return query; }, in() { return query; },
+        then(resolve, reject) { return Promise.resolve({ data: rows[table] ?? [], error: null }).then(resolve, reject); },
+      };
+      return query;
+    },
+    async rpc(name, payload) {
+      calls.push({ name, payload });
+      return { data: { id: "occurrence-1", title: "Group piano", starts_at: "2026-08-12T20:00:00.000Z", ends_at: "2026-08-12T21:00:00.000Z", local_date: "2026-08-12", timezone: "America/New_York", status: "scheduled", version: 1 }, error: null };
+    },
+  };
+  const studentOnly = [{
+    studentContactId: "student-a",
+    contacts: [{ contactId: "student-a", role: "student", receivesNotifications: false, confirmsCancellation: false, confirmsReschedule: true }],
+  }];
+
+  await createKittyClass(client, admin, oneOff({ enrollments: studentOnly }));
+
+  assert.deepEqual(calls[0].payload.p_enrollments[0].contacts[1], {
+    contactId: "parent-1", role: "parent_guardian", receivesNotifications: true,
+    confirmsCancellation: false, confirmsReschedule: true,
+  });
 });
 
 function rosterClient(changeRequest = null, extraRows = {}) {
@@ -364,10 +427,10 @@ test("upcoming class list filters stale rows before applying its limit", async (
 test("enrollment membership mutations use optimistic atomic RPCs", async () => {
   const { addKittyClassEnrollment, endKittyClassEnrollment } = require(servicePath);
   const calls = [];
-  const client = { rpc: async (name, payload) => {
+  const client = withDirectStudentLookup({ rpc: async (name, payload) => {
     calls.push({ name, payload });
     return { data: { id: "occurrence-1", title: "Group piano", starts_at: "2026-08-12T20:00:00.000Z", ends_at: "2026-08-12T21:00:00.000Z", local_date: "2026-08-12", timezone: "America/New_York", status: "scheduled", version: payload.p_expected_version + 1 }, error: null };
-  } };
+  } });
 
   await addKittyClassEnrollment(client, admin, {
     occurrenceId: "occurrence-1", version: 3, scope: "occurrence", effectiveDate: "2026-08-15", enrollment: enrollments[0],
@@ -401,7 +464,7 @@ test("enrollment mutations reject omitted and unsupported temporal scopes before
 
 test("enrollment mutations preserve stale version conflicts", async () => {
   const { addKittyClassEnrollment } = require(servicePath);
-  const client = { rpc: async () => ({ data: null, error: { message: "stale_class" } }) };
+  const client = withDirectStudentLookup({ rpc: async () => ({ data: null, error: { message: "stale_class" } }) });
   await assert.rejects(() => addKittyClassEnrollment(client, admin, {
     occurrenceId: "occurrence-1", version: 3, scope: "this_and_future", effectiveDate: "2026-08-15", enrollment: enrollments[0],
   }), /stale_class/);

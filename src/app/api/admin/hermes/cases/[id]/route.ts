@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/get-user-profile";
-import { canTransitionCase } from "@/lib/hermes/cases";
 import { RECONCILIATION_REASON_LIMIT } from "@/lib/hermes/case-reconciliation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -33,52 +32,18 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   }
 
   const supabase = createAdminClient();
-  const { data: existing, error: loadError } = await supabase
-    .from("hermes_scheduling_cases")
-    .select("id, status, resolution")
-    .eq("id", id)
-    .maybeSingle();
-  if (loadError) return NextResponse.json({ error: "Could not load the case." }, { status: 500 });
-  if (!existing) return NextResponse.json({ error: "That case no longer exists." }, { status: 404 });
-  if (!canTransitionCase(existing.status, "cancelled")) {
-    return NextResponse.json(
-      { error: "This case has already been resolved. Refresh and try again." },
-      { status: 409 },
-    );
-  }
-
-  const { data, error } = await supabase
-    .from("hermes_scheduling_cases")
-    .update({
-      status: "cancelled",
-      resolution: {
-        outcome: "closed_by_admin",
-        reason: reason.slice(0, RECONCILIATION_REASON_LIMIT),
-        closedAt: new Date().toISOString(),
-      },
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    // Refuses to act on a case somebody else already moved.
-    .eq("status", existing.status)
-    .select("id, status")
-    .maybeSingle();
-  if (error) return NextResponse.json({ error: "Could not close the case." }, { status: 500 });
-  if (!data) {
-    return NextResponse.json(
-      { error: "This case changed since you opened the page. Refresh and try again." },
-      { status: 409 },
-    );
-  }
-
-  await supabase.from("hermes_audit_events").insert({
-    actor_type: "admin",
-    actor_profile_id: profile.id,
-    event_type: "case_closed_by_admin",
-    entity_type: "scheduling_case",
-    entity_id: id,
-    metadata: { reason: reason.slice(0, RECONCILIATION_REASON_LIMIT), previousStatus: existing.status },
+  const { data, error } = await supabase.rpc("admin_close_hermes_scheduling_case", {
+    p_case_id: id,
+    p_reason: reason.slice(0, RECONCILIATION_REASON_LIMIT),
+    p_actor_profile_id: profile.id,
   });
+  if (error) {
+    const stale = error.message?.includes("stale_case");
+    return NextResponse.json(
+      { error: stale ? "This case changed since you opened the page. Refresh and try again." : "Could not close the case." },
+      { status: stale ? 409 : 500 },
+    );
+  }
 
   return NextResponse.json({ case: data });
 }

@@ -296,7 +296,7 @@ test("relationship mutations are administrator-only and go through the RPC", () 
   const guards = route.match(/profile\.role !== "admin"/g) ?? [];
   assert.equal(guards.length, 2, "both GET and POST are guarded");
   assert.match(route, /status: 403/);
-  assert.match(route, /upsert_academy_contact_relationship/, "rules stay in the database");
+  assert.match(route, /admin_upsert_hermes_guardian_relationship/, "rules and audit stay in one database transaction");
   assert.match(route, /p_source_channel: RELATIONSHIP_SOURCE_CHANNEL/);
   // Never a raw table write, and never a delete.
   assert.doesNotMatch(route, /\.from\("hermes_contact_relationships"\)\s*\.(insert|update|upsert|delete)/);
@@ -305,10 +305,8 @@ test("relationship mutations are administrator-only and go through the RPC", () 
 
 test("relationship changes are audited against the signed-in administrator", () => {
   const route = read("src/app/api/admin/hermes/relationships/route.ts");
-  // The RPC's own audit row has no actor_profile_id, so the route adds one.
-  assert.match(route, /actor_profile_id: profile\.id/);
-  assert.match(route, /contact_relationship_linked/);
-  assert.match(route, /contact_relationship_unlinked/);
+  assert.match(route, /admin_upsert_hermes_guardian_relationship/);
+  assert.match(route, /p_actor_profile_id: profile\.id/);
 });
 
 test("the service-role client is only ever created on the server route", () => {
@@ -345,12 +343,11 @@ test("scheduling shows the derived next action rather than a raw status", () => 
 test("an obsolete case can be closed without deleting it", () => {
   const route = read("src/app/api/admin/hermes/cases/[id]/route.ts");
   assert.match(route, /profile\.role !== "admin"/);
-  assert.match(route, /status: "cancelled"/, "cancelled is the existing terminal state");
+  assert.match(route, /admin_close_hermes_scheduling_case/, "one RPC closes and audits atomically");
   assert.doesNotMatch(route, /\.delete\(\)/, "the case row is kept");
-  assert.match(route, /canTransitionCase/, "the transition is validated");
-  assert.match(route, /actor_profile_id: profile\.id/, "the closing admin is audited");
-  assert.match(route, /case_closed_by_admin/);
-  assert.match(route, /status: 409/, "a stale close is refused");
+  assert.match(route, /admin_close_hermes_scheduling_case/, "the transition is validated in the database transaction");
+  assert.match(route, /p_actor_profile_id: profile\.id/, "the closing admin is audited");
+  assert.match(route, /status: stale \? 409 : 500/, "a stale close is refused");
 });
 
 test("no new case status was invented for closing", () => {
@@ -359,4 +356,12 @@ test("no new case status was invented for closing", () => {
   assert.equal(statuses.includes("dismissed"), false);
   assert.equal(statuses.includes("closed"), false);
   assert.match(statuses, /"cancelled"/);
+});
+
+test("phantom-case reconciliation has a previewable admin runner with database revalidation", () => {
+  const route = read("src/app/api/admin/hermes/cases/reconcile/route.ts");
+  assert.match(route, /profile\.role !== "admin"/);
+  assert.match(route, /planCaseReconciliation/);
+  assert.match(route, /body\.apply !== true/);
+  assert.match(route, /admin_reconcile_hermes_phantom_case/);
 });

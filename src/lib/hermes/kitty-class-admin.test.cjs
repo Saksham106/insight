@@ -224,6 +224,19 @@ test("the attention view is not capped at five and still reaches past rows", () 
   assert.equal(attention.length, 9);
 });
 
+test("attention occurrence ids include workflow, delivery, and every change-requested source", () => {
+  const { collectKittyAttentionOccurrenceIds } = require(adminPath);
+  assert.deepEqual(collectKittyAttentionOccurrenceIds({
+    workflowIssues: [{ occurrenceId: "workflow", seriesId: null }],
+    deliveryIssues: [
+      { occurrence_id: "failed", status: "failed" },
+      { occurrence_id: "blocked", status: "blocked" },
+    ],
+    changeRequestedOccurrences: [{ id: "changed" }, { id: "workflow" }],
+    excludeIds: ["already-loaded"],
+  }), ["workflow", "failed", "blocked", "changed"]);
+});
+
 test("History stays newest-first and is not capped at five", () => {
   const { filterKittyClassesForView } = require(adminPath);
   const rows = [
