@@ -289,3 +289,41 @@ test("the delivery log query selects no sensitive message columns", () => {
   assert.ok(columns.includes("template_name"), "template name is available to the log");
   assert.match(page, /\.limit\(25\)/, "the conservative 25-row bound is preserved");
 });
+
+test("relationship mutations are administrator-only and go through the RPC", () => {
+  const route = read("src/app/api/admin/hermes/relationships/route.ts");
+  // Same authorization shape as every other Kitty admin mutation.
+  const guards = route.match(/profile\.role !== "admin"/g) ?? [];
+  assert.equal(guards.length, 2, "both GET and POST are guarded");
+  assert.match(route, /status: 403/);
+  assert.match(route, /upsert_academy_contact_relationship/, "rules stay in the database");
+  assert.match(route, /p_source_channel: RELATIONSHIP_SOURCE_CHANNEL/);
+  // Never a raw table write, and never a delete.
+  assert.doesNotMatch(route, /\.from\("hermes_contact_relationships"\)\s*\.(insert|update|upsert|delete)/);
+  assert.doesNotMatch(route, /\.delete\(\)/, "links are deactivated, never deleted");
+});
+
+test("relationship changes are audited against the signed-in administrator", () => {
+  const route = read("src/app/api/admin/hermes/relationships/route.ts");
+  // The RPC's own audit row has no actor_profile_id, so the route adds one.
+  assert.match(route, /actor_profile_id: profile\.id/);
+  assert.match(route, /contact_relationship_linked/);
+  assert.match(route, /contact_relationship_unlinked/);
+});
+
+test("the service-role client is only ever created on the server route", () => {
+  const links = read("src/components/admin/hermes-contact-links.tsx");
+  assert.match(links, /"use client"/);
+  assert.doesNotMatch(links, /createAdminClient|SERVICE_ROLE/, "no service-role credential in the browser");
+  assert.match(links, /fetch\("\/api\/admin\/hermes\/relationships"/);
+});
+
+test("the directory offers links on parent and student cards with empty states", () => {
+  const panel = read("src/components/admin/hermes-contacts-panel.tsx");
+  const links = read("src/components/admin/hermes-contact-links.tsx");
+  assert.match(panel, /contact\.role === "parent" \|\| contact\.role === "student"/);
+  assert.match(links, /No children linked yet/);
+  assert.match(links, /No guardian linked yet/);
+  assert.match(links, /Remove the link to \$\{person\.displayName\}/, "the remove control is labelled");
+  assert.doesNotMatch(links, /window\.confirm/, "deactivation is reversible, so it needs no prompt");
+});

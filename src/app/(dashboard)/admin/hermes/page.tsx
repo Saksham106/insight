@@ -136,7 +136,7 @@ export default async function HermesAdminPage({
   const [relationshipRows, enrollmentRows] = await Promise.all([
     supabase
       .from("hermes_contact_relationships")
-      .select("source_contact_id, target_contact_id, relationship_type, is_active")
+      .select("id, source_contact_id, target_contact_id, relationship_type, is_active")
       .eq("relationship_type", "parent_guardian")
       .eq("is_active", true)
       .limit(1000),
@@ -224,6 +224,7 @@ export default async function HermesAdminPage({
       classNotificationIssues={classNotificationIssues.data ?? []}
       classAttentionIssues={classAttentionIssues}
       guardianIssues={guardianIssues}
+      relationships={relationshipRows.data ?? []}
       classCalendarEnabled={process.env.KITTY_CLASS_CALENDAR_ENABLED === "true"}
     />
   );

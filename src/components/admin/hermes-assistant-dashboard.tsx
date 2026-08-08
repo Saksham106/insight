@@ -21,6 +21,7 @@ import { HermesSchedulingPanel } from "@/components/admin/hermes-scheduling-pane
 import { HermesSettlementsPanel } from "@/components/admin/hermes-settlements-panel";
 import { buildHermesTabs } from "@/lib/hermes/admin-tabs";
 import { projectAttentionItems, type GuardianRoutingIssue } from "@/lib/hermes/attention";
+import type { RelationshipRow } from "@/lib/hermes/relationships";
 import type { AdminLessonCycle } from "@/lib/hermes/lesson-ledger-admin";
 import type { KittyAdminAttentionIssue } from "@/lib/hermes/kitty-class-admin";
 
@@ -46,6 +47,8 @@ interface HermesAssistantDashboardProps {
   classCalendarEnabled: boolean;
   /** Guardian-routing exceptions raised when a class must reach a guardian. */
   guardianIssues: GuardianRoutingIssue[];
+  /** Active parent/guardian links, for the Contact Directory. */
+  relationships: RelationshipRow[];
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
@@ -76,6 +79,7 @@ export function HermesAssistantDashboard({
   classAttentionIssues,
   classCalendarEnabled,
   guardianIssues,
+  relationships,
 }: HermesAssistantDashboardProps) {
   const attentionItems = projectAttentionItems({
     approvals,
@@ -197,7 +201,7 @@ export function HermesAssistantDashboard({
         />
       ) : null}
 
-      {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} /> : null}
+      {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} relationships={relationships} /> : null}
 
       {tab === "classes" ? <HermesClassesPanel classes={classOccurrences} series={classSeries} contacts={directoryContacts} notificationIssues={classNotificationIssues} attentionIssues={classAttentionIssues} enabled={classCalendarEnabled} /> : null}
     </div>

@@ -12,6 +12,8 @@ import {
   PanelCard,
   type HermesAdminContact,
 } from "@/components/admin/hermes-dashboard-shared";
+import { HermesContactLinks } from "@/components/admin/hermes-contact-links";
+import type { RelationshipRow } from "@/lib/hermes/relationships";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -300,7 +302,13 @@ function DisplayName({ contact }: { contact: HermesAdminContact }) {
   );
 }
 
-export function HermesContactsPanel({ contacts }: { contacts: HermesAdminContact[] }) {
+export function HermesContactsPanel({
+  contacts,
+  relationships,
+}: {
+  contacts: HermesAdminContact[];
+  relationships: RelationshipRow[];
+}) {
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
 
@@ -383,6 +391,13 @@ export function HermesContactsPanel({ contacts }: { contacts: HermesAdminContact
                   </span>
                   <ContactActions contact={contact} />
                 </div>
+                {contact.role === "parent" || contact.role === "student" ? (
+                  <HermesContactLinks
+                    contact={contact}
+                    contacts={active}
+                    relationships={relationships}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
