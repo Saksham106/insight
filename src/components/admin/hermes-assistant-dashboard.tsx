@@ -19,6 +19,7 @@ import {
 } from "@/components/admin/hermes-dashboard-shared";
 import { HermesSchedulingPanel } from "@/components/admin/hermes-scheduling-panel";
 import { HermesSettlementsPanel } from "@/components/admin/hermes-settlements-panel";
+import { buildHermesTabs } from "@/lib/hermes/admin-tabs";
 import type { AdminLessonCycle } from "@/lib/hermes/lesson-ledger-admin";
 import type { KittyAdminAttentionIssue } from "@/lib/hermes/kitty-class-admin";
 
@@ -77,14 +78,19 @@ export function HermesAssistantDashboard({
   );
   const attentionCount = approvals.length + attentionContacts.length;
 
-  const tabs: Array<{ id: HermesTab; label: string; icon: React.ReactNode; count?: number }> = [
-    { id: "conversations", label: "Conversations", icon: <Users size={16} />, count: contacts.length },
-    { id: "ledger", label: "Ledger", icon: <Banknote size={16} />, count: lessonCycles.length + settlements.length },
-    { id: "contacts", label: "Contacts", icon: <Contact size={16} /> },
-    { id: "classes", label: "Classes", icon: <CalendarDays size={16} />, count: classOccurrences.filter((item) => item.status === "scheduled" || item.status === "change_requested").length },
-    { id: "scheduling", label: "Scheduling", icon: <Clock3 size={16} />, count: cases.length },
-    { id: "attention", label: "Needs attention", icon: <AlertCircle size={16} />, count: attentionCount },
-  ];
+  const tabIcons: Record<HermesTab, React.ReactNode> = {
+    conversations: <Users size={16} />,
+    ledger: <Banknote size={16} />,
+    contacts: <Contact size={16} />,
+    classes: <CalendarDays size={16} />,
+    scheduling: <Clock3 size={16} />,
+    attention: <AlertCircle size={16} />,
+  };
+  const tabs = buildHermesTabs({
+    ledgerItems: lessonCycles.length + settlements.length,
+    openSchedulingCases: cases.length,
+    attentionItems: attentionCount,
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -105,7 +111,8 @@ export function HermesAssistantDashboard({
       {loadError ? <p className="text-sm text-error">{loadError}</p> : null}
 
       <nav aria-label="Kitty sections" className="kitty-tabs">
-        {tabs.map(({ id, label, icon, count }) => {
+        {tabs.map(({ id, label, count }) => {
+          const icon = tabIcons[id];
           const active = tab === id;
           return (
             <Link

@@ -57,11 +57,14 @@ test("every section stays reachable from the tab bar", () => {
 });
 
 test("admins can select every contact and read a privacy-minimized transcript", () => {
-  const source = read("src/components/admin/hermes-conversations-panel.tsx");
-  assert.match(source, /import Link from "next\/link"/);
+  // The contact column is a client component so it can hold the search box;
+  // the transcript stays server-rendered. Both halves are checked together.
+  const list = read("src/components/admin/hermes-conversation-list.tsx");
+  const source = [read("src/components/admin/hermes-conversations-panel.tsx"), list].join("\n");
+  assert.match(list, /import Link from "next\/link"/);
   assert.doesNotMatch(source, /contacts\.slice\(0,\s*12\)/);
-  assert.match(source, /href=\{hermesTabHref\("conversations", contact\.id\)\}/);
-  assert.match(source, /aria-current=\{isSelected \? "page" : undefined\}/);
+  assert.match(list, /href=\{hermesTabHref\("conversations", contact\.id\)\}/);
+  assert.match(list, /aria-current=\{isSelected \? "page" : undefined\}/);
   assert.match(source, /No WhatsApp messages yet/);
   assert.match(source, /Select a contact to view their WhatsApp conversation/);
   assert.match(source, /Conversation with \{selectedContact\.display_name\}/);
@@ -95,7 +98,8 @@ test("admin page loads lesson cycles after authorization and wires the combined 
   assert.match(page, /\.from\("academy_settlement_cycles"\)/);
   assert.ok(shared.includes('"ledger"'));
   assert.doesNotMatch(shared, /"settlements"/);
-  assert.match(shell, /label: "Ledger"/);
+  const tabModel = read("src/lib/hermes/admin-tabs.ts");
+  assert.match(tabModel, /label: "Ledger"/);
   assert.match(shell, /tab === "ledger"/);
   assert.match(shell, /lessonCycles\.length \+ settlements\.length/);
 });
@@ -205,8 +209,8 @@ test("tab bar leads with the sections Swati opens most", () => {
     .map((quoted) => quoted.replaceAll('"', ""));
   assert.deepEqual(order, ["conversations", "ledger", "contacts", "classes", "scheduling", "attention"]);
 
-  const shell = read("src/components/admin/hermes-assistant-dashboard.tsx");
-  const rendered = [...shell.matchAll(/\{ id: "([a-z]+)", label:/g)].map((match) => match[1]);
+  const tabModel = read("src/lib/hermes/admin-tabs.ts");
+  const rendered = [...tabModel.matchAll(/\{ id: "([a-z]+)", label:/g)].map((match) => match[1]);
   assert.deepEqual(rendered, order, "rendered tab order must match HERMES_TABS");
 });
 
@@ -227,4 +231,35 @@ test("each tutor in the lesson ledger collapses to a summary row", () => {
   const collectionBlock = panel.slice(panel.indexOf("cycle.collections.map"));
   assert.match(collectionBlock.slice(0, 800), /<details/, "collections render as <details>");
   assert.doesNotMatch(collectionBlock, /<section/, "no collection is left permanently expanded");
+});
+
+test("the conversations list carries a search field above the contacts", () => {
+  const list = read("src/components/admin/hermes-conversation-list.tsx");
+  assert.match(list, /"use client"/, "search state is local, so the column is a client component");
+  assert.match(list, /filterConversationContacts/);
+  assert.match(list, /htmlFor="kitty-conversation-search"/, "the field is labelled, not placeholder-only");
+  assert.match(list, /id="kitty-conversation-search"/);
+  assert.ok(
+    list.indexOf("kitty-conversation-search") < list.indexOf("visible.map"),
+    "the search field renders above the contact list",
+  );
+  assert.match(list, /No contact matches that name or number/, "empty results explain themselves");
+  assert.match(list, /is still open but not in these results/, "a hidden selection is never a trap");
+  assert.match(list, /Clear search/);
+});
+
+test("searching narrows the contact list without touching the transcript", () => {
+  const panel = read("src/components/admin/hermes-conversations-panel.tsx");
+  // The transcript is rendered from the server-loaded `transcript` prop and is
+  // never passed through the filter, so searching cannot alter what is open.
+  assert.doesNotMatch(panel, /filterConversationContacts/);
+  assert.match(panel, /transcript\.map/);
+});
+
+test("Conversations and Classes tabs render no badge", () => {
+  const tabModel = read("src/lib/hermes/admin-tabs.ts");
+  const conversations = tabModel.match(/\{ id: "conversations",[^}]*\}/)[0];
+  const classes = tabModel.match(/\{ id: "classes",[^}]*\}/)[0];
+  assert.doesNotMatch(conversations, /count/, "a contact total is not an unread count");
+  assert.doesNotMatch(classes, /count/, "the tab only ever shows the next five");
 });

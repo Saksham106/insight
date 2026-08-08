@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertCircle, ChevronLeft, Users } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { HermesConversationList } from "@/components/admin/hermes-conversation-list";
 import {
   Empty,
   PanelCard,
@@ -34,65 +34,11 @@ export function HermesConversationsPanel({
       {/* data-selected drives the mobile master/detail swap in globals.css —
           the list shows until a contact is picked, then the transcript. */}
       <div className="kitty-convo-grid" data-selected={selectedContact ? "true" : "false"}>
-        <div aria-label="WhatsApp contacts" className="kitty-convo-list">
-          {contacts.length === 0 ? (
-            <div style={{ padding: "16px" }}>
-              <Empty>Add a contact from the Contacts tab to begin.</Empty>
-            </div>
-          ) : contacts.map((contact) => {
-            const isSelected = selectedContact?.id === contact.id;
-            return (
-              <Link
-                key={contact.id}
-                href={hermesTabHref("conversations", contact.id)}
-                aria-current={isSelected ? "page" : undefined}
-                scroll={false}
-                style={{
-                  display: "block",
-                  padding: "12px 14px",
-                  borderBottom: "1px solid var(--color-border)",
-                  borderLeft: `3px solid ${isSelected ? "var(--color-navy)" : "transparent"}`,
-                  background: isSelected ? "var(--color-soft)" : "transparent",
-                  color: "inherit",
-                  textDecoration: "none",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "start" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <p className="text-sm font-semibold text-navy" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {contact.display_name}
-                    </p>
-                    <p className="text-xs text-muted">{contact.whatsapp_e164}</p>
-                  </div>
-                  <Badge>{contact.role}</Badge>
-                </div>
-                {contact.conversation ? (
-                  <>
-                    <p
-                      className="text-sm"
-                      style={{
-                        marginTop: "8px",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {contact.conversation.latestSpeaker === "kitty" ? "Kitty: " : ""}
-                      {contact.conversation.latestBody}
-                    </p>
-                    <p className="text-xs text-muted" style={{ marginTop: "3px" }}>
-                      {formatMessageTime(contact.conversation.latestAt)} · {contact.conversation.messageCount} {contact.conversation.messageCount === 1 ? "message" : "messages"}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-xs text-muted" style={{ marginTop: "8px" }}>
-                    No WhatsApp messages yet
-                  </p>
-                )}
-              </Link>
-            );
-          })}
-        </div>
+        <HermesConversationList
+          contacts={contacts}
+          selectedContactId={selectedContact?.id ?? null}
+          selectedContactName={selectedContact?.display_name ?? null}
+        />
 
         <div aria-live="polite" className="kitty-convo-detail">
           {transcriptError ? (
