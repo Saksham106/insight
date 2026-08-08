@@ -263,3 +263,29 @@ test("Conversations and Classes tabs render no badge", () => {
   assert.doesNotMatch(conversations, /count/, "a contact total is not an unread count");
   assert.doesNotMatch(classes, /count/, "the tab only ever shows the next five");
 });
+
+test("the delivery log names the contact instead of restating the raw row", () => {
+  const panel = read("src/components/admin/hermes-attention-panel.tsx");
+  const page = read("src/app/(dashboard)/admin/hermes/page.tsx");
+  assert.match(panel, /projectDeliveryLog\(messages\)/);
+  assert.match(panel, /\{row\.who\}/, "each row reads 'To Priya' / 'From Priya'");
+  assert.doesNotMatch(
+    panel,
+    /message\.direction\} \{message\.message_kind\}/,
+    "the raw direction/kind pair is gone",
+  );
+  // The relation was already joined; it just was not used.
+  assert.match(page, /contact:contact_id\(display_name\)/);
+});
+
+test("the delivery log query selects no sensitive message columns", () => {
+  const page = read("src/app/(dashboard)/admin/hermes/page.tsx");
+  const after = page.slice(page.indexOf('.from("hermes_messages")'));
+  // Just the select() argument, so the surrounding comment does not count.
+  const columns = after.match(/\.select\("([^"]*)"\)/)[1];
+  for (const forbidden of ["error_detail", "meta_message_id", "idempotency_key"]) {
+    assert.ok(!columns.includes(forbidden), `delivery log must not select ${forbidden}`);
+  }
+  assert.ok(columns.includes("template_name"), "template name is available to the log");
+  assert.match(page, /\.limit\(25\)/, "the conservative 25-row bound is preserved");
+});

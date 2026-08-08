@@ -9,6 +9,10 @@ import {
   loadSelectedConversation,
   parseSelectedContactId,
 } from "@/lib/hermes/transcript-queries";
+import {
+  projectGuardianIssues,
+  type EnrollmentContactForRouting,
+} from "@/lib/hermes/guardian-routing";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +65,9 @@ export default async function HermesAdminPage({
         .limit(20),
       supabase
         .from("hermes_messages")
-        .select("id, direction, message_kind, status, occurred_at, contact:contact_id(display_name)")
+        // intent/template_name/body feed the delivery log's projection.
+        // error_detail and meta_message_id are deliberately not selected.
+        .select("id, direction, message_kind, intent, template_name, body, status, error_code, occurred_at, contact:contact_id(display_name)")
         .order("occurred_at", { ascending: false })
         .limit(25),
       supabase
@@ -124,6 +130,27 @@ export default async function HermesAdminPage({
     : { data: [], error: null };
   const classOccurrences = [...primaryOccurrences, ...(classAttentionOccurrences.data ?? [])];
 
+  // Guardian routing for the classes actually coming up. Bounded to the
+  // upcoming occurrences so this never walks the whole enrollment history.
+  const upcomingOccurrenceIds = (classUpcomingOccurrences.data ?? []).map((occurrence) => occurrence.id);
+  const [relationshipRows, enrollmentRows] = await Promise.all([
+    supabase
+      .from("hermes_contact_relationships")
+      .select("source_contact_id, target_contact_id, relationship_type, is_active")
+      .eq("relationship_type", "parent_guardian")
+      .eq("is_active", true)
+      .limit(1000),
+    upcomingOccurrenceIds.length
+      ? supabase
+          .from("kitty_class_enrollments")
+          .select("id, student_contact_id, occurrence_id, is_active, contacts:kitty_class_enrollment_contacts(enrollment_id, contact_id, contact_role, receives_notifications, is_active)")
+          .in("occurrence_id", upcomingOccurrenceIds)
+          .eq("is_active", true)
+          .limit(200)
+      : { data: [], error: null },
+  ]);
+  const enrollments = enrollmentRows.data ?? [];
+
   // The query above returns active and removed contacts together so the
   // Contacts tab can offer restore. Every other consumer on this page
   // (conversations, attention, header stats, tab counts) must only ever see
@@ -148,6 +175,23 @@ export default async function HermesAdminPage({
         .then((data) => ({ data, error: false }))
         .catch(() => ({ data: [], error: true }))
     : { data: [], error: false };
+
+  const occurrenceTitles = Object.fromEntries(
+    classOccurrences.map((occurrence) => [occurrence.id, occurrence.title]),
+  );
+  const guardianIssues = projectGuardianIssues({
+    enrollments: enrollments.map((row: { id: string; student_contact_id: string; occurrence_id: string | null }) => ({
+      id: row.id,
+      student_contact_id: row.student_contact_id,
+      occurrence_id: row.occurrence_id,
+    })),
+    enrollmentContacts: enrollments.flatMap(
+      (row: { contacts?: EnrollmentContactForRouting[] }) => row.contacts ?? [],
+    ),
+    contacts: allContacts,
+    relationships: relationshipRows.data ?? [],
+    occurrenceTitles,
+  });
 
   const directoryContacts = attachAndSortConversationSummaries(
     allContacts,
@@ -179,6 +223,7 @@ export default async function HermesAdminPage({
       classSeries={classSeries.data ?? []}
       classNotificationIssues={classNotificationIssues.data ?? []}
       classAttentionIssues={classAttentionIssues}
+      guardianIssues={guardianIssues}
       classCalendarEnabled={process.env.KITTY_CLASS_CALENDAR_ENABLED === "true"}
     />
   );

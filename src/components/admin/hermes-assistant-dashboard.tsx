@@ -20,6 +20,7 @@ import {
 import { HermesSchedulingPanel } from "@/components/admin/hermes-scheduling-panel";
 import { HermesSettlementsPanel } from "@/components/admin/hermes-settlements-panel";
 import { buildHermesTabs } from "@/lib/hermes/admin-tabs";
+import { projectAttentionItems, type GuardianRoutingIssue } from "@/lib/hermes/attention";
 import type { AdminLessonCycle } from "@/lib/hermes/lesson-ledger-admin";
 import type { KittyAdminAttentionIssue } from "@/lib/hermes/kitty-class-admin";
 
@@ -43,6 +44,8 @@ interface HermesAssistantDashboardProps {
   classNotificationIssues: Array<{ id: string; occurrence_id: string; status: string; last_error_code: string | null; updated_at: string }>;
   classAttentionIssues: KittyAdminAttentionIssue[];
   classCalendarEnabled: boolean;
+  /** Guardian-routing exceptions raised when a class must reach a guardian. */
+  guardianIssues: GuardianRoutingIssue[];
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
@@ -72,11 +75,20 @@ export function HermesAssistantDashboard({
   classNotificationIssues,
   classAttentionIssues,
   classCalendarEnabled,
+  guardianIssues,
 }: HermesAssistantDashboardProps) {
-  const attentionContacts = contacts.filter((contact) =>
-    contact.role === "unclassified" || contact.profile_link_status === "suggested" || contact.communication_policy !== "direct",
-  );
-  const attentionCount = approvals.length + attentionContacts.length;
+  const attentionItems = projectAttentionItems({
+    approvals,
+    contacts,
+    messages,
+    cases,
+    classAttentionIssues,
+    guardianIssues,
+    occurrenceTitles: Object.fromEntries(
+      classOccurrences.map((occurrence) => [occurrence.id, occurrence.title]),
+    ),
+  });
+  const attentionCount = attentionItems.length;
 
   const tabIcons: Record<HermesTab, React.ReactNode> = {
     conversations: <Users size={16} />,
@@ -170,7 +182,7 @@ export function HermesAssistantDashboard({
       {tab === "attention" ? (
         <HermesAttentionPanel
           approvals={approvals}
-          attentionContacts={attentionContacts}
+          attentionItems={attentionItems}
           messages={messages}
         />
       ) : null}

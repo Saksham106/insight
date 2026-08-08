@@ -6,22 +6,37 @@ import {
   Empty,
   PanelCard,
   formatMessageTime,
-  type HermesAdminContact,
   type HermesApproval,
   type HermesMessage,
 } from "@/components/admin/hermes-dashboard-shared";
+import type { AttentionItem } from "@/lib/hermes/attention";
+import { projectDeliveryLog } from "@/lib/hermes/delivery-log";
 
 interface HermesAttentionPanelProps {
   approvals: HermesApproval[];
-  attentionContacts: HermesAdminContact[];
+  attentionItems: AttentionItem[];
   messages: HermesMessage[];
 }
 
+/** Where the action for an item is taken. */
+const WHERE_LABELS: Record<string, string> = {
+  attention: "here",
+  contacts: "the Contacts tab",
+  classes: "the Classes tab",
+  scheduling: "the Scheduling tab",
+  conversations: "the Conversations tab",
+  ledger: "the Ledger tab",
+};
+
 export function HermesAttentionPanel({
   approvals,
-  attentionContacts,
+  attentionItems,
   messages,
 }: HermesAttentionPanelProps) {
+  const deliveryRows = projectDeliveryLog(messages);
+  // Approvals keep their own approve/reject controls, so they are rendered
+  // separately from the items that only point at where the action lives.
+  const otherItems = attentionItems.filter((item) => !item.id.startsWith("approval:"));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <PanelCard
@@ -30,7 +45,7 @@ export function HermesAttentionPanel({
         description="Matches, approvals, and exceptions"
         contentStyle={{ display: "flex", flexDirection: "column", gap: "16px" }}
       >
-        {approvals.length === 0 && attentionContacts.length === 0 ? (
+        {attentionItems.length === 0 ? (
           <Empty>Nothing needs your attention.</Empty>
         ) : (
           <>
@@ -62,15 +77,26 @@ export function HermesAttentionPanel({
               </section>
             ) : null}
 
-            {attentionContacts.length > 0 ? (
+            {otherItems.length > 0 ? (
               <section style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 <h3 className="text-sm font-semibold text-navy">
-                  Contacts to review ({attentionContacts.length})
+                  Needs a decision ({otherItems.length})
                 </h3>
-                {attentionContacts.map((contact) => (
-                  <p key={contact.id} className="text-sm">
-                    Review {contact.display_name}: {contact.role === "unclassified" ? "choose a role" : contact.communication_policy.replaceAll("_", " ")}
-                  </p>
+                {otherItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="border border-border"
+                    style={{ borderRadius: "10px", padding: "12px 14px", display: "flex", flexDirection: "column", gap: "2px" }}
+                  >
+                    <p className="text-sm font-semibold text-navy">{item.who}</p>
+                    <p className="text-sm">{item.whatHappened}</p>
+                    <p className="text-sm text-muted">
+                      {item.whatToDo}{" "}
+                      <span className="text-xs">
+                        (in {WHERE_LABELS[item.where] ?? "the Kitty dashboard"})
+                      </span>
+                    </p>
+                  </div>
                 ))}
               </section>
             ) : null}
@@ -85,20 +111,38 @@ export function HermesAttentionPanel({
       >
         <Disclosure
           summary="Delivery log"
-          hint={messages.length === 0 ? "no activity yet" : `${messages.length} most recent`}
+          hint={deliveryRows.length === 0 ? "no activity yet" : `${deliveryRows.length} most recent`}
         >
-          {messages.length === 0 ? (
+          {deliveryRows.length === 0 ? (
             <Empty>No WhatsApp activity yet.</Empty>
           ) : (
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
-              {messages.map((message) => (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
+              {deliveryRows.map((row) => (
                 <li
-                  key={message.id}
-                  className="text-sm"
-                  style={{ display: "flex", flexWrap: "wrap", gap: "6px", justifyContent: "space-between" }}
+                  key={row.id}
+                  style={{ display: "flex", flexDirection: "column", gap: "2px" }}
                 >
-                  <span>{message.direction} {message.message_kind} · {message.status}</span>
-                  <span className="text-xs text-muted">{formatMessageTime(message.occurred_at)}</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", justifyContent: "space-between" }}>
+                    <span className="text-sm font-semibold text-navy">{row.who}</span>
+                    <span className="text-xs text-muted">{formatMessageTime(row.occurredAt)}</span>
+                  </div>
+                  <span className={row.failed ? "text-sm text-error" : "text-sm text-muted"}>
+                    {[row.kind, row.status].filter(Boolean).join(" · ")}
+                    {row.failed && row.errorCode ? ` (${row.errorCode})` : ""}
+                  </span>
+                  {row.preview ? (
+                    <span
+                      className="text-xs text-muted"
+                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {row.preview}
+                    </span>
+                  ) : null}
+                  {row.failed ? (
+                    <span className="text-xs text-muted">
+                      Listed above under failed deliveries.
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>
