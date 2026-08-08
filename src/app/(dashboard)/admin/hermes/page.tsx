@@ -13,6 +13,7 @@ import {
   projectGuardianIssues,
   type EnrollmentContactForRouting,
 } from "@/lib/hermes/guardian-routing";
+import { projectActiveSchedulingCases } from "@/lib/hermes/scheduling";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export default async function HermesAdminPage({
         .order("display_name"),
       supabase
         .from("hermes_scheduling_cases")
-        .select("id, title, status, human_takeover, updated_at")
+        .select("id, title, status, human_takeover, proposed_times, resolution, updated_at")
         .not("status", "in", '("confirmed","cancelled")')
         .order("updated_at", { ascending: false })
         .limit(20),
@@ -133,7 +134,8 @@ export default async function HermesAdminPage({
   // Guardian routing for the classes actually coming up. Bounded to the
   // upcoming occurrences so this never walks the whole enrollment history.
   const upcomingOccurrenceIds = (classUpcomingOccurrences.data ?? []).map((occurrence) => occurrence.id);
-  const [relationshipRows, enrollmentRows] = await Promise.all([
+  const openCaseIds = (cases.data ?? []).map((item: { id: string }) => item.id);
+  const [relationshipRows, enrollmentRows, participantRows] = await Promise.all([
     supabase
       .from("hermes_contact_relationships")
       .select("id, source_contact_id, target_contact_id, relationship_type, is_active")
@@ -148,8 +150,25 @@ export default async function HermesAdminPage({
           .eq("is_active", true)
           .limit(200)
       : { data: [], error: null },
+    // Only the open cases' participants, so "who is waiting on whom" can be
+    // derived without loading the whole participation history.
+    openCaseIds.length
+      ? supabase
+          .from("hermes_case_participants")
+          .select("id, case_id, contact_id, participant_role, response_status, availability, updated_at, contact:contact_id(display_name)")
+          .in("case_id", openCaseIds)
+          .limit(200)
+      : { data: [], error: null },
   ]);
   const enrollments = enrollmentRows.data ?? [];
+  const schedulingCases = projectActiveSchedulingCases({
+    cases: cases.data ?? [],
+    participants: participantRows.data ?? [],
+    approvalCaseIds: (approvals.data ?? []).flatMap((approval: { case?: { id?: string } | Array<{ id?: string }> | null }) => {
+      const record = Array.isArray(approval.case) ? approval.case[0] : approval.case;
+      return record?.id ? [record.id] : [];
+    }),
+  });
 
   // The query above returns active and removed contacts together so the
   // Contacts tab can offer restore. Every other consumer on this page
@@ -210,7 +229,7 @@ export default async function HermesAdminPage({
           ? "Transcript temporarily unavailable."
           : null
       }
-      cases={cases.data ?? []}
+      cases={schedulingCases}
       approvals={approvals.data ?? []}
       messages={messages.data ?? []}
       lessonCycles={lessonResult.data}

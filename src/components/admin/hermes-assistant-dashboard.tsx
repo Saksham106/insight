@@ -10,7 +10,6 @@ import {
   hermesTabHref,
   type HermesAdminContact,
   type HermesApproval,
-  type HermesCase,
   type HermesContactIdentity,
   type HermesMessage,
   type HermesSettlementCycle,
@@ -22,6 +21,7 @@ import { HermesSettlementsPanel } from "@/components/admin/hermes-settlements-pa
 import { buildHermesTabs } from "@/lib/hermes/admin-tabs";
 import { projectAttentionItems, type GuardianRoutingIssue } from "@/lib/hermes/attention";
 import type { RelationshipRow } from "@/lib/hermes/relationships";
+import type { SchedulingCaseView } from "@/lib/hermes/scheduling";
 import type { AdminLessonCycle } from "@/lib/hermes/lesson-ledger-admin";
 import type { KittyAdminAttentionIssue } from "@/lib/hermes/kitty-class-admin";
 
@@ -33,7 +33,7 @@ interface HermesAssistantDashboardProps {
   selectedContact: HermesContactIdentity | null;
   transcript: HermesTranscriptMessage[];
   transcriptError: string | null;
-  cases: HermesCase[];
+  cases: SchedulingCaseView[];
   approvals: HermesApproval[];
   messages: HermesMessage[];
   lessonCycles: AdminLessonCycle[];
@@ -85,7 +85,12 @@ export function HermesAssistantDashboard({
     approvals,
     contacts,
     messages,
-    cases,
+    cases: cases.map((item) => ({
+      id: item.id,
+      title: item.title,
+      status: item.status,
+      human_takeover: item.humanTakeover,
+    })),
     classAttentionIssues,
     guardianIssues,
     occurrenceTitles: Object.fromEntries(

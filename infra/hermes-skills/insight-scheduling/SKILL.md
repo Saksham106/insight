@@ -49,8 +49,10 @@ Do not call `request_lesson_report`, `list_my_cases`, or `get_lesson_cycle` to d
 
 ## Workflow
 
+This workflow is for coordinating a time that is not yet agreed. It is not the path for a reminder about a class that is already scheduled — that is a one-way notification and must not open a case. See the class reminder rules in the profile instructions.
+
 1. Search and retrieve each contact. Stop if `canMessage` is false or identity is ambiguous.
-2. Create one scheduling case containing only the relevant participants.
+2. Create one scheduling case containing only the relevant participants. Create it only when you are about to coordinate availability, never as a wrapper to carry a message.
 3. Use `send_message` with `availability_request`; ask for bounded dates/times and timezone when needed.
 4. Record structured availability with ISO timestamps. Do not include message text.
 5. Propose overlapping times with `propose_times`, then use `send_message` with `time_proposal`.

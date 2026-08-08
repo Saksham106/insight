@@ -296,6 +296,9 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const { data: participant, error } = await supabase.from("hermes_case_participants").update({ availability, response_status: "responded" }).eq("case_id", caseId).eq("contact_id", contactId).select("id").maybeSingle();
         if (error) throw error;
         if (!participant) return rejectRequest("Contact is not a case participant", 403, "case_membership_denied");
+        // Touch the case so "last meaningful update" and the derived
+        // next-action on the dashboard move the moment somebody replies.
+        await supabase.from("hermes_scheduling_cases").update({ updated_at: new Date().toISOString() }).eq("id", caseId);
         await audit("availability_recorded", "scheduling_case", caseId, { contactId, windowCount: availability.length });
         return NextResponse.json({ recorded: true, windowCount: availability.length });
       }
@@ -761,7 +764,17 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         if (!["permission_request", "availability_request", "time_proposal", "class_confirmation", "reschedule_request", "class_reminder", "human_attention", "tutor_report_request", "family_invoice", "payment_reminder", "payment_received"].includes(intent)) return failure("Invalid intent");
         const idempotencyKey = stringValue(payload, "idempotencyKey", 128);
         const financialIntent = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"].includes(intent);
-        const caseId = financialIntent ? undefined : stringValue(payload, "caseId", 80);
+        // A reminder or a nudge for Swati is one-way transport, not a
+        // coordination workflow. Requiring a caseId for those forced Kitty to
+        // open a scheduling case it would never work, which is where the
+        // stuck collecting_availability cases came from. Coordination intents
+        // still require one.
+        const transportIntent = ["class_reminder", "human_attention"].includes(intent);
+        const caseId = financialIntent
+          ? undefined
+          : transportIntent
+            ? (typeof payload.caseId === "string" && payload.caseId.trim() ? payload.caseId.trim().slice(0, 80) : undefined)
+            : stringValue(payload, "caseId", 80);
         const settlementCycleId = typeof payload.settlementCycleId === "string" ? payload.settlementCycleId : undefined;
         const familyInvoiceId = typeof payload.familyInvoiceId === "string" ? payload.familyInvoiceId : undefined;
         if (intent === "class_confirmation") {
@@ -785,6 +798,16 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         const senderRequestId = `${auth.requestId}-send`;
         const response = await fetch(new URL("/api/whatsapp/send", request.url), { method: "POST", headers: { "content-type": "application/json", "x-hermes-timestamp": timestamp, "x-hermes-request-id": senderRequestId, "x-hermes-signature": signServiceRequest(senderBody, timestamp, senderRequestId, senderSecret) }, body: senderBody });
         const result = await response.json();
+        if (response.ok && intent === "availability_request" && caseId) {
+          // pending -> contacted only. A participant who already responded or
+          // declined must not be dragged backwards by a repeat send.
+          await supabase
+            .from("hermes_case_participants")
+            .update({ response_status: "contacted" })
+            .eq("case_id", caseId)
+            .eq("contact_id", contactId)
+            .eq("response_status", "pending");
+        }
         await audit(response.ok ? "message_requested" : "message_rejected", "contact", contactId, { caseId: caseId ?? null, settlementCycleId: settlementCycleId ?? null, familyInvoiceId: familyInvoiceId ?? null, intent, status: response.status });
         return NextResponse.json(result, { status: response.status });
       }

@@ -327,3 +327,36 @@ test("the directory offers links on parent and student cards with empty states",
   assert.match(links, /Remove the link to \$\{person\.displayName\}/, "the remove control is labelled");
   assert.doesNotMatch(links, /window\.confirm/, "deactivation is reversible, so it needs no prompt");
 });
+
+test("scheduling shows the derived next action rather than a raw status", () => {
+  const panel = read("src/components/admin/hermes-scheduling-panel.tsx");
+  const page = read("src/app/(dashboard)/admin/hermes/page.tsx");
+  assert.match(panel, /\{item\.nextAction\}/);
+  assert.match(panel, /item\.participants\.map/, "participants and their states are shown");
+  // JSON.stringify appears only in the close-case request body, never in the
+  // rendered output: no <pre> dump of availability or proposed times.
+  assert.doesNotMatch(panel, /<pre/, "no raw payload is the primary UI");
+  assert.doesNotMatch(panel, /\{JSON\.stringify/, "nothing is rendered as raw JSON");
+  // The page must actually load participants, which it never used to.
+  assert.match(page, /\.from\("hermes_case_participants"\)/);
+  assert.match(page, /projectActiveSchedulingCases/);
+});
+
+test("an obsolete case can be closed without deleting it", () => {
+  const route = read("src/app/api/admin/hermes/cases/[id]/route.ts");
+  assert.match(route, /profile\.role !== "admin"/);
+  assert.match(route, /status: "cancelled"/, "cancelled is the existing terminal state");
+  assert.doesNotMatch(route, /\.delete\(\)/, "the case row is kept");
+  assert.match(route, /canTransitionCase/, "the transition is validated");
+  assert.match(route, /actor_profile_id: profile\.id/, "the closing admin is audited");
+  assert.match(route, /case_closed_by_admin/);
+  assert.match(route, /status: 409/, "a stale close is refused");
+});
+
+test("no new case status was invented for closing", () => {
+  const cases = read("src/lib/hermes/cases.ts");
+  const statuses = cases.match(/export type HermesCaseStatus = ([^;]+);/)[1];
+  assert.equal(statuses.includes("dismissed"), false);
+  assert.equal(statuses.includes("closed"), false);
+  assert.match(statuses, /"cancelled"/);
+});
