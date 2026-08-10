@@ -65,23 +65,30 @@ IDEMPOTENT_CLASS_MUTATIONS = frozenset(("preview_class", "create_class"))
 def _session_actor():
     from gateway.session_context import get_session_env
 
-    return {
-        "platform": get_session_env("HERMES_SESSION_PLATFORM", ""),
-        "chatId": get_session_env("HERMES_SESSION_CHAT_ID", ""),
-        "userId": get_session_env("HERMES_SESSION_USER_ID", ""),
-    }
+    platform = get_session_env("HERMES_SESSION_PLATFORM", "")
+    chat_id = get_session_env("HERMES_SESSION_CHAT_ID", "")
+    user_id = get_session_env("HERMES_SESSION_USER_ID", "")
+    source = get_session_env("HERMES_SESSION_SOURCE", "")
+
+    if (
+        platform == "photon"
+        and re.fullmatch(r"\+[1-9]\d{7,14}", user_id)
+        and chat_id == f"any;-;{user_id}"
+    ):
+        return {"platform": platform, "chatId": chat_id, "userId": user_id}
+    if get_session_env("HERMES_CRON_SESSION", "") == "1":
+        return {"platform": "hermes_local", "source": "cron"}
+    if source in {"cli", "tui"} and platform in {"", "cli"}:
+        return {"platform": "hermes_local", "source": source}
+    return None
 
 
 def call_insight(action, payload):
     if action not in ACTIONS:
         return json.dumps({"error": "Unsupported scheduling action"})
     actor = _session_actor()
-    if (
-        actor["platform"] != "photon"
-        or not re.fullmatch(r"\+[1-9]\d{7,14}", actor["userId"])
-        or actor["chatId"] != f'any;-;{actor["userId"]}'
-    ):
-        return json.dumps({"error": "This admin tool requires Swati's direct iMessage conversation"})
+    if actor is None:
+        return json.dumps({"error": "This admin tool requires Swati's direct iMessage or protected local Hermes session"})
     url = (
         os.environ.get("INSIGHT_KITTY_CLASS_TOOL_URL", "")
         if action in CLASS_ACTIONS

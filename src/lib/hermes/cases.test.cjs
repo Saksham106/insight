@@ -11,7 +11,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { academyInformation, canTransitionCase, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } = require(path.join(__dirname, "cases.ts"));
+const { academyInformation, canTransitionCase, communicationDecision, parseIMessageAdminActor, parseLocalHermesAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } = require(path.join(__dirname, "cases.ts"));
 const { signServiceRequest, verifyServiceRequest } = require(path.join(__dirname, "auth.ts"));
 
 test("tool authentication rejects invalid and expired signatures", () => {
@@ -78,6 +78,19 @@ test("derives the iMessage administrator only from a verified direct session", (
   assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: `chat123;+;${stableId}`, userId: stableId }, digest), null);
   assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: "any;-;not-a-phone", userId: "not-a-phone" }, digest), null);
   assert.equal(parseIMessageAdminActor({ platform: "photon", chatId: `any;-;${stableId}`, userId: stableId }, "0".repeat(64)), null);
+});
+
+test("derives a local administrator only from bounded Hermes cron CLI and TUI actors", () => {
+  assert.deepEqual(parseLocalHermesAdminActor({ platform: "hermes_local", source: "cron" }), { source: "cron" });
+  assert.deepEqual(parseLocalHermesAdminActor({ platform: "hermes_local", source: "cli" }), { source: "cli" });
+  assert.deepEqual(parseLocalHermesAdminActor({ platform: "hermes_local", source: "tui" }), { source: "tui" });
+  for (const actor of [
+    { platform: "hermes_local", source: "desktop" },
+    { platform: "whatsapp_cloud", source: "cli" },
+    { platform: "hermes_local", source: "cron", extra: "forged" },
+    { platform: "hermes_local" },
+    null,
+  ]) assert.equal(parseLocalHermesAdminActor(actor), null);
 });
 
 test("case contacts receive only their own participant record", () => {
@@ -203,6 +216,8 @@ test("iMessage admin route is separately signed and disabled by default", () => 
   assert.match(route, /HERMES_ADMIN_IMESSAGE_ID_SHA256/);
   assert.match(route, /HERMES_IMESSAGE_INTAKE_ENABLED/);
   assert.match(route, /parseIMessageAdminActor/);
+  assert.match(route, /mode === "imessage_admin"[\s\S]{0,200}parseLocalHermesAdminActor/);
+  assert.match(route, /mode === "whatsapp" \? parseWhatsAppToolActor/);
   assert.match(env, /HERMES_IMESSAGE_INTAKE_ENABLED=false/);
 });
 

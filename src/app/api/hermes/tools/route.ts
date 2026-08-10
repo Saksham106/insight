@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
-import { academyInformation, communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
+import { academyInformation, communicationDecision, parseIMessageAdminActor, parseLocalHermesAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import { messagingName } from "@/lib/hermes/contact-name";
 import { resolveGuardianMessageContact } from "@/lib/hermes/guardian-routing";
@@ -69,12 +69,15 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
   const imessageActor = mode === "imessage_admin"
     ? parseIMessageAdminActor(parsed.actor, process.env.HERMES_ADMIN_IMESSAGE_ID_SHA256)
     : null;
+  const localAdminActor = mode === "imessage_admin"
+    ? parseLocalHermesAdminActor(parsed.actor)
+    : null;
   const whatsappActor = mode === "whatsapp" ? parseWhatsAppToolActor(parsed.actor) : null;
-  if (!imessageActor && !whatsappActor) {
-    return rejectRequest("A verified direct messaging session is required", 403, "invalid_session");
+  if (!imessageActor && !localAdminActor && !whatsappActor) {
+    return rejectRequest("A verified administrator or direct messaging session is required", 403, "invalid_session");
   }
   const adminE164 = process.env.HERMES_ADMIN_WHATSAPP_E164;
-  const { data: actorContact } = imessageActor || whatsappActor?.e164 === adminE164
+  const { data: actorContact } = imessageActor || localAdminActor || whatsappActor?.e164 === adminE164
     ? { data: null }
     : await supabase
         .from("hermes_contacts")
@@ -83,7 +86,7 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         .eq("is_active", true)
         .is("deleted_at", null)
         .maybeSingle();
-  const actorKind = imessageActor || whatsappActor?.e164 === adminE164
+  const actorKind = imessageActor || localAdminActor || whatsappActor?.e164 === adminE164
     ? "admin"
     : actorContact && communicationDecision({
         consentStatus: actorContact.consent_status,
