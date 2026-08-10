@@ -1,6 +1,6 @@
 # Trusted Local Hermes Admin Execution Design
 
-**Date:** 2026-08-10  
+**Date:** 2026-08-10
 **Status:** Approved
 
 ## Objective
