@@ -1,6 +1,6 @@
 # Default-profile Insight intake
 
-This procedure enables Swati's default Photon/iMessage profile to use the same Insight scheduling cases as the Academy WhatsApp profile. It does not share profile memory, Google Workspace authorization, secrets, or conversation history.
+This procedure enables Swati's default Photon/iMessage profile and protected local Hermes cron, CLI, and TUI invocations to use the same Insight scheduling cases as the Academy WhatsApp profile. Local runs are trusted through shell access and the default profile's separate HMAC secret, without a phone identity. It does not share profile memory, Google Workspace authorization, secrets, or conversation history.
 
 The endpoint is disabled by default. Deploy it with:
 
@@ -15,7 +15,7 @@ Do not copy `HERMES_ADMIN_TOOL_SHARED_SECRET`, the `insight-admin` plugin, or th
 ## Safe activation
 
 1. Apply `20260716150000_add_hermes_case_origin.sql` and deploy the application while `HERMES_IMESSAGE_INTAKE_ENABLED=false`.
-2. Copy `infra/hermes-plugins/insight-admin` only into the default profile's plugins directory, install `infra/hermes-profiles/default-insight/AGENTS.md` as the default profile's `AGENTS.md`, and enable only its `insight_admin` toolset for the iMessage platform.
+2. Copy `infra/hermes-plugins/insight-admin` only into the default profile's plugins directory, install `infra/hermes-profiles/default-insight/AGENTS.md` as the default profile's `AGENTS.md`, and enable its `insight_admin` toolset for the default profile's Photon, cron, CLI, and TUI surfaces.
 3. In staging, send one direct iMessage from Swati and inspect only the Hermes session-context identifiers. Confirm `platform=photon`, `userId` is Swati's E.164 number, and `chatId` is exactly `any;-;<userId>`. That is Photon's direct-message GUID; group identifiers must not match it. Do not record message content, tokens, or unrelated session data.
 4. Hash the verified E.164 `userId` locally:
 
@@ -35,26 +35,9 @@ Do not copy `HERMES_ADMIN_TOOL_SHARED_SECRET`, the `insight-admin` plugin, or th
 7. Run the repository plugin tests and `hermes config check` for the default profile.
 8. Set `HERMES_IMESSAGE_INTAKE_ENABLED=true` in staging.
 9. From Swati's verified direct iMessage session, test contact search, case creation, and case read. Confirm the case and audit record use `origin_platform=imessage` and actor kind `admin`.
-10. Attempt the tool from a non-iMessage/non-Photon session, a Photon group session, and a Photon session whose `chatId` is not exactly `any;-;<userId>`. All must fail without returning Academy data.
-11. Enable production only after all staging checks pass. Keep the Academy profile, Meta callback, and `HERMES_TOOL_SHARED_SECRET` unchanged.
-
-## Operator CLI test launcher
-
-For temporary operator testing from the default profile, install `hermes-insight-test` at `/opt/data/.local/bin/hermes-insight-test`. The launcher reads the existing `PHOTON_ALLOWED_USERS` value without printing it, requires exactly one valid E.164 identity unless `INSIGHT_TEST_ADMIN_E164` selects an allowed identity, and launches the CLI with the existing `hermes-cli` and `insight_admin` toolsets.
-
-Run it only from the tenant's protected operator terminal:
-
-```bash
-hermes-insight-test
-```
-
-The simulated context exists only for that process. Actions are real production actions and are audited as iMessage because the launcher deliberately exercises the existing verified-Photon authorization path. Exit the CLI to remove the context. Do not install this launcher in the Academy profile or expose it through a shared shell account.
-
-Remove the production launcher when testing is complete:
-
-```bash
-rm /opt/data/.local/bin/hermes-insight-test
-```
+10. From the protected tenant shell, test an ordinary cron run, CLI, and TUI without setting Photon session identifiers. Confirm each request is audited as an administrator action.
+11. Attempt the tool from Academy WhatsApp, another external messaging platform, a Photon group session, a Photon session whose `chatId` is not exactly `any;-;<userId>`, and an unknown local source. All must fail without returning Academy data or calling Meta. A local authorization failure is not a Meta rejection.
+12. Enable production only after all staging checks pass. Keep the Academy WhatsApp profile, Meta callback, and `HERMES_TOOL_SHARED_SECRET` unchanged.
 
 ## Read-only Calendar free/busy worker
 
@@ -122,7 +105,7 @@ Monthly settlements are separate as well: the tutor report, including Swati's ow
 
 ## Flexible lesson-ledger activation
 
-The default Kitty profile can manage the same Phase 1 lesson ledger from Swati's verified direct iMessage session. Apply `20260728120052_add_flexible_lesson_ledger.sql`, deploy with `HERMES_LESSON_LEDGER_ENABLED=false`, install the updated `insight-admin` plugin and `AGENTS.md`, then run the focused plugin/profile tests. Enable in staging only after synthetic relationship edits, selected tutors, a zero-lesson report, a corrected revision, normalized Sheet rows, ambiguity resolution, student consolidation, and final cycle confirmation all succeed.
+The default Kitty profile can manage the same Phase 1 lesson ledger from Swati's verified direct iMessage session or a protected local cron, CLI, or TUI invocation. Apply `20260728120052_add_flexible_lesson_ledger.sql`, deploy with `HERMES_LESSON_LEDGER_ENABLED=false`, install the updated `insight-admin` plugin and `AGENTS.md`, then run the focused plugin/profile tests. Enable in staging only after synthetic relationship edits, selected tutors, a zero-lesson report, a corrected revision, normalized Sheet rows, ambiguity resolution, student consolidation, and final cycle confirmation all succeed.
 
 This workflow is independent of Calendar and settlement bookkeeping. Corrections create revisions; Google Sheet rows are normalized input rather than the authority. It performs no pricing or currency conversion, does not calculate invoices, and does not move money. Roll back by disabling `HERMES_LESSON_LEDGER_ENABLED` while leaving evidence and audit history intact.
 

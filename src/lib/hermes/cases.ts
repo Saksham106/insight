@@ -44,6 +44,18 @@ export function parseIMessageAdminActor(
   return { stableId: userId };
 }
 
+export type LocalHermesAdminSource = "cron" | "cli" | "tui";
+
+export function parseLocalHermesAdminActor(
+  input: unknown,
+): { source: LocalHermesAdminSource } | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const actor = input as Record<string, unknown>;
+  if (Object.keys(actor).length !== 2 || actor.platform !== "hermes_local") return null;
+  if (actor.source !== "cron" && actor.source !== "cli" && actor.source !== "tui") return null;
+  return { source: actor.source };
+}
+
 export type HermesToolActorKind = "admin" | "contact" | "unknown";
 export type HermesToolActorScope = "admin" | "self" | "case_member" | "self_case_member" | "self_financial" | "self_ledger" | "self_objectives" | "denied";
 

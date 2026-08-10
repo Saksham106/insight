@@ -94,7 +94,7 @@ Update the route-boundary test to require the admin mode to consider `parseLocal
 
 - [ ] **Step 2: Run the Hermes case tests and verify RED**
 
-Run: `pnpm exec tsx --test src/lib/hermes/cases.test.cjs`
+Run: `node --test src/lib/hermes/cases.test.cjs`
 
 Expected: FAIL because `parseLocalHermesAdminActor` does not exist.
 
@@ -104,7 +104,7 @@ Implement the exported parser with exact keys `platform` and `source`, reject ar
 
 - [ ] **Step 4: Run focused server tests and verify GREEN**
 
-Run: `pnpm exec tsx --test src/lib/hermes/cases.test.cjs`
+Run: `node --test src/lib/hermes/cases.test.cjs`
 
 Expected: all tests PASS.
 
@@ -159,7 +159,7 @@ Expected: all tests PASS.
 
 - [ ] **Step 2: Run focused Hermes TypeScript tests**
 
-Run: `pnpm exec tsx --test src/lib/hermes/cases.test.cjs src/lib/hermes/lesson-ledger.test.cjs src/lib/hermes/lesson-cycle-index.test.cjs`
+Run: `node --test src/lib/hermes/cases.test.cjs src/lib/hermes/lesson-ledger.test.cjs src/lib/hermes/lesson-cycle-index.test.cjs`
 
 Expected: all tests PASS.
 
