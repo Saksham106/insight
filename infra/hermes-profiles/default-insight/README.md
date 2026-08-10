@@ -30,7 +30,10 @@ Do not copy `HERMES_ADMIN_TOOL_SHARED_SECRET`, the `insight-admin` plugin, or th
    ```dotenv
    INSIGHT_HERMES_ADMIN_TOOL_URL=https://<insight-host>/api/hermes/admin-tools
    HERMES_ADMIN_TOOL_SHARED_SECRET=<separate-admin-secret>
+   HERMES_SESSION_SOURCE=cli
    ```
+
+   `HERMES_SESSION_SOURCE` is a surface marker, not a user identity. Set it in the protected default-profile runtime because Hermes CLI and TUI one-shot processes may otherwise leave both local session fields blank. Cron still binds `HERMES_CRON_SESSION=1`, while any external messaging platform supplies a non-local platform and remains ineligible for this tool.
 
 7. Run the repository plugin tests and `hermes config check` for the default profile.
 8. Set `HERMES_IMESSAGE_INTAKE_ENABLED=true` in staging.
