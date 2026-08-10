@@ -39,6 +39,8 @@ class DefaultInsightProfileTests(unittest.TestCase):
         ]).lower()
         for required in ("cron", "cli", "tui", "protected local", "without a phone identity"):
             self.assertIn(required, source)
+        self.assertIn("hermes_session_source=cli", source)
+        self.assertIn("surface marker, not a user identity", source)
         self.assertIn("not a meta rejection", source)
         self.assertIn("academy whatsapp", source)
 
