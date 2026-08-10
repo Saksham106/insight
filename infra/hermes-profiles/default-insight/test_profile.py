@@ -28,8 +28,19 @@ class DefaultInsightProfileTests(unittest.TestCase):
         self.assertIn("staging", source)
         self.assertIn("chatid", source)
         self.assertIn("userid", source)
-        self.assertIn("non-imessage", source)
+        self.assertIn("external messaging platform", source)
+        self.assertIn("academy whatsapp", source)
         self.assertIn("origin_platform=imessage", source)
+
+    def test_docs_authorize_protected_local_cron_cli_and_tui_without_phone_identity(self):
+        source = "\n".join([
+            (PROFILE_DIR / "AGENTS.md").read_text(),
+            (PROFILE_DIR / "README.md").read_text(),
+        ]).lower()
+        for required in ("cron", "cli", "tui", "protected local", "without a phone identity"):
+            self.assertIn(required, source)
+        self.assertIn("not a meta rejection", source)
+        self.assertIn("academy whatsapp", source)
 
     def test_docs_keep_calendar_worker_paused_and_default_profile_only(self):
         source = (PROFILE_DIR / "README.md").read_text().lower()

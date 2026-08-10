@@ -56,6 +56,19 @@ class PluginTests(unittest.TestCase):
             "userId": "+84917583553",
         })
 
+    def test_trusts_cron_cli_and_tui_without_phone_identity(self):
+        for values, expected_source in (
+            ({"HERMES_CRON_SESSION": "1"}, "cron"),
+            ({"HERMES_SESSION_SOURCE": "cli"}, "cli"),
+            ({"HERMES_SESSION_SOURCE": "tui"}, "tui"),
+        ):
+            with self.subTest(source=expected_source):
+                self.session_values = values
+                self.assertEqual(
+                    self.tools._session_actor(),
+                    {"platform": "hermes_local", "source": expected_source},
+                )
+
     def test_exposes_typed_freebusy_actions(self):
         self.assertIn("request_swati_freebusy", self.tools.ACTIONS)
         self.assertIn("get_workspace_job", self.tools.ACTIONS)
@@ -95,6 +108,7 @@ class PluginTests(unittest.TestCase):
         self.assertIn("tutorContactIds", source)
         self.assertIn("reportedStudentName", source)
         self.assertIn("durationMinutes", source)
+        self.assertIn("protected default-profile cron, CLI, or TUI", source)
         self.assertNotIn("actorId", source)
 
     def test_request_uses_admin_url_secret_and_session_actor(self):
@@ -116,23 +130,33 @@ class PluginTests(unittest.TestCase):
         expected = hmac.new(b"admin-secret", signed.encode(), hashlib.sha256).hexdigest()
         self.assertEqual(request.headers["X-hermes-signature"], expected)
 
-    def test_rejects_non_photon_and_non_direct_sessions(self):
-        self.session_values["HERMES_SESSION_PLATFORM"] = "whatsapp_cloud"
-        self.assertEqual(
-            json.loads(self.tools.call_insight("search_contacts", {"query": "Asha"})),
-            {"error": "This admin tool requires Swati's direct iMessage conversation"},
+    def test_rejects_messaging_unknown_and_non_direct_sessions_before_http(self):
+        rejected = (
+            {"HERMES_SESSION_PLATFORM": "whatsapp_cloud"},
+            {"HERMES_SESSION_PLATFORM": "telegram"},
+            {"HERMES_SESSION_SOURCE": "desktop"},
+            {"HERMES_SESSION_PLATFORM": "api_server"},
+            {},
+            {
+                "HERMES_SESSION_PLATFORM": "photon",
+                "HERMES_SESSION_CHAT_ID": "any;-;+84900000000",
+                "HERMES_SESSION_USER_ID": "+84917583553",
+            },
+            {
+                "HERMES_SESSION_PLATFORM": "photon",
+                "HERMES_SESSION_CHAT_ID": "chat123;+;+84917583553",
+                "HERMES_SESSION_USER_ID": "+84917583553",
+            },
         )
-        self.session_values["HERMES_SESSION_PLATFORM"] = "photon"
-        self.session_values["HERMES_SESSION_CHAT_ID"] = "any;-;+84900000000"
-        self.assertEqual(
-            json.loads(self.tools.call_insight("search_contacts", {"query": "Asha"})),
-            {"error": "This admin tool requires Swati's direct iMessage conversation"},
-        )
-        self.session_values["HERMES_SESSION_CHAT_ID"] = "chat123;+;+84917583553"
-        self.assertEqual(
-            json.loads(self.tools.call_insight("search_contacts", {"query": "Asha"})),
-            {"error": "This admin tool requires Swati's direct iMessage conversation"},
-        )
+        with patch("urllib.request.urlopen") as urlopen:
+            for values in rejected:
+                with self.subTest(values=values):
+                    self.session_values = values
+                    self.assertEqual(
+                        json.loads(self.tools.call_insight("search_contacts", {"query": "Asha"})),
+                        {"error": "This admin tool requires Swati's direct iMessage or protected local Hermes session"},
+                    )
+            urlopen.assert_not_called()
 
 
 if __name__ == "__main__":

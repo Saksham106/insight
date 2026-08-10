@@ -33,12 +33,12 @@ def register(ctx):
     ctx.register_tool(
         name="insight_admin",
         toolset="insight_admin",
-        description="Manage MyInsightAcademy scheduling and the lesson ledger from Swati's verified iMessage session.",
+        description="Manage MyInsightAcademy scheduling and the lesson ledger from Swati's verified iMessage or protected local Hermes session.",
         schema={
             "name": "insight_admin",
             "description": (
-                "Use the shared Insight scheduling service as Swati. Identity comes from the current "
-                "direct iMessage session. " + PAYLOAD_GUIDANCE
+                "Use the shared Insight scheduling service as Swati from a verified direct iMessage "
+                "session or protected default-profile cron, CLI, or TUI. " + PAYLOAD_GUIDANCE
             ),
             "parameters": {
                 "type": "object",
