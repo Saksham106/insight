@@ -37,6 +37,7 @@ test("expands current participants into separately evaluated reminder actions", 
     { occurrenceId: "occ-1", recipientId: "student-1" },
   ]);
   assert.deepEqual(preview.actions.map((action) => action.classDescription), ["IB Chemistry with Devon", "IB Chemistry with Anjali"]);
+  assert.deepEqual(preview.actions.map((action) => [action.recipientRole, action.recipientName]), [["teacher", "Anjali"], ["student", "Devon"]]);
   assert.equal(JSON.stringify(preview).includes("relevant person is"), false);
   assert.equal(preview.actions[0].clientRequestId, "routine:routine-1:occ-1:teacher-1");
 });

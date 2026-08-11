@@ -6,6 +6,7 @@ import type { AgentActor } from "./agent-capability-types";
 import { agentActorKey, type AgentActionProposal } from "./agent-actions";
 import { buildClassReminderDeliveries } from "./class-reminders";
 import { getKittyReminderFacts } from "./kitty-class-service";
+import { getClassReminderTemplateHealth } from "./meta-template-contract";
 
 type ReminderRoutineInput = {
   routineKey: string;
@@ -73,7 +74,9 @@ export function expandAgentReminderRoutine(
   routineId: string,
 ) {
   const deliveries = buildClassReminderDeliveries(facts);
+  const recipients = new Map(facts.recipients.map((recipient) => [recipient.id, recipient]));
   return {
+    timezone: facts.occurrence.timezone,
     occurrenceId: facts.occurrence.id,
     startsAt: facts.occurrence.startsAt,
     actions: deliveries.map((delivery) => ({
@@ -81,6 +84,8 @@ export function expandAgentReminderRoutine(
       capabilityVersion: 1,
       proposedInput: { occurrenceId: facts.occurrence.id, recipientId: delivery.contactId },
       clientRequestId: `routine:${routineId}:${facts.occurrence.id}:${delivery.contactId}`,
+      recipientRole: recipients.get(delivery.contactId)?.role,
+      recipientName: delivery.recipientName,
       classDescription: delivery.classDescription,
       scheduledDateTime: delivery.scheduledDateTime,
     })),
@@ -123,7 +128,12 @@ async function loadRoutine(client: SupabaseClient, routineId: string) {
 export async function previewAgentRoutine(client: SupabaseClient, routine: StoredRoutine, now = new Date()) {
   const resolved = await resolveNextOccurrence(client, routine, now);
   if (!resolved) throw new Error("routine_occurrence_unavailable");
-  return { ...expandAgentReminderRoutine(resolved.facts, routine.id), nextRunAt: resolved.nextRunAt };
+  const templateHealth = await getClassReminderTemplateHealth(fetch, process.env);
+  return {
+    ...expandAgentReminderRoutine(resolved.facts, routine.id),
+    nextRunAt: resolved.nextRunAt,
+    templateContract: templateHealth.ok ? "healthy" as const : "blocked" as const,
+  };
 }
 
 export async function manageAgentRoutine(
@@ -153,6 +163,16 @@ export async function manageAgentRoutine(
     return { routineId: String(data.id), status: String(data.status) };
   }
 
+  if (operation === "preview" && input.routine && !input.routineId) {
+    const normalized = normalizeAgentRoutineInput(input.routine);
+    const candidate = storedRoutine({
+      id: "preview", routine_key: normalized.routineKey, capability_name: normalized.capabilityName,
+      capability_version: normalized.capabilityVersion, entity_references: normalized.entityReferences,
+      schedule: normalized.schedule, timezone: normalized.timezone, recipient_rule: normalized.recipientRule,
+      status: "disabled", next_run_at: null,
+    });
+    return { routineId: "preview", status: "disabled", preview: await previewAgentRoutine(client, candidate) };
+  }
   const routineId = text(input.routineId, "routine_id_required");
   const current = await loadRoutine(client, routineId);
   if (operation === "preview") return { routineId, status: current.status, preview: await previewAgentRoutine(client, current) };
@@ -163,6 +183,7 @@ export async function manageAgentRoutine(
   }
   if (operation === "enable") {
     const preview = await previewAgentRoutine(client, current);
+    if (preview.templateContract !== "healthy") throw new Error("template_contract_unavailable");
     const { error } = await client.from("academy_agent_routines").update({ status: "active", next_run_at: preview.nextRunAt, last_error_code: null, updated_at: new Date().toISOString() }).eq("id", routineId);
     if (error) throw new Error("routine_store_unavailable");
     return { routineId, status: "active", preview };
