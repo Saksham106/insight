@@ -37,7 +37,7 @@ test("rejects the observed malformed live class reminder body", () => {
 test("accepts only the approved name, locale, status, component, and placeholder order", () => {
   const { CLASS_REMINDER_TEMPLATE_CONTRACT, compareMetaTemplateContract } = require(contractPath);
   const expected = { ...CLASS_REMINDER_TEMPLATE_CONTRACT, name: "academy_class_reminder" };
-  const correct = template("Hi {{1}}! Just a reminder that your {{2}} is {{3}}. If anything changes, please tell me and I’ll notify the relevant person.");
+  const correct = template("Hello {{1}}, reminder from MyInsightAcademy: {{2}} is scheduled for {{3}}. We look forward to seeing you.");
   assert.deepEqual(compareMetaTemplateContract(correct, expected), { ok: true });
   assert.equal(compareMetaTemplateContract(template(correct.components[0].text, { status: "PENDING" }), expected).reason, "status_mismatch");
   assert.equal(compareMetaTemplateContract(template(correct.components[0].text, { language: "en_GB" }), expected).reason, "language_mismatch");

@@ -9,7 +9,7 @@ export const CLASS_REMINDER_TEMPLATE_CONTRACT: MetaTemplateContract = {
   name: "",
   status: "APPROVED",
   language: "en_US",
-  body: "Hi {{1}}! Just a reminder that your {{2}} is {{3}}. If anything changes, please tell me and I’ll notify the relevant person.",
+  body: "Hello {{1}}, reminder from MyInsightAcademy: {{2}} is scheduled for {{3}}. We look forward to seeing you.",
 };
 
 export type MetaTemplateHealth = { ok: true; checkedAt: string } | { ok: false; checkedAt: string; reason: string };
