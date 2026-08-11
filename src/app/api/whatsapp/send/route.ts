@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { verifyServiceRequest } from "@/lib/hermes/auth";
 import { messagingName } from "@/lib/hermes/contact-name";
 import { buildGraphMessageRequest, buildHumanAttentionFallbackContent, buildLessonReportRequestContent, buildSchedulingMessageContent, classifyMetaFailure, selectWhatsAppDelivery, templateMapFromEnv, validateSchedulingBodyParameters, type WhatsAppIntent } from "@/lib/hermes/meta";
+import { getClassReminderTemplateHealth } from "@/lib/hermes/meta-template-contract";
 import { buildSettlementMessageContent } from "@/lib/hermes/settlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { priorWhatsAppDisposition } from "@/lib/hermes/whatsapp-delivery-state";
@@ -188,6 +189,12 @@ export async function POST(request: Request) {
     serviceWindowExpiresAt: contact.service_window_expires_at,
   }, body.intent, new Date(), templateMapFromEnv(process.env), approved);
   if (delivery.kind === "blocked") return NextResponse.json({ error: delivery.reason, blocked: true }, { status: 409 });
+  if (body.intent === "class_reminder" && delivery.kind === "template") {
+    const templateHealth = await getClassReminderTemplateHealth(fetch, process.env);
+    if (!templateHealth.ok) {
+      return NextResponse.json({ error: "template_contract_unavailable", blocked: true }, { status: 409 });
+    }
+  }
   if (isClassNotification && delivery.kind === "template" && delivery.parameterStyle === "human_attention") {
     try {
       body.bodyParameters = buildHumanAttentionFallbackContent(recipientName, body.text).bodyParameters;
