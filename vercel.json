@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/kitty-classes",
       "schedule": "15 0 * * *"
-    },
-    {
-      "path": "/api/cron/agent-routines",
-      "schedule": "*/15 * * * *"
     }
   ]
 }
