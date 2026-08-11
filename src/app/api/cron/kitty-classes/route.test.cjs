@@ -16,6 +16,9 @@ test("Kitty class maintenance is authenticated, bounded, and aggregate-only", ()
   assert.match(source, /createdOccurrences/);
   assert.match(source, /completedOccurrences/);
   assert.match(source, /sentNotifications/);
+  assert.match(source, /getClassReminderTemplateHealth/);
+  assert.match(source, /templateContract: templateHealth\.ok \? "healthy" : "blocked"/);
+  assert.ok(source.indexOf("getClassReminderTemplateHealth") < source.indexOf("const delivery = await deliverPendingKittyClassNotifications"));
   assert.doesNotMatch(source, /console\.(log|error)/);
 });
 

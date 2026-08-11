@@ -286,6 +286,30 @@ test("contact reads reveal only represented roster shapes and a non-identifying 
   assert.doesNotMatch(JSON.stringify(item), /student-a|student-b|enrollment-1|enrollment-2/);
 });
 
+test("reminder facts expose only the occurrence and named notification participants", async () => {
+  const { getKittyReminderFacts } = require(servicePath);
+  const facts = await getKittyReminderFacts(rosterClient(null, {
+    hermes_contacts: [
+      { id: "teacher-1", display_name: "Anjali Sharma", preferred_name: "Anjali", whatsapp_e164: "+10000000001" },
+      { id: "student-a", display_name: "Devon Smith", preferred_name: "Devon", whatsapp_e164: "+10000000002" },
+      { id: "student-b", display_name: "Mina Smith", preferred_name: "Mina", whatsapp_e164: "+10000000003" },
+      { id: "unrelated", display_name: "Unrelated", preferred_name: null, whatsapp_e164: "+10000000004" },
+    ],
+  }), "occurrence-1");
+
+  assert.deepEqual(facts.teacher, { id: "teacher-1", name: "Anjali" });
+  assert.deepEqual(facts.students, [
+    { id: "student-a", name: "Devon" },
+    { id: "student-b", name: "Mina" },
+  ]);
+  assert.deepEqual(facts.recipients, [
+    { id: "teacher-1", role: "teacher", name: "Anjali" },
+    { id: "student-a", role: "student", name: "Devon" },
+    { id: "student-b", role: "student", name: "Mina" },
+  ]);
+  assert.doesNotMatch(JSON.stringify(facts), /whatsapp|Unrelated|\+1000/);
+});
+
 test("individual change details stay private to the teacher and represented enrollment", async () => {
   const { getKittyClassOccurrence } = require(servicePath);
   const individualChange = {

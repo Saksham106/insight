@@ -74,6 +74,19 @@ class PluginTests(unittest.TestCase):
         self.assertIn("request_swati_freebusy", self.tools.ACTIONS)
         self.assertIn("get_workspace_job", self.tools.ACTIONS)
 
+    def test_exposes_generic_capability_loop_with_session_bound_actor(self):
+        for action in ("list_capabilities", "evaluate_action", "execute_action"):
+            self.assertIn(action, self.tools.ACTIONS)
+        with patch.dict(os.environ, {
+            "INSIGHT_AGENT_CAPABILITY_URL": "https://myinsightacademy.com/api/hermes/capabilities",
+            "HERMES_ADMIN_TOOL_SHARED_SECRET": "admin-secret",
+        }), patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            result = self.tools.call_insight("list_capabilities", {})
+        self.assertEqual(json.loads(result), {"ok": True})
+        decoded = json.loads(urlopen.call_args.args[0].data)
+        self.assertEqual(decoded["operation"], "list_capabilities")
+        self.assertEqual(decoded["actor"]["platform"], "photon")
+
     def test_exposes_admin_case_listing(self):
         self.assertIn("list_cases", self.tools.ACTIONS)
 

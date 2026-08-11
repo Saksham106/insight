@@ -129,6 +129,7 @@ test("every Kitty relay delivery uses a sending outbox reservation and quarantin
     if (request === "@/lib/hermes/auth") return { verifyServiceRequest: (request) => ({ requestId: request.headers.get("x-test-request-id") }) };
     if (request === "@/lib/hermes/contact-name") return { messagingName: () => "Priya" };
     if (request === "@/lib/hermes/meta") return originalLoad(metaPath, parent, isMain);
+    if (request === "@/lib/hermes/meta-template-contract") return { getClassReminderTemplateHealth: async () => ({ ok: true, checkedAt: new Date().toISOString() }) };
     if (request === "@/lib/hermes/settlements") return { buildSettlementMessageContent: () => { throw new Error("financial path should not run"); } };
     if (request === "@/lib/supabase/admin") return { createAdminClient: () => database };
     if (request === "@/lib/hermes/whatsapp-delivery-state") return originalLoad(deliveryStatePath, parent, isMain);

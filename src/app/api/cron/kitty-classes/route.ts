@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { deliverPendingKittyClassNotifications } from "@/lib/hermes/kitty-class-delivery";
 import { completePastKittyOccurrences, expandDueKittySeries, maintainKittyClassState } from "@/lib/hermes/kitty-class-service";
+import { getClassReminderTemplateHealth } from "@/lib/hermes/meta-template-contract";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 async function maintain(request: Request) {
@@ -20,6 +21,7 @@ async function maintain(request: Request) {
   const maintenance = await maintainKittyClassState(client);
   const expansion = await expandDueKittySeries(client);
   const completedOccurrences = await completePastKittyOccurrences(client);
+  const templateHealth = await getClassReminderTemplateHealth(fetch, process.env);
   const delivery = await deliverPendingKittyClassNotifications(client, request.url, 20);
   return NextResponse.json({
     expandedSeries: expansion.expandedSeries,
@@ -30,6 +32,7 @@ async function maintain(request: Request) {
     sentNotifications: delivery.sent,
     failedNotifications: delivery.failed,
     blockedNotifications: delivery.blocked,
+    templateContract: templateHealth.ok ? "healthy" : "blocked",
     deliveryMode: "immediate_with_daily_recovery",
   });
 }

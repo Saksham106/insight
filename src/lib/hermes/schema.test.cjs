@@ -479,3 +479,25 @@ test("Kitty group rosters are transactionally complete and legacy create RPCs br
   assert.match(migration, /from public\.kitty_class_resolve_decision_actor[\s\S]*actor_enrollment_id = any/);
   assert.match(migration, /v_request\.expires_at <= now\(\)/);
 });
+
+test("Academy agent actions and routines are service-only, RLS-forced, and constrained", () => {
+  const actionSql = readMigration("_agent_capability_api.sql");
+  const routineSql = readMigration("_agent_structured_routines.sql");
+  for (const [sql, table] of [
+    [actionSql, "academy_agent_action_requests"],
+    [routineSql, "academy_agent_routines"],
+  ]) {
+    assert.match(sql, new RegExp(`create table public\\.${table}`));
+    assert.match(sql, new RegExp(`alter table public\\.${table} enable row level security`));
+    assert.match(sql, new RegExp(`alter table public\\.${table} force row level security`));
+    assert.match(sql, new RegExp(`revoke all on table public\\.${table} from public, anon, authenticated`));
+    assert.match(sql, new RegExp(`grant all on table public\\.${table} to service_role`));
+  }
+  assert.match(actionSql, /decision in \('allowed', 'needs_clarification', 'needs_approval', 'denied'\)/);
+  assert.match(actionSql, /execution_status in \('not_executable', 'pending', 'executing', 'completed', 'failed'\)/);
+  assert.match(actionSql, /unique \(actor_key, client_request_id\)/);
+  assert.match(actionSql, /kitty_class_notification_outbox_intent_check[\s\S]*'class_reminder'/);
+  assert.match(routineSql, /status in \('disabled', 'active', 'paused'\)/);
+  assert.match(routineSql, /routine_key text not null unique/);
+  assert.doesNotMatch(`${actionSql}\n${routineSql}`, /prompt|chain_of_thought|service_role_key|access_token/);
+});

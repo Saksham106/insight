@@ -12,6 +12,9 @@ import uuid
 
 
 ACTIONS = (
+    "list_capabilities",
+    "evaluate_action",
+    "execute_action",
     "get_academy_info",
     "search_contacts",
     "get_contact",
@@ -54,6 +57,8 @@ ACTIONS = (
     "override_class",
 )
 
+CAPABILITY_ACTIONS = frozenset(("list_capabilities", "evaluate_action", "execute_action"))
+
 CLASS_ACTIONS = frozenset((
     "preview_class", "create_class", "list_classes", "get_class",
     "edit_class", "override_class",
@@ -90,9 +95,10 @@ def call_insight(action, payload):
     if actor is None:
         return json.dumps({"error": "This admin tool requires Swati's direct iMessage or protected local Hermes session"})
     url = (
-        os.environ.get("INSIGHT_KITTY_CLASS_TOOL_URL", "")
-        if action in CLASS_ACTIONS
-        else os.environ.get("INSIGHT_HERMES_ADMIN_TOOL_URL", "")
+        os.environ.get("INSIGHT_AGENT_CAPABILITY_URL", "")
+        if action in CAPABILITY_ACTIONS
+        else os.environ.get("INSIGHT_KITTY_CLASS_TOOL_URL", "")
+        if action in CLASS_ACTIONS else os.environ.get("INSIGHT_HERMES_ADMIN_TOOL_URL", "")
     )
     secret = os.environ.get("HERMES_ADMIN_TOOL_SHARED_SECRET", "")
     if not url or not secret:
@@ -100,8 +106,10 @@ def call_insight(action, payload):
     if action in IDEMPOTENT_CLASS_MUTATIONS and not str((payload or {}).get("clientRequestId", "")).strip():
         return json.dumps({"error": "clientRequestId is required for this class mutation"})
 
-    body = json.dumps({"actor": actor, "action": action, "payload": payload or {}}, separators=(",", ":"))
-    attempts = 2 if action in IDEMPOTENT_CLASS_MUTATIONS else 1
+    envelope = {"actor": actor, "payload": payload or {}}
+    envelope["operation" if action in CAPABILITY_ACTIONS else "action"] = action
+    body = json.dumps(envelope, separators=(",", ":"))
+    attempts = 2 if action in IDEMPOTENT_CLASS_MUTATIONS or action in ("evaluate_action", "execute_action") else 1
     for attempt in range(attempts):
         timestamp = str(int(time.time() * 1000))
         request_id = uuid.uuid4().hex

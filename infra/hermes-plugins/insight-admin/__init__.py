@@ -5,6 +5,8 @@ from .tools import ACTIONS, handle_insight_admin
 
 PAYLOAD_GUIDANCE = (
     "Use exact camelCase payload fields. Common contracts: "
+    "For new outcomes, use list_capabilities={}, evaluate_action={capabilityName,capabilityVersion,proposedInput,clientRequestId}, "
+    "then execute_action={evaluationToken,clientRequestId}; the server derives identity and authority. "
     "get_academy_info={topic: about|scheduling|privacy|ai_assistant|subjects|contact}; "
     "search_contacts={query}; get_contact={contactId}; "
     "create_case={title,tutorKind,timezone,participants:[{contactId,participantRole}]}; "

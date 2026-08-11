@@ -173,8 +173,25 @@ class AcademyProfileTests(unittest.TestCase):
             self.assertIn(required, combined)
         self.assertIn("exact occurrence", combined)
         self.assertIn("before any counterparty notification", combined)
-        self.assertIn("cannot create", combined)
+        self.assertIn("class.one_off.create", combined)
         self.assertIn("notification", combined)
+
+    def test_profiles_use_the_server_authorized_autonomous_capability_loop(self):
+        default_agents = (PROFILE_DIR.parent / "default-insight" / "AGENTS.md").read_text().lower()
+        academy_agents = (PROFILE_DIR / "AGENTS.md").read_text().lower()
+        skill = (PROFILE_DIR.parents[1] / "hermes-skills" / "kitty-classes" / "SKILL.md").read_text().lower()
+        for document in (default_agents, academy_agents, skill):
+            for required in (
+                "understand the outcome", "list_capabilities", "evaluate_action", "execute_action",
+                "needs_clarification", "needs_approval", "denied", "authoritative result",
+                "separate evaluation", "never infer authority",
+            ):
+                self.assertIn(required, document)
+        for forbidden in (
+            "source-code edits", "deployments", "new integrations", "permission expansion",
+            "arbitrary sql", "policy weakening",
+        ):
+            self.assertIn(forbidden, academy_agents)
 
     def test_group_class_policy_is_scope_explicit_and_enrollment_private(self):
         agents = (PROFILE_DIR / "AGENTS.md").read_text().lower()
