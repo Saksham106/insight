@@ -16,6 +16,7 @@ create table public.academy_agent_action_requests (
   missing_fields jsonb check (missing_fields is null or jsonb_typeof(missing_fields) = 'array'),
   approval_id uuid references public.hermes_approvals(id) on delete restrict,
   evaluation_token_hash text check (evaluation_token_hash is null or evaluation_token_hash ~ '^[a-f0-9]{64}$'),
+  evaluation_issued_at timestamptz,
   evaluation_expires_at timestamptz,
   execution_status text not null default 'not_executable' check (execution_status in ('not_executable', 'pending', 'executing', 'completed', 'failed')),
   result jsonb,

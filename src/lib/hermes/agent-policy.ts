@@ -26,8 +26,9 @@ function listValue(record: Record<string, unknown>, ...keys: string[]) {
 }
 
 function versionValue(record: Record<string, unknown> | null) {
-  const version = Number(record?.version ?? 0);
-  return Number.isFinite(version) ? String(version) : "0";
+  const material = record?.version ?? record?.updatedAt ?? record?.updated_at ?? record?.id ?? 0;
+  const version = Number(material);
+  return Number.isFinite(version) && String(material).trim() !== "" ? String(version) : String(material);
 }
 
 function activeRelationship(record: Record<string, unknown>) {
