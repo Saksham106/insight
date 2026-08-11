@@ -40,14 +40,7 @@ export function compareMetaTemplateContract(live: LiveTemplate, expected: MetaTe
   return { ok: true as const };
 }
 
-type TemplateEnvironment = Partial<Record<
-  | "WHATSAPP_BUSINESS_ACCOUNT_ID"
-  | "WHATSAPP_CLOUD_ACCESS_TOKEN"
-  | "WHATSAPP_TEMPLATE_CLASS_REMINDER"
-  | "WHATSAPP_TEMPLATE_LOCALE"
-  | "WHATSAPP_CLOUD_API_VERSION",
-  string
->>;
+type TemplateEnvironment = Record<string, string | undefined>;
 
 type HealthFetch = (url: string, init: { headers: { Authorization: string } }) => Promise<{
   ok: boolean;
