@@ -97,6 +97,7 @@ test("builds exact semantic parameters for approved scheduling templates", () =>
 
 test("semantic scheduling builders reject missing, blank, and unknown fields", () => {
   assert.throws(() => buildSchedulingMessageContent({ intent: "class_reminder", recipientName: "Little", templateData: { classDescription: "Math" } }), /invalid_scheduledDateTime/);
+  assert.throws(() => buildSchedulingMessageContent({ intent: "class_reminder", recipientName: "Devon", templateData: { classDescription: "IB Chemistry with Anjali. If anything changes, please tell me", scheduledDateTime: "tomorrow at 7:30 PM Vietnam time" } }), /invalid_class_description/);
   assert.throws(() => buildSchedulingMessageContent({ intent: "admin_reschedule_alert", recipientName: "Swati", templateData: { requesterName: "Little", caseSummary: "" } }), /invalid_caseSummary/);
   assert.throws(() => buildSchedulingMessageContent({ intent: "family_invoice", recipientName: "Parent", templateData: {} }), /unsupported_scheduling_intent/);
 });

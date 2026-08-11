@@ -1,4 +1,5 @@
 import type { CommunicationPolicy } from "./types";
+import { validateClassDescription } from "./class-reminders";
 
 export type WhatsAppIntent =
   | "permission_request"
@@ -118,7 +119,7 @@ export function buildSchedulingMessageContent(input: {
       return { body: `Hi ${recipientName}, we need to reschedule your ${classDescription}. What times work?`, bodyParameters: [recipientName, classDescription] };
     }
     case "class_reminder": {
-      const classDescription = requiredTemplateField(data, "classDescription");
+      const classDescription = validateClassDescription(requiredTemplateField(data, "classDescription"));
       const scheduledDateTime = requiredTemplateField(data, "scheduledDateTime");
       return { body: `Hi ${recipientName}! Just a reminder that your ${classDescription} is ${scheduledDateTime}.`, bodyParameters: [recipientName, classDescription, scheduledDateTime] };
     }

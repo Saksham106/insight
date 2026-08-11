@@ -128,6 +128,45 @@ async function loadOccurrenceRoster(client: Client, occurrence: Record<string, u
   return { teacher: teacherResult.data?.[0] ?? null, enrollments };
 }
 
+export async function getKittyReminderFacts(client: Client, occurrenceId: string) {
+  const occurrenceRow = await fetchOccurrence(client, occurrenceId);
+  const roster = await loadOccurrenceRoster(client, occurrenceRow);
+  const teacherId = String(roster.teacher?.contact_id ?? "");
+  if (!teacherId) throw new Error("class_teacher_required");
+  const studentIds = [...new Set(roster.enrollments.map((enrollment) => enrollment.studentContactId))];
+  const participantIds = [teacherId, ...studentIds];
+  const { data, error } = await client
+    .from("hermes_contacts")
+    .select("id, display_name, preferred_name")
+    .in("id", participantIds);
+  dbError(error);
+  const contacts = new Map((data ?? [])
+    .filter((contact) => participantIds.includes(String(contact.id)))
+    .map((contact) => [String(contact.id), contact]));
+  if (participantIds.some((contactId) => !contacts.has(contactId))) throw new Error("kitty_class_operation_failed");
+
+  const teacher = { id: teacherId, name: messagingName(contacts.get(teacherId)!) };
+  const students = studentIds.map((studentId) => ({
+    id: studentId,
+    name: messagingName(contacts.get(studentId)!),
+  }));
+  const notifiedStudentIds = new Set(roster.enrollments
+    .filter((enrollment) => enrollment.contacts.some((contact) =>
+      contact.role === "student" && contact.contactId === enrollment.studentContactId && contact.receivesNotifications,
+    ))
+    .map((enrollment) => enrollment.studentContactId));
+
+  return {
+    occurrence: projectOccurrence(occurrenceRow),
+    teacher,
+    students,
+    recipients: [
+      ...(roster.teacher?.receives_notifications === false ? [] : [{ ...teacher, role: "teacher" as const }]),
+      ...students.filter((student) => notifiedStudentIds.has(student.id)).map((student) => ({ ...student, role: "student" as const })),
+    ],
+  };
+}
+
 function contactMembership(
   roster: Awaited<ReturnType<typeof loadOccurrenceRoster>>,
   contactId: string,
