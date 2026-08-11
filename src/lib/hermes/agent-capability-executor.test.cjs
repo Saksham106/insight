@@ -51,3 +51,19 @@ test("rejects unregistered capability execution", async () => {
     capabilityName: "payment.record", capabilityVersion: 1, normalizedInput: {}, clientRequestId: "message-3",
   }), /capability_not_executable/);
 });
+
+test("an admin can create a disabled structured routine through the capability executor", async () => {
+  const inserts = [];
+  const client = { from(table) {
+    assert.equal(table, "academy_agent_routines");
+    return { insert(value) { inserts.push(value); return { select() { return { single: async () => ({ data: { id: "routine-1", status: "disabled" }, error: null }) }; } }; } };
+  } };
+  const result = await executeAgentCapability(client, { kind: "admin", profileId: null, channel: "imessage" }, {
+    capabilityName: "routine.manage", capabilityVersion: 1, clientRequestId: "routine-create-1",
+    normalizedInput: { operation: "create", routine: { routineKey: "chemistry-24h", capabilityName: "class.reminder.send", capabilityVersion: 1, seriesId: "series-1", offsetMinutes: -1440, timezone: "Asia/Ho_Chi_Minh" } },
+  });
+  assert.deepEqual(result, { routineId: "routine-1", status: "disabled" });
+  assert.equal(inserts[0].status, "disabled");
+  assert.deepEqual(inserts[0].entity_references, { seriesId: "series-1" });
+  assert.doesNotMatch(JSON.stringify(inserts), /Anjali|Devon|messageBody|classDescription/);
+});

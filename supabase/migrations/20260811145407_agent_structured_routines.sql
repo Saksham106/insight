@@ -15,6 +15,8 @@ create table public.academy_agent_routines (
   last_run_at timestamptz,
   last_outcome jsonb check (last_outcome is null or jsonb_typeof(last_outcome) = 'object'),
   last_error_code text,
+  run_claim_token uuid,
+  run_claimed_until timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -27,3 +29,42 @@ alter table public.academy_agent_routines enable row level security;
 alter table public.academy_agent_routines force row level security;
 revoke all on table public.academy_agent_routines from public, anon, authenticated;
 grant all on table public.academy_agent_routines to service_role;
+
+create or replace function public.claim_due_academy_agent_routines(
+  p_claim_token uuid,
+  p_limit integer default 20,
+  p_now timestamptz default now(),
+  p_lease_seconds integer default 300
+)
+returns setof public.academy_agent_routines
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if p_claim_token is null or p_limit < 1 or p_limit > 100 or p_lease_seconds < 30 or p_lease_seconds > 1800 then
+    raise exception 'invalid_routine_claim';
+  end if;
+  return query
+  with due as (
+    select id
+    from public.academy_agent_routines
+    where status = 'active'
+      and next_run_at <= p_now
+      and (run_claimed_until is null or run_claimed_until < p_now)
+    order by next_run_at, id
+    for update skip locked
+    limit p_limit
+  )
+  update public.academy_agent_routines as routine
+  set run_claim_token = p_claim_token,
+      run_claimed_until = p_now + make_interval(secs => p_lease_seconds),
+      updated_at = p_now
+  from due
+  where routine.id = due.id
+  returning routine.*;
+end;
+$$;
+
+revoke all on function public.claim_due_academy_agent_routines(uuid, integer, timestamptz, integer) from public, anon, authenticated;
+grant execute on function public.claim_due_academy_agent_routines(uuid, integer, timestamptz, integer) to service_role;

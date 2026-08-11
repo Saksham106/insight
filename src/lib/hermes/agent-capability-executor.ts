@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { AgentActor } from "./agent-capability-types";
+import { manageAgentRoutine } from "./agent-routines";
 import { executeKittyClassTool } from "./kitty-class-tools";
 
 function dbError(error: { message?: string } | null) {
@@ -95,6 +96,8 @@ export async function executeAgentCapability(
         occurrenceVersion: Number(input.occurrenceVersion),
         clientRequestId: action.clientRequestId,
       });
+    case "routine.manage":
+      return manageAgentRoutine(client, actor, input);
     default:
       throw new Error("capability_not_executable");
   }
