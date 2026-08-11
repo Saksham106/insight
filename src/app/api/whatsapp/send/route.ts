@@ -43,6 +43,7 @@ export async function POST(request: Request) {
 
   const financialIntents: WhatsAppIntent[] = ["tutor_report_request", "family_invoice", "payment_reminder", "payment_received"];
   const classNotificationIntents: WhatsAppIntent[] = [
+    "class_reminder",
     "class_change_request", "class_change_proposal", "class_cancelled", "class_rescheduled", "class_change_rejected",
     "class_attendance_update", "class_teacher_delay", "class_operational_update",
   ];

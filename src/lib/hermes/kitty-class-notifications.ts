@@ -1,5 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildClassReminderDeliveries } from "./class-reminders";
+import { getKittyReminderFacts } from "./kitty-class-service";
 import type { WhatsAppIntent } from "./meta";
+
+export function buildKittyClassReminderTemplateData(
+  facts: Parameters<typeof buildClassReminderDeliveries>[0],
+  recipientId: string,
+) {
+  const delivery = buildClassReminderDeliveries(facts).find((item) => item.contactId === recipientId);
+  if (!delivery) throw new Error("reminder_recipient_unavailable");
+  return {
+    classDescription: delivery.classDescription,
+    scheduledDateTime: delivery.scheduledDateTime,
+  };
+}
 
 export type KittyNotificationSend = (input: {
   outboxId: string;
@@ -72,13 +86,23 @@ export async function drainKittyClassNotifications(client: SupabaseClient, sende
       blocked += 1;
       continue;
     }
-    const templateData = buildKittyClassNotificationTemplateData({
+    let templateData = buildKittyClassNotificationTemplateData({
       occurrence,
       outboxId: row.id,
       changeRequestId: row.change_request_id,
       payload,
       replacementOccurrence: replacementResult.data,
     });
+    if (row.intent === "class_reminder") {
+      try {
+        const facts = await getKittyReminderFacts(client, row.occurrence_id);
+        templateData = buildKittyClassReminderTemplateData(facts, row.contact_id);
+      } catch {
+        await client.from("kitty_class_notification_outbox").update({ status: "blocked", last_error_code: "reminder_facts_unavailable" }).eq("id", row.id);
+        blocked += 1;
+        continue;
+      }
+    }
     if (["class_attendance_update", "class_teacher_delay", "class_operational_update"].includes(row.intent) && !templateData.relaySummary) {
       await client.from("kitty_class_notification_outbox").update({ status: "blocked", last_error_code: "relay_payload_unavailable" }).eq("id", row.id);
       blocked += 1;

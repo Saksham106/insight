@@ -39,3 +39,14 @@ alter table public.academy_agent_action_requests enable row level security;
 alter table public.academy_agent_action_requests force row level security;
 revoke all on table public.academy_agent_action_requests from public, anon, authenticated;
 grant all on table public.academy_agent_action_requests to service_role;
+
+alter table public.kitty_class_notification_outbox
+  drop constraint if exists kitty_class_notification_outbox_intent_check;
+alter table public.kitty_class_notification_outbox
+  add constraint kitty_class_notification_outbox_intent_check check (
+    intent in (
+      'class_change_request', 'class_change_proposal', 'class_cancelled',
+      'class_rescheduled', 'class_change_rejected', 'class_attendance_update',
+      'class_teacher_delay', 'class_operational_update', 'class_reminder'
+    )
+  );

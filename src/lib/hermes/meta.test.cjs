@@ -228,4 +228,6 @@ test("sender route is internal-authenticated and idempotent", () => {
   assert.match(source, /lesson_cycle_id/);
   assert.match(source, /getClassReminderTemplateHealth/);
   assert.match(source, /template_contract_unavailable/);
+  const classNotificationBlock = source.match(/const classNotificationIntents:[^=]+= \[([\s\S]*?)\];/)?.[1] ?? "";
+  assert.match(classNotificationBlock, /"class_reminder"/);
 });

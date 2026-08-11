@@ -130,6 +130,32 @@ test("notification template projection ignores raw and attendance note fields", 
   assert.doesNotMatch(JSON.stringify(data), /medical|verbatim|Student A/);
 });
 
+test("class reminder template data names the counterpart for each recipient", () => {
+  const { buildKittyClassReminderTemplateData } = require(notificationPath);
+  const facts = {
+    occurrence: { id: "occ-1", subject: "IB Chemistry", title: "Chemistry", startsAt: "2026-08-12T12:30:00.000Z", timezone: "Asia/Ho_Chi_Minh" },
+    teacher: { id: "teacher-1", name: "Anjali" },
+    students: [{ id: "student-1", name: "Devon" }],
+    recipients: [
+      { id: "teacher-1", role: "teacher", name: "Anjali" },
+      { id: "student-1", role: "student", name: "Devon" },
+    ],
+  };
+  assert.deepEqual(buildKittyClassReminderTemplateData(facts, "teacher-1"), {
+    classDescription: "IB Chemistry with Devon",
+    scheduledDateTime: "Wednesday, August 12 at 7:30 PM GMT+7",
+  });
+  assert.equal(buildKittyClassReminderTemplateData(facts, "student-1").classDescription, "IB Chemistry with Anjali");
+  assert.throws(() => buildKittyClassReminderTemplateData(facts, "unrelated"), /reminder_recipient_unavailable/);
+});
+
+test("the outbox drain resolves reminder names at send time", () => {
+  const source = fs.readFileSync(notificationPath, "utf8");
+  assert.match(source, /row\.intent === "class_reminder"/);
+  assert.match(source, /getKittyReminderFacts/);
+  assert.match(source, /buildKittyClassReminderTemplateData\(facts, row\.contact_id\)/);
+});
+
 test("attendance, correction, and relay services mutate before resolving bounded scope ambiguity", async () => {
   const { recordKittyAttendance, correctKittyAttendance, createKittyOperationalRelay } = require(servicePath);
   const calls = [];

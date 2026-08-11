@@ -496,6 +496,7 @@ test("Academy agent actions and routines are service-only, RLS-forced, and const
   assert.match(actionSql, /decision in \('allowed', 'needs_clarification', 'needs_approval', 'denied'\)/);
   assert.match(actionSql, /execution_status in \('not_executable', 'pending', 'executing', 'completed', 'failed'\)/);
   assert.match(actionSql, /unique \(actor_key, client_request_id\)/);
+  assert.match(actionSql, /kitty_class_notification_outbox_intent_check[\s\S]*'class_reminder'/);
   assert.match(routineSql, /status in \('disabled', 'active', 'paused'\)/);
   assert.match(routineSql, /routine_key text not null unique/);
   assert.doesNotMatch(`${actionSql}\n${routineSql}`, /prompt|chain_of_thought|service_role_key|access_token/);
