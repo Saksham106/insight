@@ -1,0 +1,197 @@
+import { createHash, randomUUID } from "node:crypto";
+
+import { listCapabilityManifests } from "./agent-capabilities";
+import {
+  hashEvaluationToken,
+  issueEvaluationToken,
+  verifyEvaluationToken,
+  type AgentEvaluationClaims,
+} from "./agent-evaluation-token";
+import { evaluateAgentAction } from "./agent-policy";
+import type {
+  AgentActionDecision,
+  AgentActor,
+  AgentPolicyRepository,
+} from "./agent-capability-types";
+
+export type AgentActionRow = {
+  id: string;
+  actorKey: string;
+  clientRequestId: string;
+  capabilityName: string;
+  capabilityVersion: number;
+  inputDigest: string;
+  normalizedInput: Record<string, unknown> | null;
+  relevantVersions: Record<string, string>;
+  policyVersion: string;
+  decision: AgentActionDecision;
+  tokenHash: string | null;
+  issuedAt: number | null;
+  expiresAt: number | null;
+  executionStatus: "not_executable" | "pending" | "executing" | "completed" | "failed";
+  result?: Record<string, unknown> | null;
+  errorCode?: string | null;
+};
+
+export type AgentActionStore = {
+  findByActorRequest(actorKey: string, clientRequestId: string): Promise<AgentActionRow | null>;
+  findById(id: string): Promise<AgentActionRow | null>;
+  insert(row: AgentActionRow): Promise<AgentActionRow>;
+  claim(id: string): Promise<AgentActionRow | null>;
+  complete(id: string, result: Record<string, unknown>): Promise<AgentActionRow>;
+  fail(id: string, errorCode: string): Promise<AgentActionRow>;
+};
+
+export type AgentActionProposal = {
+  capabilityName: string;
+  capabilityVersion: number;
+  proposedInput: unknown;
+  clientRequestId: string;
+};
+
+export type AgentCapabilityExecutor = (input: {
+  actor: AgentActor;
+  capabilityName: string;
+  capabilityVersion: number;
+  normalizedInput: Record<string, unknown>;
+  clientRequestId: string;
+}) => Promise<Record<string, unknown>>;
+
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  return `{${Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
+    .join(",")}}`;
+}
+
+function digest(value: unknown) {
+  return createHash("sha256").update(canonical(value)).digest("hex");
+}
+
+export function agentActorKey(actor: AgentActor) {
+  return actor.kind === "contact" ? `contact:${actor.contactId}` : `admin:${actor.profileId ?? "primary"}`;
+}
+
+function validRequestId(value: unknown) {
+  if (typeof value !== "string" || !value.trim() || value.length > 200 || /[\r\n]/.test(value)) throw new Error("invalid_client_request_id");
+  return value.trim();
+}
+
+function claimsForRow(row: AgentActionRow): AgentEvaluationClaims {
+  if (row.issuedAt === null || row.expiresAt === null) throw new Error("action_not_executable");
+  return {
+    requestId: row.id,
+    actorKey: row.actorKey,
+    capabilityName: row.capabilityName,
+    capabilityVersion: row.capabilityVersion,
+    inputDigest: row.inputDigest,
+    relevantVersions: row.relevantVersions,
+    policyVersion: row.policyVersion,
+    issuedAt: row.issuedAt,
+    expiresAt: row.expiresAt,
+  };
+}
+
+export function listAgentCapabilities(actor: AgentActor) {
+  return listCapabilityManifests(actor.kind);
+}
+
+export async function evaluateAction(
+  store: AgentActionStore,
+  repository: AgentPolicyRepository,
+  actor: AgentActor,
+  proposal: AgentActionProposal,
+  options: { secret: string; now?: number },
+) {
+  const clientRequestId = validRequestId(proposal.clientRequestId);
+  const actorKey = agentActorKey(actor);
+  const inputDigest = digest({
+    capabilityName: proposal.capabilityName,
+    capabilityVersion: proposal.capabilityVersion,
+    proposedInput: proposal.proposedInput,
+  });
+  const existing = await store.findByActorRequest(actorKey, clientRequestId);
+  if (existing) {
+    if (existing.inputDigest !== inputDigest) throw new Error("client_request_payload_mismatch");
+    const evaluationToken = existing.decision.kind === "allowed"
+      ? issueEvaluationToken(claimsForRow(existing), options.secret)
+      : undefined;
+    return { decision: existing.decision, evaluationToken, duplicate: true };
+  }
+
+  const decision = await evaluateAgentAction({
+    actor,
+    capabilityName: proposal.capabilityName,
+    capabilityVersion: proposal.capabilityVersion,
+    proposedInput: proposal.proposedInput,
+    repository,
+  });
+  const now = options.now ?? Date.now();
+  const row: AgentActionRow = {
+    id: randomUUID(), actorKey, clientRequestId,
+    capabilityName: proposal.capabilityName,
+    capabilityVersion: proposal.capabilityVersion,
+    inputDigest,
+    normalizedInput: "normalizedInput" in decision ? decision.normalizedInput : null,
+    relevantVersions: "relevantVersions" in decision ? decision.relevantVersions : {},
+    policyVersion: "1",
+    decision,
+    tokenHash: null,
+    issuedAt: decision.kind === "allowed" ? now : null,
+    expiresAt: decision.kind === "allowed" ? now + 5 * 60_000 : null,
+    executionStatus: decision.kind === "allowed" ? "pending" : "not_executable",
+  };
+  let evaluationToken: string | undefined;
+  if (decision.kind === "allowed") {
+    evaluationToken = issueEvaluationToken(claimsForRow(row), options.secret);
+    row.tokenHash = hashEvaluationToken(evaluationToken);
+  }
+  await store.insert(row);
+  return { decision, evaluationToken, duplicate: false };
+}
+
+function boundedResult(value: Record<string, unknown>) {
+  const serialized = JSON.stringify(value);
+  if (serialized.length > 20_000) throw new Error("action_result_too_large");
+  return JSON.parse(serialized) as Record<string, unknown>;
+}
+
+export async function executeEvaluatedAction(
+  store: AgentActionStore,
+  actor: AgentActor,
+  request: { evaluationToken: string; clientRequestId: string },
+  options: { secret: string; execute: AgentCapabilityExecutor; now?: number },
+) {
+  const claims = verifyEvaluationToken(request.evaluationToken, options.secret, options.now ?? Date.now());
+  if (claims.actorKey !== agentActorKey(actor)) throw new Error("evaluation_actor_mismatch");
+  const row = await store.findById(claims.requestId);
+  if (!row || row.clientRequestId !== validRequestId(request.clientRequestId)) throw new Error("evaluation_not_found");
+  if (row.actorKey !== claims.actorKey || row.inputDigest !== claims.inputDigest
+    || row.capabilityName !== claims.capabilityName || row.capabilityVersion !== claims.capabilityVersion
+    || row.policyVersion !== claims.policyVersion || canonical(row.relevantVersions) !== canonical(claims.relevantVersions)
+    || row.tokenHash !== hashEvaluationToken(request.evaluationToken)) throw new Error("invalid_evaluation_token");
+  if (row.executionStatus === "completed" && row.result) return { result: row.result, duplicate: true };
+  if (row.executionStatus === "failed") throw new Error(row.errorCode ?? "action_execution_failed");
+  const claimed = await store.claim(row.id);
+  if (!claimed) {
+    const current = await store.findById(row.id);
+    if (current?.executionStatus === "completed" && current.result) return { result: current.result, duplicate: true };
+    throw new Error("action_execution_in_progress");
+  }
+  try {
+    const result = boundedResult(await options.execute({
+      actor,
+      capabilityName: row.capabilityName,
+      capabilityVersion: row.capabilityVersion,
+      normalizedInput: row.normalizedInput ?? {},
+      clientRequestId: row.clientRequestId,
+    }));
+    await store.complete(row.id, result);
+    return { result, duplicate: false };
+  } catch {
+    await store.fail(row.id, "action_execution_failed");
+    throw new Error("action_execution_failed");
+  }
+}
