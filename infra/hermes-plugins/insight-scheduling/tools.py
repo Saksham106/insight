@@ -11,6 +11,9 @@ import uuid
 
 
 ACTIONS = (
+    "list_capabilities",
+    "evaluate_action",
+    "execute_action",
     "get_academy_info",
     "get_my_open_objectives",
     "search_contacts",
@@ -52,6 +55,8 @@ ACTIONS = (
     "propose_replacement_time",
 )
 
+CAPABILITY_ACTIONS = frozenset(("list_capabilities", "evaluate_action", "execute_action"))
+
 CLASS_ACTIONS = frozenset((
     "find_my_classes", "find_my_pending_changes", "confirm_class_selection", "report_class_ambiguity", "request_class_change",
     "record_class_attendance", "correct_class_attendance", "relay_class_update", "decide_class_change",
@@ -79,9 +84,10 @@ def call_insight(action, payload):
     if action not in ACTIONS:
         return json.dumps({"error": "Unsupported scheduling action"})
     url = (
-        os.environ.get("INSIGHT_KITTY_CLASS_TOOL_URL", "")
-        if action in CLASS_ACTIONS
-        else os.environ.get("INSIGHT_HERMES_TOOL_URL", "")
+        os.environ.get("INSIGHT_AGENT_CAPABILITY_URL", "")
+        if action in CAPABILITY_ACTIONS
+        else os.environ.get("INSIGHT_KITTY_CLASS_TOOL_URL", "")
+        if action in CLASS_ACTIONS else os.environ.get("INSIGHT_HERMES_TOOL_URL", "")
     )
     secret = os.environ.get("HERMES_TOOL_SHARED_SECRET", "")
     actor = _session_actor()
@@ -92,8 +98,10 @@ def call_insight(action, payload):
     if action in IDEMPOTENT_CLASS_MUTATIONS and not str((payload or {}).get("clientRequestId", "")).strip():
         return json.dumps({"error": "clientRequestId is required for this class mutation"})
 
-    body = json.dumps({"actor": actor, "action": action, "payload": payload or {}}, separators=(",", ":"))
-    attempts = 2 if action in IDEMPOTENT_CLASS_MUTATIONS else 1
+    envelope = {"actor": actor, "payload": payload or {}}
+    envelope["operation" if action in CAPABILITY_ACTIONS else "action"] = action
+    body = json.dumps(envelope, separators=(",", ":"))
+    attempts = 2 if action in IDEMPOTENT_CLASS_MUTATIONS or action in ("evaluate_action", "execute_action") else 1
     for attempt in range(attempts):
         timestamp = str(int(time.time() * 1000))
         request_id = uuid.uuid4().hex

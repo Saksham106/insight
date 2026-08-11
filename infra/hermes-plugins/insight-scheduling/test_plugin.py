@@ -61,6 +61,24 @@ class PluginTests(unittest.TestCase):
         self.assertIn("request_swati_freebusy", self.tools.ACTIONS)
         self.assertIn("get_workspace_job", self.tools.ACTIONS)
 
+    def test_exposes_generic_capability_loop_with_session_bound_actor(self):
+        for action in ("list_capabilities", "evaluate_action", "execute_action"):
+            self.assertIn(action, self.tools.ACTIONS)
+        with patch.dict(os.environ, {
+            "INSIGHT_AGENT_CAPABILITY_URL": "https://myinsightacademy.com/api/hermes/capabilities",
+            "HERMES_TOOL_SHARED_SECRET": "secret",
+        }), patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            result = self.tools.call_insight("evaluate_action", {
+                "capabilityName": "class.reminder.send", "capabilityVersion": 1,
+                "proposedInput": {"occurrenceId": "occ-1", "recipientId": "student-1"},
+                "clientRequestId": "message-1",
+            })
+        self.assertEqual(json.loads(result), {"ok": True})
+        decoded = json.loads(urlopen.call_args.args[0].data)
+        self.assertEqual(decoded["operation"], "evaluate_action")
+        self.assertEqual(decoded["actor"]["platform"], "whatsapp_cloud")
+        self.assertNotIn("actor", decoded["payload"])
+
     def test_exposes_self_scoped_open_objective_lookup(self):
         self.assertIn("get_my_open_objectives", self.tools.ACTIONS)
         source = (PLUGIN_DIR / "__init__.py").read_text()

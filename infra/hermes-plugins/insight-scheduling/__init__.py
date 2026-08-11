@@ -13,7 +13,9 @@ def register(ctx):
             "description": (
                 "Use the MyInsightAcademy scheduling service. The service automatically identifies the current "
                 "WhatsApp sender and rejects actions or records they are not allowed to access. Use canonical "
-                "camelCase fields. request_reschedule={caseId,reason} and escalate_to_swati={caseId,reason}. "
+                "camelCase fields. For new outcomes, use list_capabilities, evaluate_action, then execute_action; "
+                "the server derives identity and authority. "
+                "request_reschedule={caseId,reason} and escalate_to_swati={caseId,reason}. "
                 "For a tutor's requested lesson ledger, first call get_my_open_objectives={} and use the "
                 "returned cycleId. Lesson reports use submit_lesson_report={cycleId,lessons:[{reportedStudentName,"
                 "studentContactId?,lessonDate,durationMinutes,subject?,note?}]} and "
