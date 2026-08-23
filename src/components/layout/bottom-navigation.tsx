@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { useUnread } from "@/lib/unread-context";
 
@@ -175,10 +175,16 @@ function itemIcon(item: NavItem): string {
  */
 export function BottomNavigation({ role }: { role: Role }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const isMobile = useIsPhoneViewport();
   const { total: unreadCount } = useUnread();
+  const threadOpen = pathname.endsWith("/chats") && Boolean(
+    searchParams.get("conversation") || searchParams.get("c"),
+  );
 
-  if (!isMobile) return null;
+  // iOS promotes fixed bottom bars above the software keyboard. A messenger
+  // thread must remove the global tab bar from layout entirely, not cover it.
+  if (!isMobile || threadOpen) return null;
 
   return (
     <nav

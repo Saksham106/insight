@@ -17,7 +17,7 @@ interface AppShellProps {
 
 export function AppShell({ userName, role, userId, avatarUrl, children }: AppShellProps) {
   return (
-    <div className="bg-background" style={{ minHeight: "100vh" }}>
+    <div className="bg-background" style={{ minHeight: "100dvh" }}>
       <OfflineIndicator />
       <NavigationProgress />
       <TimezoneSync />
