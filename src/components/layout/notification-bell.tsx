@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Bell } from "lucide-react";
-
 import type { Notification } from "@/lib/use-notifications";
+import { NotificationList } from "@/components/layout/notification-list";
 
 interface NotificationBellProps {
   notifications: Notification[];
@@ -27,7 +27,7 @@ export function NotificationBell({ notifications, unreadCount, onOpen }: Notific
   };
 
   return (
-    <div>
+    <div className="relative">
       <button
         onClick={handleClick}
         style={{
@@ -37,34 +37,52 @@ export function NotificationBell({ notifications, unreadCount, onOpen }: Notific
           justifyContent: "center",
           height: "36px",
           width: "36px",
+          borderRadius: "999px",
+          backgroundColor: unreadCount > 0 ? "var(--color-accent-soft)" : "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          cursor: "pointer",
+          transition: "all 0.15s ease",
         }}
-        className="rounded-md border border-border bg-background text-muted transition-colors hover:bg-soft"
-        aria-label="Notifications"
+        aria-label={`${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}`}
       >
-        <Bell className="h-4 w-4" />
+        <Bell
+          size={18}
+          style={{
+            color: unreadCount > 0 ? "var(--color-navy)" : "var(--color-ink-2)",
+          }}
+        />
         {unreadCount > 0 && (
           <span
             style={{
               position: "absolute",
-              top: "-8px",
-              right: "-8px",
+              top: "-4px",
+              right: "-4px",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              height: "20px",
-              width: "20px",
+              height: "16px",
+              width: "16px",
+              borderRadius: "50%",
+              backgroundColor: "var(--color-error)",
+              color: "white",
+              fontSize: "9px",
+              fontWeight: 700,
+              border: "2px solid var(--color-surface)",
             }}
-            className="rounded-full bg-navy text-[11px] font-bold text-white ring-2 ring-surface"
           >
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </button>
 
-      {open && pos.top > 0 && (
+      {open && (
         <>
           <div
-            style={{ position: "fixed", inset: 0, zIndex: 40 }}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 40,
+            }}
             onClick={() => setOpen(false)}
           />
           <div
@@ -74,41 +92,60 @@ export function NotificationBell({ notifications, unreadCount, onOpen }: Notific
               right: pos.right,
               zIndex: 50,
               width: "320px",
+              maxHeight: "400px",
+              backgroundColor: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "12px",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
             }}
-            className="rounded-lg border border-border bg-surface shadow-xl"
           >
-            <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--color-border)" }}>
-              <p className="text-sm font-semibold text-navy">Notifications</p>
+            <div
+              style={{
+                padding: "12px 16px",
+                borderBottom: "1px solid var(--color-border)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "var(--color-navy)",
+                }}
+              >
+                Notifications
+              </h3>
+              {unreadCount > 0 && (
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    onOpen?.();
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                    color: "var(--color-accent)",
+                    fontWeight: 500,
+                    padding: "4px",
+                  }}
+                >
+                  Mark all read
+                </button>
+              )}
             </div>
-            <NotificationList notifications={notifications} />
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <NotificationList notifications={notifications} />
+            </div>
           </div>
         </>
-      )}
-    </div>
-  );
-}
-
-export function NotificationList({ notifications }: { notifications: Notification[] }) {
-  return (
-    <div style={{ maxHeight: "320px", overflowY: "auto" }}>
-      {notifications.length === 0 ? (
-        <p className="px-4 py-8 text-center text-sm text-muted">No notifications yet</p>
-      ) : (
-        notifications.map((n, index) => (
-          <div
-            key={n.id}
-            className={`px-4 py-3 ${n.is_read ? "opacity-60" : ""}`}
-            style={{ borderBottom: index < notifications.length - 1 ? "1px solid var(--color-border)" : undefined }}
-          >
-            <p className="text-sm font-medium text-foreground">{n.title}</p>
-            <p className="text-xs text-muted">{n.body}</p>
-            <p className="text-[10px] text-muted" style={{ marginTop: "4px" }}>
-              {new Date(n.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-              {" · "}
-              {new Date(n.created_at).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false })}
-            </p>
-          </div>
-        ))
       )}
     </div>
   );

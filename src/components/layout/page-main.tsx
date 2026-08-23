@@ -23,7 +23,9 @@ export function PageMain({ children }: { children: React.ReactNode }) {
         paddingLeft: isMobile ? "16px" : "24px",
         paddingRight: isMobile ? "16px" : "24px",
         paddingTop: isMobile ? "20px" : "32px",
-        paddingBottom: isMobile ? "20px" : "32px",
+        paddingBottom: isMobile
+          ? "calc(84px + env(safe-area-inset-bottom, 0px))"
+          : "32px",
       }}
     >
       {children}

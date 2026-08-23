@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Menu, User, X as XIcon } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-
+import { usePathname } from "next/navigation";
 import { useMediaQuery } from "@/lib/use-media-query";
-
-import { NotificationBell, NotificationList } from "@/components/layout/notification-bell";
-import { Modal } from "@/components/ui/modal";
 import { useNotifications } from "@/lib/use-notifications";
-import { useChatUnreadTotal } from "@/lib/use-chat-unread-total";
+import { useUnread } from "@/lib/unread-context";
 import { createClient } from "@/lib/supabase/client";
+import { NotificationBell } from "@/components/layout/notification-bell";
+import { NotificationList } from "@/components/layout/notification-list";
+import { Modal } from "@/components/ui/modal";
+import { BottomNavigation } from "@/components/layout/bottom-navigation";
 
 interface DashboardHeaderProps {
   userName: string;
@@ -54,17 +54,18 @@ const roleNav: Record<DashboardHeaderProps["role"], { href: string; label: strin
 };
 
 export function DashboardHeader({ userName, role, userId, avatarUrl }: DashboardHeaderProps) {
-  const router = useRouter();
   const pathname = usePathname();
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { notifications, unreadCount, markAllRead } = useNotifications(userId);
-  const chatUnread = useChatUnreadTotal();
+  const [mounted, setMounted] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
-  // Close dropdown on outside click
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (!dropdownOpen) return;
     const handler = (e: MouseEvent) => {
@@ -79,25 +80,32 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.replace("/login");
+    window.location.href = "/login";
   };
 
   const openSettings = () => {
     setDropdownOpen(false);
-    router.push("/settings");
+    window.location.href = "/settings";
   };
 
   const openNotifications = () => {
     setDropdownOpen(false);
-    void markAllRead();
     setShowNotificationsModal(true);
   };
+
+  const showDesktopNav = mounted && !isMobile;
 
   return (
     <>
       <header
         className="bg-surface"
-        style={{ position: "sticky", top: 0, zIndex: 30, borderBottom: "1px solid var(--color-border)", overflow: "visible" }}
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 30,
+          borderBottom: "1px solid var(--color-border)",
+          overflow: "visible",
+        }}
       >
         <div style={{ marginLeft: "auto", marginRight: "auto", width: "100%", maxWidth: "72rem" }}>
           <div
@@ -108,7 +116,7 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
               gap: "16px",
             }}
           >
-            {/* Left: branding */}
+            {/* Logo */}
             <Link href={`/${role}`} style={{ textDecoration: "none", flexShrink: 0 }}>
               <p
                 style={{
@@ -122,15 +130,18 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
               >
                 Insight&nbsp;Academy
               </p>
-              <p className="text-xs" style={{ margin: 0, color: "var(--color-muted)" }}>Dashboard</p>
+              <p className="text-xs" style={{ margin: 0, color: "var(--color-muted)" }}>
+                Dashboard
+              </p>
             </Link>
 
-            {/* Center: nav tabs (desktop only) */}
-            {!isMobile && (
+            {/* Desktop nav */}
+            {showDesktopNav && (
               <nav style={{ display: "flex", gap: "0", flex: 1, justifyContent: "center" }}>
                 {roleNav[role].map((item) => {
                   const active = pathname === item.href;
                   const isChats = item.label === "Chats";
+                  const { total: chatBadge } = useUnread();
                   return (
                     <Link
                       key={item.href}
@@ -153,9 +164,23 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                       }}
                     >
                       {item.label}
-                      {isChats && chatUnread > 0 && (
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "18px", height: "18px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
-                          {chatUnread > 99 ? "99+" : chatUnread}
+                      {isChats && chatBadge > 0 && (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: "18px",
+                            height: "18px",
+                            borderRadius: "9999px",
+                            padding: "0 4px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            backgroundColor: "var(--color-error)",
+                            color: "white",
+                          }}
+                        >
+                          {chatBadge > 99 ? "99+" : chatBadge}
                         </span>
                       )}
                     </Link>
@@ -164,43 +189,30 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
               </nav>
             )}
 
-            {/* Spacer on mobile */}
+            {/* Mobile spacer */}
             {isMobile && <div style={{ flex: 1 }} />}
 
-            {/* Right: mobile menu + bell + name + profile */}
+            {/* Right side */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
-              {/* Mobile hamburger */}
-              {isMobile && (
-                <button
-                  onClick={() => setMenuOpen((v) => !v)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "4px",
-                    color: "var(--color-navy)",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                  aria-label="Toggle navigation menu"
-                >
-                  {menuOpen ? <XIcon size={20} /> : <Menu size={20} />}
-                </button>
-              )}
-
-              {!isMobile && (
+              {/* Desktop notifications */}
+              {showDesktopNav && (
                 <NotificationBell
                   notifications={notifications}
                   unreadCount={unreadCount}
-                  onOpen={markAllRead}
+                  onOpen={() => {
+                    setDropdownOpen(false);
+                    setShowNotificationsModal(true);
+                  }}
                 />
               )}
-              <div className="text-right">
+
+              {/* User name */}
+              <div className="text-right" style={{ lineHeight: 1.2 }}>
                 <p className="text-sm font-medium text-foreground">{userName}</p>
                 <p className="text-xs text-muted">{roleLabels[role]}</p>
               </div>
 
-              {/* Profile icon + dropdown */}
+              {/* Profile dropdown */}
               <div ref={dropdownRef} style={{ position: "relative" }}>
                 <button
                   onClick={() => setDropdownOpen((v) => !v)}
@@ -220,7 +232,6 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                   }}
                 >
                   {avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={avatarUrl}
                       alt=""
@@ -280,10 +291,10 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                           textAlign: "left",
                           background: "none",
                           border: "none",
+                          borderBottom: "1px solid var(--color-border)",
                           cursor: "pointer",
                           fontSize: "14px",
                           color: "var(--color-foreground)",
-                          borderBottom: "1px solid var(--color-border)",
                         }}
                       >
                         <span>Notifications</span>
@@ -317,10 +328,10 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                         textAlign: "left",
                         background: "none",
                         border: "none",
+                        borderBottom: "1px solid var(--color-border)",
                         cursor: "pointer",
                         fontSize: "14px",
                         color: "var(--color-foreground)",
-                        borderBottom: "1px solid var(--color-border)",
                       }}
                     >
                       Settings
@@ -347,13 +358,12 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
             </div>
           </div>
 
-          {/* Mobile dropdown menu — overlays page content, animated */}
-          {isMobile && (
+          {/* Mobile slide-down menu */}
+          {mounted && isMobile && (
             <>
-              {/* Backdrop — closes menu on tap outside */}
-              {menuOpen && (
+              {dropdownOpen && (
                 <div
-                  onClick={() => setMenuOpen(false)}
+                  onClick={() => setDropdownOpen(false)}
                   style={{
                     position: "fixed",
                     inset: 0,
@@ -368,19 +378,17 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                   left: 0,
                   right: 0,
                   backgroundColor: "var(--color-surface)",
-                  borderBottom: menuOpen ? "1px solid var(--color-border)" : "none",
-                  boxShadow: menuOpen ? "0 8px 24px rgba(0,0,0,0.08)" : "none",
+                  borderBottom: "1px solid var(--color-border)",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
                   zIndex: 29,
-                  opacity: menuOpen ? 1 : 0,
-                  transform: menuOpen ? "translateY(0)" : "translateY(-6px)",
-                  pointerEvents: menuOpen ? "auto" : "none",
-                  transition: "opacity 0.2s ease, transform 0.2s ease",
-                  padding: menuOpen ? "8px 0" : "0",
+                  padding: "8px 0",
+                  transition: "transform 0.2s ease, opacity 0.2s ease",
                 }}
               >
                 {roleNav[role].map((item) => {
                   const active = pathname === item.href;
                   const isChats = item.label === "Chats";
+                  const { total: chatBadge } = useUnread();
                   return (
                     <Link
                       key={item.href}
@@ -392,16 +400,30 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                         padding: "12px 24px",
                         fontSize: "14px",
                         fontWeight: active ? 600 : 500,
-                        color: active ? "var(--color-navy)" : "var(--color-slate)",
-                        backgroundColor: active ? "var(--color-accent-soft)" : "transparent",
+                        color: active ? "var(--color-navy)" : "var(--color-ink-2)",
                         textDecoration: "none",
+                        backgroundColor: active ? "var(--color-accent-soft)" : "transparent",
                         borderLeft: active ? "3px solid var(--color-accent)" : "3px solid transparent",
                       }}
                     >
                       {item.label}
-                      {isChats && chatUnread > 0 && (
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "20px", height: "20px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
-                          {chatUnread > 99 ? "99+" : chatUnread}
+                      {isChats && chatBadge > 0 && (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: "20px",
+                            height: "20px",
+                            borderRadius: "9999px",
+                            padding: "0 4px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            backgroundColor: "var(--color-error)",
+                            color: "white",
+                          }}
+                        >
+                          {chatBadge > 99 ? "99+" : chatBadge}
                         </span>
                       )}
                     </Link>
@@ -413,15 +435,15 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
         </div>
       </header>
 
-      {/* Notifications modal (mobile only) */}
-      {showNotificationsModal && (
-        <Modal
-          title="Notifications"
-          onClose={() => setShowNotificationsModal(false)}
-        >
+      {/* Mobile notifications modal */}
+      {mounted && isMobile && showNotificationsModal && (
+        <Modal title="Notifications" onClose={() => setShowNotificationsModal(false)}>
           <NotificationList notifications={notifications} />
         </Modal>
       )}
+
+      {/* Bottom navigation */}
+      <BottomNavigation role={role} unreadCount={unreadCount} />
     </>
   );
 }

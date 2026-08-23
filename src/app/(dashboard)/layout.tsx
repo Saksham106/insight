@@ -9,7 +9,15 @@ export default async function DashboardLayout({
   const profile = await requireUser();
 
   return (
-    <AppShell userName={profile.full_name} role={profile.role} userId={profile.id} avatarUrl={profile.avatar_url}>
+    <AppShell
+      userName={profile.full_name}
+      role={profile.role}
+      userId={profile.id}
+      avatarUrl={profile.avatar_url}
+      online={typeof navigator !== "undefined" ? navigator.onLine : true}
+      // Ideally this would come from a server-side signal in production, but
+      // for the app-shell polish we wire it from the client through the shell.
+    >
       {children}
     </AppShell>
   );
