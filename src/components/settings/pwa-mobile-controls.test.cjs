@@ -28,6 +28,27 @@ test("mobile threads lock both document roots and own the visual viewport", () =
   }
 });
 
+test("closing a mobile thread restores the query-free inbox through real history", () => {
+  for (const file of [
+    "src/components/chat/chats-panel.tsx",
+    "src/components/admin/admin-chats-viewer.tsx",
+  ]) {
+    const source = read(file);
+    assert.match(source, /window\.history\.state\?\.insightThread/);
+    assert.match(source, /window\.history\.back\(\)/);
+    assert.match(source, /router\.replace\(pathname/);
+  }
+});
+
+test("help lives in the profile menu instead of floating over the app", () => {
+  const modal = read("src/components/layout/contact-modal.tsx");
+  const header = read("src/components/layout/dashboard-header.tsx");
+  assert.doesNotMatch(modal, /position: "fixed",\s*bottom: "24px"/s);
+  assert.match(modal, /insight:open-help/);
+  assert.match(header, /dispatchEvent\(new Event\("insight:open-help"\)\)/);
+  assert.match(header, />\s*Help\s*</);
+});
+
 test("notification test sends only to the authenticated user", () => {
   const route = read("src/app/api/push/test/route.ts");
   const control = read("src/components/layout/push-notification-control.tsx");
