@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { HelpCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -17,6 +16,12 @@ export function ContactModal() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const openHelp = () => setOpen(true);
+    window.addEventListener("insight:open-help", openHelp);
+    return () => window.removeEventListener("insight:open-help", openHelp);
+  }, []);
 
   const reset = () => {
     setCategory(CATEGORIES[0]);
@@ -54,32 +59,6 @@ export function ContactModal() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          position: "fixed",
-          bottom: "24px",
-          right: "24px",
-          zIndex: 40,
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          padding: "10px 16px",
-          borderRadius: "9999px",
-          border: "1px solid var(--color-border)",
-          backgroundColor: "var(--color-surface)",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
-          cursor: "pointer",
-          color: "var(--color-navy)",
-          fontSize: "13px",
-          fontWeight: 600,
-        }}
-        aria-label="Help and feedback"
-      >
-        <HelpCircle size={15} />
-        Help
-      </button>
-
       {open && (
         <Modal
           title="Contact us"

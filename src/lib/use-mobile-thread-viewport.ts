@@ -50,8 +50,15 @@ export function useMobileThreadViewport(
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         const viewport = window.visualViewport;
-        overlay.style.top = `${viewport?.offsetTop ?? 0}px`;
-        overlay.style.height = `${viewport?.height ?? window.innerHeight}px`;
+        const viewportTop = viewport?.offsetTop ?? 0;
+        const viewportHeight = viewport?.height ?? window.innerHeight;
+        // A closed iPhone PWA can report a visual viewport shortened by the
+        // home-indicator safe area. Filling only that value leaves a strip of
+        // page background below the composer. Use the full layout viewport
+        // until a real keyboard-sized reduction appears.
+        const keyboardOpen = window.innerHeight - viewportHeight - viewportTop > 120;
+        overlay.style.top = `${keyboardOpen ? viewportTop : 0}px`;
+        overlay.style.height = `${keyboardOpen ? viewportHeight : window.innerHeight}px`;
       });
     };
 

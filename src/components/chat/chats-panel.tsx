@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageSquarePlus, Search, Users, ChevronLeft } from "lucide-react";
 
 import { ChatWindow, type ChatMessage } from "@/components/chat/chat-window";
@@ -46,6 +46,7 @@ function conversationTime(c: ConversationSummary): string {
 
 export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const requestedConversationId = searchParams.get("conversation");
@@ -119,8 +120,12 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
   };
 
   const closeConversation = () => {
+    if (window.history.state?.insightThread) {
+      window.history.back();
+      return;
+    }
     setActiveId(null);
-    window.history.replaceState({ ...window.history.state, insightThread: false }, "", pathname);
+    router.replace(pathname, { scroll: false });
   };
 
   const handleCreated = async (conversationId: string) => {

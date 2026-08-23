@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { User } from "lucide-react";
+import { HelpCircle, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -82,6 +82,11 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
   const openSettings = () => {
     setDropdownOpen(false);
     router.push("/settings");
+  };
+
+  const openHelp = () => {
+    setDropdownOpen(false);
+    window.dispatchEvent(new Event("insight:open-help"));
   };
 
   return (
@@ -249,6 +254,26 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                       }}
                     >
                       Settings
+                    </button>
+                    <button
+                      onClick={openHelp}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        width: "100%",
+                        padding: "11px 16px",
+                        textAlign: "left",
+                        background: "none",
+                        border: "none",
+                        borderBottom: "1px solid var(--color-border)",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        color: "var(--color-foreground)",
+                      }}
+                    >
+                      <HelpCircle size={15} />
+                      Help
                     </button>
                     <button
                       onClick={handleLogout}
