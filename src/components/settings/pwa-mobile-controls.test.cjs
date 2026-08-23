@@ -49,6 +49,14 @@ test("help lives in the profile menu instead of floating over the app", () => {
   assert.match(header, />\s*Help\s*</);
 });
 
+test("keyboard focus removes stale safe-area padding without forcing a message jump", () => {
+  const chat = read("src/components/chat/chat-window.tsx");
+  assert.match(chat, /const \[composerFocused, setComposerFocused\] = useState\(false\)/);
+  assert.match(chat, /if \(!shouldAutoScrollRef\.current\) return/);
+  assert.match(chat, /paddingBottom: composerFocused\s*\? "8px"\s*: "max\(8px, env\(safe-area-inset-bottom, 0px\)\)"/s);
+  assert.doesNotMatch(chat, /if \(event\.target instanceof HTMLTextAreaElement\) \{\s*shouldAutoScrollRef\.current = true/s);
+});
+
 test("notification test sends only to the authenticated user", () => {
   const route = read("src/app/api/push/test/route.ts");
   const control = read("src/components/layout/push-notification-control.tsx");
