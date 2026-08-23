@@ -28,12 +28,13 @@ export function Modal({
 
   return (
     <div
+      className="app-modal-backdrop"
       onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
         backgroundColor: "rgba(0,0,0,0.4)",
-        zIndex: 50,
+        zIndex: 70,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -41,6 +42,7 @@ export function Modal({
       }}
     >
       <div
+        className="app-modal-panel"
         onClick={(e) => e.stopPropagation()}
         style={{
           backgroundColor: "var(--color-surface)",
@@ -83,7 +85,12 @@ export function Modal({
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                padding: "2px",
+                padding: 0,
+                width: "44px",
+                height: "44px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 color: "var(--color-muted)",
                 flexShrink: 0,
               }}

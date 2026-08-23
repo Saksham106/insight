@@ -55,7 +55,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} antialiased`}
     >
-      <body className="bg-background text-foreground" style={{ minHeight: "100vh" }}>
+      <body className="bg-background text-foreground" style={{ minHeight: "100dvh" }}>
         <ServiceWorkerBoundary>{children}</ServiceWorkerBoundary>
         <Analytics />
       </body>

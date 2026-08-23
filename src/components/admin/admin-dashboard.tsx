@@ -155,8 +155,8 @@ export function AdminDashboard({
   const parentOptions = parents.map((p) => ({ id: p.id, full_name: p.full_name }));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
+    <div className={view === "chats" ? "mobile-chat-dashboard" : undefined} style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+      <div className={view === "chats" ? "mobile-chat-page-heading" : undefined} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
         <div>
           <h1 className="text-2xl font-semibold text-navy">{copy.title}</h1>
           <p className="text-sm text-muted" style={{ marginTop: "4px" }}>
