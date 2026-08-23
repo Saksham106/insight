@@ -54,6 +54,7 @@ export function ChatWindow({
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [composerFocused, setComposerFocused] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   // scrollHeight captured before a prepend so older messages don't yank the view
@@ -141,6 +142,7 @@ export function ChatWindow({
     if (!viewport) return;
     const keepLatestVisible = () => {
       if (!(document.activeElement instanceof HTMLTextAreaElement)) return;
+      if (!shouldAutoScrollRef.current) return;
       requestAnimationFrame(() => {
         const el = scrollRef.current;
         if (el) el.scrollTop = el.scrollHeight;
@@ -175,12 +177,15 @@ export function ChatWindow({
       className="bg-surface"
       onFocusCapture={(event) => {
         if (event.target instanceof HTMLTextAreaElement) {
-          shouldAutoScrollRef.current = true;
-          window.requestAnimationFrame(() => {
-            const element = scrollRef.current;
-            if (element) element.scrollTop = element.scrollHeight;
-          });
+          const element = scrollRef.current;
+          if (element) {
+            shouldAutoScrollRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+          }
+          setComposerFocused(true);
         }
+      }}
+      onBlurCapture={(event) => {
+        if (event.target instanceof HTMLTextAreaElement) setComposerFocused(false);
       }}
       style={{
         display: "flex",
@@ -264,7 +269,9 @@ export function ChatWindow({
             WebkitBackdropFilter: "saturate(180%) blur(18px)",
             // Keep the composer clear of the iOS home indicator when the thread
             // is used standalone (full-viewport contexts).
-            paddingBottom: "max(8px, env(safe-area-inset-bottom, 0px))",
+            paddingBottom: composerFocused
+              ? "8px"
+              : "max(8px, env(safe-area-inset-bottom, 0px))",
           }}
         >
           <MessageInput conversationId={conversationId} onSend={handleSend} />
