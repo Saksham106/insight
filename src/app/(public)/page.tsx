@@ -227,6 +227,8 @@ export default function LandingPage() {
           backgroundColor: "var(--color-paper)",
           borderBottom: "1px solid var(--color-rule)",
           padding: "0 24px",
+          // Clear the iPhone notch/status bar in standalone (PWA) mode.
+          paddingTop: "env(safe-area-inset-top, 0px)",
         }}
       >
         <div

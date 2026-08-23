@@ -91,7 +91,7 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
         overflow: "hidden",
         // Fill the viewport below the page heading; `dvh` shrinks with the mobile
         // keyboard so the composer stays visible instead of hiding behind it.
-        height: "calc(100dvh - 13rem)",
+        height: isMobile ? "calc(100dvh - 15rem)" : "calc(100dvh - 13rem)",
       }}
     >
       {/* Conversation list */}
@@ -105,8 +105,8 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
             minWidth: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", padding: "14px 16px", borderBottom: "1px solid var(--color-border)" }}>
-            <p className="text-base font-semibold text-navy">Chats</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", padding: isMobile ? "10px 12px" : "14px 16px", borderBottom: "1px solid var(--color-border)" }}>
+            <p className="text-base font-semibold text-navy">{isMobile ? "Messages" : "Chats"}</p>
             <Button size="sm" onClick={() => setShowNew(true)}>
               <MessageSquarePlus style={{ height: "16px", width: "16px", marginRight: "6px" }} />
               New
@@ -263,20 +263,69 @@ function ActiveConversation({
   }, [supabase, conversation.id]);
 
   const subtitle = conversation.isGroup
-    ? conversation.members.map((m) => (m.id === currentUserId ? "You" : m.full_name.split(" ")[0])).join(", ")
+    ? `${conversation.members.length} members`
     : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, height: "100%" }}>
       {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-sm text-navy"
-          style={{ display: "flex", alignItems: "center", gap: "4px", background: "none", border: "none", padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid var(--color-border)" }}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "8px 12px",
+            borderBottom: "1px solid var(--color-border)",
+            backgroundColor: "var(--color-surface)",
+            flexShrink: 0,
+          }}
         >
-          <ChevronLeft size={16} /> Chats
-        </button>
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to conversations"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "2px",
+              background: "none",
+              border: "none",
+              padding: "6px 6px 6px 0",
+              cursor: "pointer",
+              color: "var(--color-navy)",
+              minHeight: "44px",
+              WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            <ChevronLeft size={22} />
+          </button>
+          <div
+            aria-hidden
+            style={{
+              width: "34px",
+              height: "34px",
+              borderRadius: "50%",
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "var(--color-accent-soft)",
+              color: "var(--color-navy)",
+              fontWeight: 700,
+              fontSize: "12px",
+            }}
+          >
+            {conversation.isGroup ? <Users size={16} /> : initials(conversation.title)}
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p className="text-sm font-semibold text-navy" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {conversation.title}
+            </p>
+            {subtitle && (
+              <p className="text-xs text-muted" style={{ margin: 0 }}>{subtitle}</p>
+            )}
+          </div>
+        </div>
       )}
       {initial === null ? (
         <p className="text-sm text-muted" style={{ padding: "16px" }}>Loading messages…</p>
@@ -285,10 +334,11 @@ function ActiveConversation({
           <ChatWindow
             conversationId={conversation.id}
             currentUserId={currentUserId}
-            title={conversation.isGroup ? `${conversation.title}${subtitle ? ` · ${subtitle}` : ""}` : conversation.title}
+            title={conversation.title}
             initialMessages={initial}
             initialHasMore={hasMore}
             fill
+            hideHeader={Boolean(onBack)}
           />
         </div>
       )}
