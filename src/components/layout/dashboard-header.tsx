@@ -88,15 +88,27 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
     <>
       <header
         className="bg-surface"
-        style={{ position: "sticky", top: 0, zIndex: 30, borderBottom: "1px solid var(--color-border)", overflow: "visible" }}
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 30,
+          borderBottom: "1px solid var(--color-border)",
+          overflow: "visible",
+          // With viewport-fit=cover the page extends under the notch/status
+          // bar; pad the header down so nothing lands in un-tappable territory.
+          paddingTop: "env(safe-area-inset-top, 0px)",
+        }}
       >
         <div style={{ marginLeft: "auto", marginRight: "auto", width: "100%", maxWidth: "72rem" }}>
           <div
-            className="px-6 py-3"
             style={{
               display: "flex",
               alignItems: "center",
               gap: "16px",
+              paddingLeft: isMobile ? "16px" : undefined,
+              paddingRight: isMobile ? "12px" : undefined,
+              paddingTop: "10px",
+              paddingBottom: "10px",
             }}
           >
             {/* Left: branding */}
@@ -113,7 +125,7 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
               >
                 Insight&nbsp;Academy
               </p>
-              <p className="text-xs" style={{ margin: 0, color: "var(--color-muted)" }}>Dashboard</p>
+              <p className="text-xs" style={{ margin: 0, color: "var(--color-muted)", display: isMobile ? "none" : undefined }}>Dashboard</p>
             </Link>
 
             {/* Center: nav tabs (desktop only) */}
@@ -165,10 +177,12 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                 unreadCount={unreadCount}
                 onOpen={markAllRead}
               />
-              <div className="text-right">
-                <p className="text-sm font-medium text-foreground">{userName}</p>
-                <p className="text-xs text-muted">{roleLabels[role]}</p>
-              </div>
+              {!isMobile && (
+                <div className="text-right">
+                  <p className="text-sm font-medium text-foreground">{userName}</p>
+                  <p className="text-xs text-muted">{roleLabels[role]}</p>
+                </div>
+              )}
 
               {/* Profile icon + dropdown */}
               <div ref={dropdownRef} style={{ position: "relative" }}>
@@ -187,6 +201,9 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                     alignItems: "center",
                     justifyContent: "center",
                     color: "var(--color-navy)",
+                    padding: 0,
+                    overflow: "hidden",
+                    WebkitTapHighlightColor: "transparent",
                   }}
                 >
                   {avatarUrl ? (

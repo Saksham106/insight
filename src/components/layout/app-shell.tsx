@@ -5,6 +5,7 @@ import { OfflineIndicator } from "@/components/layout/offline-indicator";
 import { PageMain } from "@/components/layout/page-main";
 import { TimezoneSync } from "@/components/layout/timezone-sync";
 import { UnreadProvider } from "@/lib/unread-context";
+import { BottomNavigation } from "@/components/layout/bottom-navigation";
 
 interface AppShellProps {
   userName: string;
@@ -24,6 +25,7 @@ export function AppShell({ userName, role, userId, avatarUrl, children }: AppShe
         <DashboardHeader userName={userName} role={role} userId={userId} avatarUrl={avatarUrl} />
         <ContactModal />
         <PageMain>{children}</PageMain>
+        <BottomNavigation role={role} />
       </UnreadProvider>
     </div>
   );

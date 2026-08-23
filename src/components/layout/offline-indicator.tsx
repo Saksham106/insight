@@ -28,7 +28,8 @@ export function OfflineIndicator() {
       role="status"
       style={{
         position: "fixed",
-        top: 0,
+        // Clear the notch/status bar when the page extends under it.
+        top: "env(safe-area-inset-top, 0px)",
         left: 0,
         right: 0,
         zIndex: 60,
