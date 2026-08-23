@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronLeft, Plus, Search, Settings, Users } from "lucide-react";
 
 import { ChatWindow, type ChatMessage } from "@/components/chat/chat-window";
@@ -31,14 +31,17 @@ function preview(c: ConversationSummary): string {
 
 export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const requestedConversationId = searchParams.get("c");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [contacts, setContacts] = useState<ChattableContact[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(requestedConversationId);
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [showManage, setShowManage] = useState(false);
+  const threadOverlayRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const [convRes, contactsRes] = await Promise.all([
@@ -57,16 +60,55 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
-  // Deep link support: a `?c=<id>` query param opens that conversation directly.
   useEffect(() => {
-    const c = searchParams.get("c");
-    if (c) setActiveId(c);
-  }, [searchParams]);
+    const syncThreadFromHistory = () => {
+      setActiveId(new URLSearchParams(window.location.search).get("c"));
+    };
+    window.addEventListener("popstate", syncThreadFromHistory);
+    return () => window.removeEventListener("popstate", syncThreadFromHistory);
+  }, []);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
+
+  useEffect(() => {
+    if (!isMobile || !activeId) return;
+    const overlay = threadOverlayRef.current;
+    if (!overlay) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const syncViewport = () => {
+      const viewport = window.visualViewport;
+      overlay.style.top = `${viewport?.offsetTop ?? 0}px`;
+      overlay.style.height = `${viewport?.height ?? window.innerHeight}px`;
+    };
+
+    syncViewport();
+    window.visualViewport?.addEventListener("resize", syncViewport);
+    window.visualViewport?.addEventListener("scroll", syncViewport);
+    window.addEventListener("resize", syncViewport);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.visualViewport?.removeEventListener("resize", syncViewport);
+      window.visualViewport?.removeEventListener("scroll", syncViewport);
+      window.removeEventListener("resize", syncViewport);
+    };
+  }, [activeId, isMobile]);
+
+  const openConversation = (id: string) => {
+    setActiveId(id);
+    window.history.pushState({ insightThread: true }, "", `${pathname}?c=${encodeURIComponent(id)}`);
+  };
+
+  const closeConversation = () => {
+    setActiveId(null);
+    window.history.replaceState({ ...window.history.state, insightThread: false }, "", pathname);
+  };
 
   // This list holds every conversation in the academy — the largest in the app —
   // so it needs to be searchable by chat name or by who's in it.
@@ -85,13 +127,16 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
 
   return (
     <section
-      className="border border-border bg-surface"
+      className={isMobile ? "bg-surface" : "border border-border bg-surface"}
       style={{
         display: "grid",
         gridTemplateColumns: isMobile ? "1fr" : "320px 1fr",
-        borderRadius: "12px",
+        borderRadius: isMobile ? 0 : "12px",
         overflow: "hidden",
-        height: "calc(100dvh - 13rem)",
+        height: isMobile
+          ? "calc(100dvh - 60px - 64px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))"
+          : "calc(100dvh - 13rem)",
+        minHeight: isMobile ? "420px" : undefined,
       }}
     >
       {showList && (
@@ -134,7 +179,7 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => setActiveId(c.id)}
+                    onClick={() => openConversation(c.id)}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -183,14 +228,32 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
       )}
 
       {showThread && (
-        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
+        <div
+          ref={isMobile ? threadOverlayRef : undefined}
+          style={isMobile
+            ? {
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: "100dvh",
+                zIndex: 80,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+                minWidth: 0,
+                background: "var(--color-surface)",
+              }
+            : { display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 }}
+        >
           {active ? (
             <AdminThread
               key={active.id}
               conversation={active}
               currentUserId={currentUserId}
               onManage={() => setShowManage(true)}
-              onBack={isMobile ? () => setActiveId(null) : undefined}
+              onBack={isMobile ? closeConversation : undefined}
+              fullScreen={isMobile}
             />
           ) : (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
@@ -207,7 +270,7 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
           onCreated={async (id) => {
             setShowNew(false);
             await load();
-            setActiveId(id);
+            openConversation(id);
           }}
         />
       )}
@@ -226,7 +289,7 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
             // reconcile with the server.
             setConversations((prev) => prev.filter((c) => c.id !== id));
             setShowManage(false);
-            setActiveId(null);
+            closeConversation();
             void load();
           }}
         />
@@ -240,11 +303,13 @@ function AdminThread({
   currentUserId,
   onManage,
   onBack,
+  fullScreen = false,
 }: {
   conversation: ConversationSummary;
   currentUserId: string;
   onManage: () => void;
   onBack?: () => void;
+  fullScreen?: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [initial, setInitial] = useState<ChatMessage[] | null>(null);
@@ -280,38 +345,72 @@ function AdminThread({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, height: "100%" }}>
-      {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-sm text-navy"
-          style={{ display: "flex", alignItems: "center", gap: "4px", background: "none", border: "none", padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid var(--color-border)" }}
+      {onBack && fullScreen && (
+        <header
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            minHeight: "60px",
+            padding: "calc(8px + env(safe-area-inset-top, 0px)) 8px 8px",
+            borderBottom: "1px solid var(--color-border)",
+            background: "color-mix(in oklab, var(--color-surface) 94%, transparent)",
+            backdropFilter: "blur(18px)",
+            WebkitBackdropFilter: "blur(18px)",
+            flexShrink: 0,
+          }}
         >
-          <ChevronLeft size={16} /> All chats
-        </button>
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to all chats"
+            style={{ width: "40px", height: "40px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, border: 0, borderRadius: "50%", background: "transparent", color: "var(--color-navy)", cursor: "pointer" }}
+          >
+            <ChevronLeft size={24} />
+          </button>
+          <div style={{ width: "40px", height: "40px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: "var(--color-accent-soft)", color: "var(--color-navy)", fontWeight: 700, fontSize: "13px" }}>
+            {conversation.isGroup ? <Users size={18} /> : initials(conversation.title)}
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p className="text-sm font-semibold text-navy" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conversation.title}</p>
+            <p className="text-xs text-muted" style={{ margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {conversation.members.length} {conversation.members.length === 1 ? "member" : "members"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onManage}
+            aria-label="Manage conversation"
+            style={{ width: "40px", height: "40px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, border: 0, borderRadius: "50%", background: "transparent", color: "var(--color-navy)", cursor: "pointer" }}
+          >
+            <Settings size={20} />
+          </button>
+        </header>
       )}
       {initial === null ? (
         <p className="text-sm text-muted" style={{ padding: "16px" }}>Loading messages…</p>
       ) : (
         <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "8px",
-              padding: "8px 14px",
-              borderBottom: "1px solid var(--color-border)",
-              flexShrink: 0,
-            }}
-          >
-            <p className="text-xs text-muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {conversation.members.length} {conversation.members.length === 1 ? "member" : "members"}
-            </p>
-            <Button variant="outline" size="sm" onClick={onManage} style={{ flexShrink: 0 }}>
-              <Settings size={15} style={{ marginRight: "6px" }} /> Manage
-            </Button>
-          </div>
+          {!fullScreen && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "8px",
+                padding: "8px 14px",
+                borderBottom: "1px solid var(--color-border)",
+                flexShrink: 0,
+              }}
+            >
+              <p className="text-xs text-muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {conversation.members.length} {conversation.members.length === 1 ? "member" : "members"}
+              </p>
+              <Button variant="outline" size="sm" onClick={onManage} style={{ flexShrink: 0 }}>
+                <Settings size={15} style={{ marginRight: "6px" }} /> Manage
+              </Button>
+            </div>
+          )}
           <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
             <ChatWindow
               conversationId={conversation.id}
@@ -321,12 +420,14 @@ function AdminThread({
               initialHasMore={hasMore}
               readOnly={!isMember}
               fill
+              hideHeader={fullScreen}
+              showSenderNames={conversation.isGroup}
             />
           </div>
           {!isMember && (
             <p
               className="text-xs text-muted"
-              style={{ padding: "10px 14px", borderTop: "1px solid var(--color-border)", flexShrink: 0, textAlign: "center" }}
+              style={{ padding: fullScreen ? "10px 14px calc(10px + env(safe-area-inset-bottom, 0px))" : "10px 14px", borderTop: "1px solid var(--color-border)", flexShrink: 0, textAlign: "center" }}
             >
               You&apos;re not in this chat — view only.
             </p>
