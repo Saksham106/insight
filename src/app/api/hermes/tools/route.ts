@@ -5,6 +5,7 @@ import { signServiceRequest, verifyServiceRequest } from "@/lib/hermes/auth";
 import { academyInformation, communicationDecision, parseIMessageAdminActor, parseLocalHermesAdminActor, parseWhatsAppToolActor, projectCaseParticipantsForActor, projectContact, sanitizeAvailability, toolActorScope } from "@/lib/hermes/cases";
 import type { AcademyInformationTopic } from "@/lib/hermes/cases";
 import type { WhatsAppIntent } from "@/lib/hermes/meta";
+import { loadLessonCycleIndex } from "@/lib/hermes/lesson-cycle-index";
 import { projectLessonCycle, sanitizeLessonReport, sanitizeTutorContactIds } from "@/lib/hermes/lesson-ledger";
 import { projectOpenObjectives, type LessonObjectiveRecord, type PaymentObjectiveRecord } from "@/lib/hermes/open-objectives";
 import { parseCurrency, parseSettlementMonth, sanitizeFamilyCharges, sanitizeTutorReport } from "@/lib/hermes/settlements";
@@ -13,10 +14,10 @@ import { parseCalendarEventResult, parseFreeBusyPayload, parseFreeBusyResult, wo
 import { buildApprovalTemplateMessage, generateApprovalCode } from "@/lib/hermes/whatsapp-approvals";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ACTIONS = ["get_academy_info", "get_my_open_objectives", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "list_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job", "start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle", "set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"] as const;
+const ACTIONS = ["get_academy_info", "get_my_open_objectives", "search_contacts", "get_contact", "create_case", "get_case", "list_my_cases", "list_cases", "record_availability", "request_reschedule", "propose_times", "request_approval", "confirm_class", "send_message", "escalate_to_swati", "request_swati_freebusy", "get_workspace_job", "start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle", "set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "list_lesson_cycles", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"] as const;
 type Action = (typeof ACTIONS)[number];
 const SETTLEMENT_ACTIONS = new Set<Action>(["start_settlement_cycle", "get_settlement_cycle", "submit_tutor_report", "set_family_charges", "request_settlement_approval", "decide_approval", "record_family_payment", "record_tutor_payout", "close_settlement_cycle"]);
-const LESSON_LEDGER_ACTIONS = new Set<Action>(["set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"]);
+const LESSON_LEDGER_ACTIONS = new Set<Action>(["set_contact_relationship", "list_contact_relationships", "start_lesson_cycle", "list_lesson_cycles", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report", "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student", "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle"]);
 type ToolMode = "whatsapp" | "imessage_admin";
 type JsonObject = Record<string, unknown>;
 const CONTACT_FIELDS = "id, display_name, preferred_name, role, timezone, communication_policy, consent_status, is_active";
@@ -507,6 +508,12 @@ export async function handleHermesToolPost(request: Request, mode: ToolMode) {
         if (error || !cycle) throw error ?? new Error("lesson_cycle_start_failed");
         await audit("lesson_cycle_started", "lesson_cycle", cycle.id, { tutorCount: tutorContactIds.length, includeSwati: payload.includeSwati === true });
         return NextResponse.json({ cycle: { id: cycle.id, periodStart: cycle.period_start, status: cycle.status, version: cycle.version } }, { status: 201 });
+      }
+      case "list_lesson_cycles": {
+        if (actorKind !== "admin") return rejectRequest("Only Swati can list lesson cycles", 403, "admin_required");
+        const projected = await loadLessonCycleIndex(supabase, payload);
+        await audit("lesson_cycles_read", "lesson_cycle", undefined, { cycleCount: projected.length, tutorFiltered: payload.tutorContactId !== undefined, periodFiltered: payload.periodStart !== undefined });
+        return NextResponse.json({ cycles: projected });
       }
       case "get_lesson_cycle": {
         const cycleId = stringValue(payload, "cycleId", 80);

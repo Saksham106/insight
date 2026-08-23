@@ -37,6 +37,7 @@ ACTIONS = (
     "set_contact_relationship",
     "list_contact_relationships",
     "start_lesson_cycle",
+    "list_lesson_cycles",
     "get_lesson_cycle",
     "request_lesson_report",
     "submit_lesson_report",

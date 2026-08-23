@@ -97,6 +97,57 @@ interface ProjectionInput {
   lessons: JsonObject[];
 }
 
+interface LessonCycleIndexInput {
+  cycles: JsonObject[];
+  collections: JsonObject[];
+  tutorContactId?: string;
+}
+
+export interface LessonCycleIndexEntry {
+  id: string;
+  periodStart: string;
+  status: string;
+  version: number;
+  collections: Array<{
+    id: string;
+    tutorContactId: string;
+    status: string;
+  }>;
+}
+
+export function projectLessonCycleIndex({
+  cycles,
+  collections,
+  tutorContactId,
+}: LessonCycleIndexInput): LessonCycleIndexEntry[] {
+  if (!Array.isArray(cycles) || !Array.isArray(collections)) throw new Error("invalid_lesson_cycle_index");
+  const selectedTutorId = tutorContactId === undefined
+    ? undefined
+    : uuidValue(tutorContactId, "invalid_tutor_contact_id");
+
+  return cycles.flatMap((rawCycle) => {
+    const cycle = objectValue(rawCycle, "invalid_lesson_cycle_index");
+    const cycleId = uuidValue(cycle.id, "invalid_lesson_cycle_index");
+    const cycleCollections = collections
+      .filter((collection) => collection.lesson_cycle_id === cycleId)
+      .filter((collection) => selectedTutorId === undefined || collection.tutor_contact_id === selectedTutorId)
+      .map((collection) => ({
+        id: uuidValue(collection.id, "invalid_lesson_cycle_index"),
+        tutorContactId: uuidValue(collection.tutor_contact_id, "invalid_lesson_cycle_index"),
+        status: normalizedText(collection.status, 1, 80, "invalid_lesson_cycle_index"),
+      }))
+      .sort((left, right) => left.tutorContactId.localeCompare(right.tutorContactId));
+    if (selectedTutorId !== undefined && cycleCollections.length === 0) return [];
+    return [{
+      id: cycleId,
+      periodStart: isoDate(cycle.period_start, "invalid_lesson_cycle_index"),
+      status: normalizedText(cycle.status, 1, 80, "invalid_lesson_cycle_index"),
+      version: Number(cycle.version),
+      collections: cycleCollections,
+    }];
+  }).sort((left, right) => right.periodStart.localeCompare(left.periodStart) || right.id.localeCompare(left.id));
+}
+
 export interface LessonCycleProjection {
   id: string;
   periodStart: string;

@@ -87,7 +87,7 @@ class PluginTests(unittest.TestCase):
     def test_exposes_every_flexible_lesson_ledger_action(self):
         for action in (
             "set_contact_relationship", "list_contact_relationships", "start_lesson_cycle",
-            "get_lesson_cycle", "request_lesson_report", "submit_lesson_report",
+            "list_lesson_cycles", "get_lesson_cycle", "request_lesson_report", "submit_lesson_report",
             "import_swati_lessons", "confirm_lesson_report", "resolve_lesson_student",
             "get_student_lessons", "confirm_lesson_cycle", "reopen_lesson_cycle",
         ):

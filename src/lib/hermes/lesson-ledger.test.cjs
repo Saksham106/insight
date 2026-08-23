@@ -12,6 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 };
 
 const {
+  projectLessonCycleIndex,
   projectLessonCycle,
   sanitizeLessonReport,
   sanitizeTutorContactIds,
@@ -72,6 +73,35 @@ test("normalizes unique selected tutor IDs", () => {
   assert.deepEqual(sanitizeTutorContactIds([second, UUIDS.tutor]), [UUIDS.tutor, second]);
   assert.throws(() => sanitizeTutorContactIds([]), /invalid_tutor_contact_ids/);
   assert.throws(() => sanitizeTutorContactIds([UUIDS.tutor, UUIDS.tutor]), /duplicate_tutor_contact/);
+});
+
+test("indexes recent lesson cycles by selected tutor so admins can rediscover cycle IDs", () => {
+  const secondCycle = "10000000-0000-4000-8000-000000000002";
+  const secondCollection = "20000000-0000-4000-8000-000000000002";
+  const secondTutor = "40000000-0000-4000-8000-000000000002";
+  const indexed = projectLessonCycleIndex({
+    cycles: [
+      { id: UUIDS.cycle, period_start: "2026-07-01", status: "collecting", version: 1 },
+      { id: secondCycle, period_start: "2026-06-01", status: "confirmed", version: 2 },
+    ],
+    collections: [
+      { id: UUIDS.collection, lesson_cycle_id: UUIDS.cycle, tutor_contact_id: UUIDS.tutor, status: "awaiting_reply" },
+      { id: secondCollection, lesson_cycle_id: secondCycle, tutor_contact_id: secondTutor, status: "confirmed" },
+    ],
+    tutorContactId: UUIDS.tutor,
+  });
+
+  assert.deepEqual(indexed, [{
+    id: UUIDS.cycle,
+    periodStart: "2026-07-01",
+    status: "collecting",
+    version: 1,
+    collections: [{
+      id: UUIDS.collection,
+      tutorContactId: UUIDS.tutor,
+      status: "awaiting_reply",
+    }],
+  }]);
 });
 
 test("projects only active report revisions and their lessons", () => {

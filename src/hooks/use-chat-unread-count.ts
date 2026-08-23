@@ -2,7 +2,7 @@
 
 import { useUnread } from '@/lib/unread-context';
 
-export function useChatUnreadTotal() {
+export function useChatUnreadCount() {
   const { total } = useUnread();
   return total;
 }

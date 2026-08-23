@@ -137,6 +137,7 @@ test("gives tutors only their own lesson-ledger report scope", () => {
     "set_contact_relationship",
     "list_contact_relationships",
     "start_lesson_cycle",
+    "list_lesson_cycles",
     "request_lesson_report",
     "import_swati_lessons",
     "resolve_lesson_student",
