@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bell, Camera, CheckCircle, KeyRound, UserRound } from "lucide-react";
+import { Bell, Camera, CheckCircle, KeyRound, Smartphone, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PwaAppSettings } from "@/components/settings/pwa-app-settings";
 import { createClient } from "@/lib/supabase/client";
 
-type SettingsTab = "account" | "reminders" | "password";
+type SettingsTab = "account" | "app" | "reminders" | "password";
 
 interface SettingsPageProps {
   email: string;
@@ -32,6 +33,7 @@ const roleLabels: Record<SettingsPageProps["role"], string> = {
 
 const tabs: { id: SettingsTab; label: string; icon: typeof UserRound }[] = [
   { id: "account", label: "Account", icon: UserRound },
+  { id: "app", label: "Mobile app", icon: Smartphone },
   { id: "reminders", label: "Reminders", icon: Bell },
   { id: "password", label: "Password", icon: KeyRound },
 ];
@@ -70,9 +72,11 @@ export function SettingsPage({
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   useEffect(() => {
-    if (!timezone) {
+    if (timezone) return;
+    const timer = window.setTimeout(() => {
       setSelectedTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [timezone]);
 
 
@@ -222,7 +226,7 @@ export function SettingsPage({
             Settings
           </h1>
           <p className="text-sm text-muted" style={{ marginTop: "6px" }}>
-            Manage your account details, timezone, reminders, and password.
+            Manage your account, mobile app, reminders, and password.
           </p>
         </div>
       </div>
@@ -356,6 +360,20 @@ export function SettingsPage({
                   <InfoRow label="Member since" value={formatDate(createdAt)} />
                 </div>
               </section>
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === "app" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-navy">Mobile app</CardTitle>
+              <p className="text-sm text-muted" style={{ margin: 0 }}>
+                Install Insight Academy and keep it up to date.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <PwaAppSettings />
             </CardContent>
           </Card>
         )}
