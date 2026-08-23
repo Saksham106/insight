@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Menu, User, X as XIcon } from "lucide-react";
+import { User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useMediaQuery } from "@/lib/use-media-query";
 
-import { NotificationBell, NotificationList } from "@/components/layout/notification-bell";
-import { Modal } from "@/components/ui/modal";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import { useNotifications } from "@/lib/use-notifications";
 import { useChatUnreadTotal } from "@/lib/use-chat-unread-total";
 import { createClient } from "@/lib/supabase/client";
@@ -57,8 +56,6 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
   const router = useRouter();
   const pathname = usePathname();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { notifications, unreadCount, markAllRead } = useNotifications(userId);
   const chatUnread = useChatUnreadTotal();
@@ -85,12 +82,6 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
   const openSettings = () => {
     setDropdownOpen(false);
     router.push("/settings");
-  };
-
-  const openNotifications = () => {
-    setDropdownOpen(false);
-    void markAllRead();
-    setShowNotificationsModal(true);
   };
 
   return (
@@ -167,34 +158,13 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
             {/* Spacer on mobile */}
             {isMobile && <div style={{ flex: 1 }} />}
 
-            {/* Right: mobile menu + bell + name + profile */}
+            {/* Right: bell + name + profile */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
-              {/* Mobile hamburger */}
-              {isMobile && (
-                <button
-                  onClick={() => setMenuOpen((v) => !v)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "4px",
-                    color: "var(--color-navy)",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                  aria-label="Toggle navigation menu"
-                >
-                  {menuOpen ? <XIcon size={20} /> : <Menu size={20} />}
-                </button>
-              )}
-
-              {!isMobile && (
-                <NotificationBell
-                  notifications={notifications}
-                  unreadCount={unreadCount}
-                  onOpen={markAllRead}
-                />
-              )}
+              <NotificationBell
+                notifications={notifications}
+                unreadCount={unreadCount}
+                onOpen={markAllRead}
+              />
               <div className="text-right">
                 <p className="text-sm font-medium text-foreground">{userName}</p>
                 <p className="text-xs text-muted">{roleLabels[role]}</p>
@@ -229,28 +199,6 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                   ) : (
                     <User size={17} />
                   )}
-                  {isMobile && unreadCount > 0 && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: "-4px",
-                        right: "-4px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        height: "18px",
-                        width: "18px",
-                        borderRadius: "50%",
-                        backgroundColor: "var(--color-navy)",
-                        color: "#fff",
-                        fontSize: "10px",
-                        fontWeight: 700,
-                        border: "2px solid var(--color-surface)",
-                      }}
-                    >
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
-                  )}
                 </button>
 
                 {dropdownOpen && (
@@ -268,46 +216,6 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                       zIndex: 50,
                     }}
                   >
-                    {isMobile && (
-                      <button
-                        onClick={openNotifications}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          width: "100%",
-                          padding: "11px 16px",
-                          textAlign: "left",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          fontSize: "14px",
-                          color: "var(--color-foreground)",
-                          borderBottom: "1px solid var(--color-border)",
-                        }}
-                      >
-                        <span>Notifications</span>
-                        {unreadCount > 0 && (
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              height: "20px",
-                              minWidth: "20px",
-                              padding: "0 4px",
-                              borderRadius: "9999px",
-                              backgroundColor: "var(--color-navy)",
-                              color: "#fff",
-                              fontSize: "11px",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {unreadCount > 9 ? "9+" : unreadCount}
-                          </span>
-                        )}
-                      </button>
-                    )}
                     <button
                       onClick={openSettings}
                       style={{
@@ -347,81 +255,8 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
             </div>
           </div>
 
-          {/* Mobile dropdown menu — overlays page content, animated */}
-          {isMobile && (
-            <>
-              {/* Backdrop — closes menu on tap outside */}
-              {menuOpen && (
-                <div
-                  onClick={() => setMenuOpen(false)}
-                  style={{
-                    position: "fixed",
-                    inset: 0,
-                    zIndex: 28,
-                  }}
-                />
-              )}
-              <nav
-                style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  right: 0,
-                  backgroundColor: "var(--color-surface)",
-                  borderBottom: menuOpen ? "1px solid var(--color-border)" : "none",
-                  boxShadow: menuOpen ? "0 8px 24px rgba(0,0,0,0.08)" : "none",
-                  zIndex: 29,
-                  opacity: menuOpen ? 1 : 0,
-                  transform: menuOpen ? "translateY(0)" : "translateY(-6px)",
-                  pointerEvents: menuOpen ? "auto" : "none",
-                  transition: "opacity 0.2s ease, transform 0.2s ease",
-                  padding: menuOpen ? "8px 0" : "0",
-                }}
-              >
-                {roleNav[role].map((item) => {
-                  const active = pathname === item.href;
-                  const isChats = item.label === "Chats";
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "12px 24px",
-                        fontSize: "14px",
-                        fontWeight: active ? 600 : 500,
-                        color: active ? "var(--color-navy)" : "var(--color-slate)",
-                        backgroundColor: active ? "var(--color-accent-soft)" : "transparent",
-                        textDecoration: "none",
-                        borderLeft: active ? "3px solid var(--color-accent)" : "3px solid transparent",
-                      }}
-                    >
-                      {item.label}
-                      {isChats && chatUnread > 0 && (
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "20px", height: "20px", borderRadius: "9999px", padding: "0 4px", fontSize: "11px", fontWeight: 700, backgroundColor: "var(--color-error)", color: "white" }}>
-                          {chatUnread > 99 ? "99+" : chatUnread}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </nav>
-            </>
-          )}
         </div>
       </header>
-
-      {/* Notifications modal (mobile only) */}
-      {showNotificationsModal && (
-        <Modal
-          title="Notifications"
-          onClose={() => setShowNotificationsModal(false)}
-        >
-          <NotificationList notifications={notifications} />
-        </Modal>
-      )}
     </>
   );
 }
