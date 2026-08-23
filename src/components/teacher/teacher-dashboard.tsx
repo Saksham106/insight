@@ -53,7 +53,7 @@ const viewCopy: Record<TeacherDashboardView, { title: string; description: strin
     description: "Open chats, schedule sessions, and review session history by student.",
   },
   chats: {
-    title: "Chats",
+    title: "Messages",
     description: "Your conversations with students.",
   },
 };

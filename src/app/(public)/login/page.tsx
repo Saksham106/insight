@@ -184,7 +184,7 @@ export default function LoginPage() {
 
   return (
     <div
-      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", backgroundColor: "var(--color-paper-2)", padding: "24px" }}
+      style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", backgroundColor: "var(--color-paper-2)", padding: "24px", paddingTop: "calc(24px + env(safe-area-inset-top, 0px))", paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))" }}
     >
       {/* Card — single centered element so it sits perfectly in the middle */}
       <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "26rem", display: "flex", flexDirection: "column", gap: "14px" }}>

@@ -43,7 +43,7 @@ const viewCopy: Record<ParentDashboardView, { title: string; description: string
     description: "Every upcoming and past session across your children.",
   },
   chats: {
-    title: "Chats",
+    title: "Messages",
     description: "Conversations with your children's teachers.",
   },
 };

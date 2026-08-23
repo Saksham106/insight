@@ -48,7 +48,7 @@ const viewCopy: Record<AdminDashboardView, { title: string; description: string 
     description: "View every scheduled, pending, and past session.",
   },
   chats: {
-    title: "Chats",
+    title: "Messages",
     description: "Read every conversation and manage who's in them.",
   },
 };

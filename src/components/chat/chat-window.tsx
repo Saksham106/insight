@@ -27,6 +27,9 @@ interface ChatWindowProps {
   initialMessages: ChatMessage[];
   initialHasMore?: boolean;
   readOnly?: boolean;
+  // Hide the internal title bar when the parent already shows one (e.g. the
+  // mobile thread header with back button + avatar).
+  hideHeader?: boolean;
   // When embedded in a parent that already sizes it (e.g. the two-pane chat
   // panels), fill the parent's height. Standalone pages leave this false and the
   // window sizes itself to the viewport below the header.
@@ -40,6 +43,7 @@ export function ChatWindow({
   initialMessages,
   initialHasMore = false,
   readOnly = false,
+  hideHeader = false,
   fill = false,
 }: ChatWindowProps) {
   const supabase = useMemo(() => createClient(), []);
@@ -147,7 +151,7 @@ export function ChatWindow({
 
   return (
     <div
-      className="rounded-lg border border-border bg-surface"
+      className="bg-surface"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -159,15 +163,29 @@ export function ChatWindow({
         minWidth: 0,
       }}
     >
-      <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--color-border)", flexShrink: 0 }}>
-        <h1
-          className="text-lg font-semibold text-navy"
-          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+      {hideHeader ? null : (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "10px 16px",
+            borderBottom: "1px solid var(--color-border)",
+            flexShrink: 0,
+            backgroundColor: "var(--color-surface)",
+          }}
         >
-          {title}
-        </h1>
-      </div>
-      <div ref={scrollRef} className="px-6 py-4" style={{ flex: 1, overflowY: "auto" }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p
+              className="text-sm font-semibold text-navy"
+              style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              {title}
+            </p>
+          </div>
+        </div>
+      )}
+      <div ref={scrollRef} className="px-4 py-4" style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
         {hasMore && (
           <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
             <button
@@ -188,7 +206,17 @@ export function ChatWindow({
         )}
       </div>
       {readOnly ? null : (
-        <div className="px-6 py-4" style={{ borderTop: "1px solid var(--color-border)", flexShrink: 0 }}>
+        <div
+          className="px-4 py-3"
+          style={{
+            borderTop: "1px solid var(--color-border)",
+            flexShrink: 0,
+            backgroundColor: "var(--color-surface)",
+            // Keep the composer clear of the iOS home indicator when the thread
+            // is used standalone (full-viewport contexts).
+            paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))",
+          }}
+        >
           <MessageInput conversationId={conversationId} onSend={handleSend} />
         </div>
       )}
