@@ -188,6 +188,9 @@ export function MessageInput({ conversationId, onSend, disabled }: MessageInputP
               overflowY: "auto",
               color: "var(--color-foreground)",
               fontFamily: "inherit",
+              margin: 0,
+              caretColor: "var(--color-navy)",
+              WebkitAppearance: "none",
             }}
           />
           {canSend && (

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { NewConversationModal } from "@/components/admin/new-conversation-modal";
 import { ManageChatModal } from "@/components/admin/manage-chat-modal";
 import { useMediaQuery } from "@/lib/use-media-query";
+import { useMobileThreadViewport } from "@/lib/use-mobile-thread-viewport";
 import { MESSAGE_PAGE_SIZE, type ChattableContact, type ConversationSummary } from "@/lib/chat-types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -74,31 +75,7 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
 
-  useEffect(() => {
-    if (!isMobile || !activeId) return;
-    const overlay = threadOverlayRef.current;
-    if (!overlay) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const syncViewport = () => {
-      const viewport = window.visualViewport;
-      overlay.style.top = `${viewport?.offsetTop ?? 0}px`;
-      overlay.style.height = `${viewport?.height ?? window.innerHeight}px`;
-    };
-
-    syncViewport();
-    window.visualViewport?.addEventListener("resize", syncViewport);
-    window.visualViewport?.addEventListener("scroll", syncViewport);
-    window.addEventListener("resize", syncViewport);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.visualViewport?.removeEventListener("resize", syncViewport);
-      window.visualViewport?.removeEventListener("scroll", syncViewport);
-      window.removeEventListener("resize", syncViewport);
-    };
-  }, [activeId, isMobile]);
+  useMobileThreadViewport(isMobile && Boolean(activeId), threadOverlayRef);
 
   const openConversation = (id: string) => {
     setActiveId(id);
@@ -243,6 +220,8 @@ export function AdminChatsViewer({ currentUserId }: AdminChatsViewerProps) {
                 minHeight: 0,
                 minWidth: 0,
                 background: "var(--color-surface)",
+                overscrollBehavior: "none",
+                touchAction: "pan-y",
               }
             : { display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 }}
         >

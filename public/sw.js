@@ -3,7 +3,7 @@
 //   - navigations: network-first, cache fallback so the shell opens offline
 //   - static assets (images/CSS/JS/fonts): stale-while-revalidate
 //   - never touches Supabase/API traffic — auth and data must stay live
-const CACHE_NAME = "insight-v2";
+const CACHE_NAME = "insight-v3";
 const OFFLINE_FALLBACKS = ["/", "/login"];
 
 self.addEventListener("install", (event) => {
@@ -11,8 +11,13 @@ self.addEventListener("install", (event) => {
     caches
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(OFFLINE_FALLBACKS))
-      .then(() => self.skipWaiting())
   );
+});
+
+// Updates stay waiting until the user chooses "Check now" in Settings. This
+// avoids replacing the worker under an in-progress message or form.
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {

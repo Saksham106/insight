@@ -16,6 +16,7 @@ export function PushNotificationControl() {
   const [state, setState] = useState<PushState>("loading");
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
@@ -97,6 +98,15 @@ export function PushNotificationControl() {
     setState("off");
   };
 
+  const testNotification = async () => {
+    setMessage(null);
+    setTesting(true);
+    const response = await fetch("/api/push/test", { method: "POST" }).catch(() => null);
+    const data = await response?.json().catch(() => ({})) as { error?: string } | undefined;
+    setTesting(false);
+    setMessage(response?.ok ? "Test sent. Check your notifications." : data?.error ?? "Could not send a test notification.");
+  };
+
   if (state === "loading" || state === "unsupported" || state === "unconfigured") return null;
 
   return (
@@ -112,14 +122,26 @@ export function PushNotificationControl() {
           </p>
         </div>
         {state !== "blocked" && (
-          <button
-            type="button"
-            disabled={state === "saving"}
-            onClick={() => void (state === "on" ? disable() : enable())}
-            style={{ border: 0, borderRadius: "999px", padding: "8px 12px", background: state === "on" ? "var(--color-soft)" : "var(--color-navy)", color: state === "on" ? "var(--color-navy)" : "white", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
-          >
-            {state === "saving" ? "…" : state === "on" ? "Turn off" : "Enable"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {state === "on" && (
+              <button
+                type="button"
+                disabled={testing}
+                onClick={() => void testNotification()}
+                style={{ border: "1px solid var(--color-border)", borderRadius: "999px", padding: "8px 11px", background: "var(--color-surface)", color: "var(--color-navy)", fontSize: "12px", fontWeight: 700, cursor: testing ? "wait" : "pointer" }}
+              >
+                {testing ? "Sending…" : "Test"}
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={state === "saving"}
+              onClick={() => void (state === "on" ? disable() : enable())}
+              style={{ border: 0, borderRadius: "999px", padding: "8px 12px", background: state === "on" ? "var(--color-soft)" : "var(--color-navy)", color: state === "on" ? "var(--color-navy)" : "white", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+            >
+              {state === "saving" ? "…" : state === "on" ? "Turn off" : "Enable"}
+            </button>
+          </div>
         )}
       </div>
       {message && <p className="text-xs text-muted" style={{ margin: "8px 0 0 48px", lineHeight: 1.4 }}>{message}</p>}

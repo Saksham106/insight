@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useMediaQuery } from "@/lib/use-media-query";
+import { useMobileThreadViewport } from "@/lib/use-mobile-thread-viewport";
 import { markRead } from "@/lib/use-unread-counts";
 import { useUnread } from "@/lib/unread-context";
 import { MESSAGE_PAGE_SIZE, type ChattableContact, type ConversationSummary } from "@/lib/chat-types";
@@ -109,35 +110,7 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
     return () => window.removeEventListener("popstate", syncThreadFromHistory);
   }, []);
 
-  // A thread replaces the entire mobile shell, like iMessage/WhatsApp. Keep the
-  // overlay synced to the visual viewport so the keyboard resizes the thread
-  // instead of lifting the global tab bar into view.
-  useEffect(() => {
-    if (!isMobile || !activeId) return;
-    const overlay = threadOverlayRef.current;
-    if (!overlay) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const syncViewport = () => {
-      const viewport = window.visualViewport;
-      overlay.style.top = `${viewport?.offsetTop ?? 0}px`;
-      overlay.style.height = `${viewport?.height ?? window.innerHeight}px`;
-    };
-
-    syncViewport();
-    window.visualViewport?.addEventListener("resize", syncViewport);
-    window.visualViewport?.addEventListener("scroll", syncViewport);
-    window.addEventListener("resize", syncViewport);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.visualViewport?.removeEventListener("resize", syncViewport);
-      window.visualViewport?.removeEventListener("scroll", syncViewport);
-      window.removeEventListener("resize", syncViewport);
-    };
-  }, [activeId, isMobile]);
+  useMobileThreadViewport(isMobile && Boolean(activeId), threadOverlayRef);
 
   const openConversation = (id: string) => {
     setActiveId(id);
@@ -375,6 +348,8 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
                 minHeight: 0,
                 minWidth: 0,
                 background: "var(--color-surface)",
+                overscrollBehavior: "none",
+                touchAction: "pan-y",
               }
             : { display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 }}
         >
