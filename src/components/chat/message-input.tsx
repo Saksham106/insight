@@ -121,56 +121,85 @@ export function MessageInput({ conversationId, onSend, disabled }: MessageInputP
         </div>
       )}
 
-      {/* Pill input row */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          padding: "8px 8px 8px 16px",
-          border: "1px solid var(--color-border)",
-          borderRadius: "22px",
-          backgroundColor: "var(--color-background)",
-        }}
-      >
-        <textarea
-          ref={textareaRef}
-          value={message}
-          onChange={handleTextChange}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void handleSubmit();
-            }
-          }}
-          placeholder="Message…"
-          rows={1}
+      {/* Native-style composer: attachment action + expanding text field + send. */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: "8px" }}>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
           disabled={disabled || sending}
+          aria-label="Attach a file"
           style={{
-            flex: 1,
+            width: "44px",
+            height: "44px",
+            flexShrink: 0,
+            borderRadius: "50%",
             border: "none",
-            outline: "none",
-            background: "transparent",
-            resize: "none",
-            fontSize: "16px",
-            lineHeight: "24px",
-            padding: 0,
-            maxHeight: "120px",
-            overflowY: "auto",
-            color: "var(--color-foreground)",
-            fontFamily: "inherit",
+            background: "var(--color-soft)",
+            cursor: disabled || sending ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--color-navy)",
+            WebkitTapHighlightColor: "transparent",
           }}
-        />
+        >
+          <Paperclip size={19} />
+        </button>
 
-        <div style={{ flexShrink: 0 }}>
-          {canSend ? (
+        <div
+          style={{
+            minHeight: "44px",
+            flex: 1,
+            display: "flex",
+            alignItems: "flex-end",
+            gap: "6px",
+            padding: "7px 7px 7px 14px",
+            border: "1px solid var(--color-border)",
+            borderRadius: "22px",
+            backgroundColor: "var(--color-surface)",
+          }}
+        >
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={handleTextChange}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleSubmit();
+              }
+            }}
+            placeholder="Message"
+            rows={1}
+            enterKeyHint="send"
+            disabled={disabled || sending}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              resize: "none",
+              fontSize: "16px",
+              lineHeight: "24px",
+              padding: "1px 0",
+              maxHeight: "120px",
+              overflowY: "auto",
+              color: "var(--color-foreground)",
+              fontFamily: "inherit",
+            }}
+          />
+          {canSend && (
             <button
               type="button"
               onClick={() => void handleSubmit()}
               disabled={disabled || sending}
+              aria-label="Send message"
               style={{
-                width: "34px",
-                height: "34px",
+                width: "32px",
+                height: "32px",
+                flexShrink: 0,
                 borderRadius: "50%",
                 border: "none",
                 padding: 0,
@@ -182,29 +211,10 @@ export function MessageInput({ conversationId, onSend, disabled }: MessageInputP
                 alignItems: "center",
                 justifyContent: "center",
                 opacity: sending ? 0.6 : 1,
+                WebkitTapHighlightColor: "transparent",
               }}
             >
               <Send size={15} style={{ transform: "translate(-1px, 1px)" }} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={disabled || sending}
-              style={{
-                width: "34px",
-                height: "34px",
-                borderRadius: "50%",
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--color-muted)",
-              }}
-            >
-              <Paperclip size={19} />
             </button>
           )}
         </div>

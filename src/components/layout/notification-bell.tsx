@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 
 import type { Notification } from "@/lib/use-notifications";
+import { PushNotificationControl } from "@/components/layout/push-notification-control";
 
 interface NotificationBellProps {
   notifications: Notification[];
@@ -142,6 +143,7 @@ export function NotificationBell({ notifications, unreadCount, onOpen }: Notific
                 </button>
               )}
             </div>
+            <PushNotificationControl />
             <NotificationList notifications={notifications} />
           </div>
         </>

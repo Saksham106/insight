@@ -19,7 +19,7 @@ interface Message {
 interface MessageListProps {
   messages: Message[];
   currentUserId: string;
-  adminView?: boolean;
+  showSenderNames?: boolean;
 }
 
 function dayKey(d: Date) {
@@ -36,10 +36,10 @@ function formatDay(d: Date) {
 }
 
 function formatTime(d: Date) {
-  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-export function MessageList({ messages, currentUserId, adminView = false }: MessageListProps) {
+export function MessageList({ messages, currentUserId, showSenderNames = false }: MessageListProps) {
   // Signed URLs keep working after the bucket goes private; falls back to the
   // stored URL while resolving.
   const signedUrls = useSignedAttachmentUrls(messages.map((m) => m.file_url));
@@ -77,19 +77,19 @@ export function MessageList({ messages, currentUserId, adminView = false }: Mess
           <div key={msg.id}>
             {/* Day separator */}
             {isNewDay && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  margin: `${i === 0 ? 0 : 20}px 0 16px`,
-                }}
-              >
-                <div style={{ flex: 1, height: "1px", backgroundColor: "var(--color-border)" }} />
-                <span className="text-xs text-muted" style={{ fontWeight: 500, whiteSpace: "nowrap" }}>
+              <div style={{ display: "flex", justifyContent: "center", margin: `${i === 0 ? 0 : 22}px 0 14px` }}>
+                <span
+                  className="text-[11px] text-muted"
+                  style={{
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    padding: "4px 9px",
+                    borderRadius: "999px",
+                    background: "color-mix(in oklab, var(--color-soft) 82%, transparent)",
+                  }}
+                >
                   {formatDay(date)}
                 </span>
-                <div style={{ flex: 1, height: "1px", backgroundColor: "var(--color-border)" }} />
               </div>
             )}
 
@@ -104,7 +104,7 @@ export function MessageList({ messages, currentUserId, adminView = false }: Mess
             )}
 
             {/* Sender name above first bubble in group */}
-            {isFirstInGroup && (
+            {showSenderNames && !isMine && isFirstInGroup && (
               <div
                 style={{
                   display: "flex",
@@ -113,10 +113,10 @@ export function MessageList({ messages, currentUserId, adminView = false }: Mess
                 }}
               >
                 <span
-                  className="text-xs font-semibold"
-                  style={{ color: isMine ? "var(--color-muted)" : "var(--color-navy)" }}
+                  className="text-[11px] font-semibold"
+                  style={{ color: "var(--color-muted)", marginLeft: "10px" }}
                 >
-                  {adminView ? (msg.sender?.full_name ?? "User") : isMine ? "You" : (msg.sender?.full_name ?? "User")}
+                  {msg.sender?.full_name ?? "User"}
                 </span>
               </div>
             )}
@@ -135,9 +135,13 @@ export function MessageList({ messages, currentUserId, adminView = false }: Mess
                   isMine ? "bg-navy text-white" : "bg-soft text-foreground",
                 )}
                 style={{
-                  maxWidth: "75%",
-                  padding: hasFile && !msg.body ? "6px" : "8px 14px",
+                  maxWidth: "82%",
+                  padding: hasFile && !msg.body ? "5px" : "8px 13px",
                   borderRadius: "18px",
+                  borderBottomRightRadius: isMine && isLastInGroup ? "5px" : "18px",
+                  borderBottomLeftRadius: !isMine && isLastInGroup ? "5px" : "18px",
+                  boxShadow: isMine ? "none" : "0 1px 1px rgba(20, 38, 68, 0.06)",
+                  overflow: "hidden",
                 }}
               >
                 {/* Image attachment */}

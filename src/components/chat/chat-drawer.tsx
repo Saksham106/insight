@@ -8,6 +8,7 @@ import { MessageList } from "@/components/chat/message-list";
 import type { ChatMessage } from "@/components/chat/chat-window";
 import { MESSAGE_PAGE_SIZE, type ChatContact } from "@/lib/chat-types";
 import { createClient } from "@/lib/supabase/client";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { markRead, useUnreadCounts } from "@/lib/use-unread-counts";
 
 export type { ChatContact };
@@ -17,18 +18,17 @@ interface ChatDrawerProps {
   initialConversationId: string;
   currentUserId: string;
   readOnly?: boolean;
-  adminView?: boolean;
   onClose: () => void;
 }
 
-export function ChatDrawer({ contacts, initialConversationId, currentUserId, readOnly = false, adminView = false, onClose }: ChatDrawerProps) {
+export function ChatDrawer({ contacts, initialConversationId, currentUserId, readOnly = false, onClose }: ChatDrawerProps) {
   const supabase = useMemo(() => createClient(), []);
   const [activeId, setActiveId] = useState(initialConversationId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
   const [mobileView, setMobileView] = useState<"chat" | "picker">("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -36,13 +36,11 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
 
   const { unread, markAsRead } = useUnreadCounts(contacts);
 
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    setIsMobile(mq.matches);
-    const h = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", h);
-    return () => mq.removeEventListener("change", h);
-  }, []);
+  const selectConversation = (conversationId: string) => {
+    setActiveId(conversationId);
+    setMobileView("chat");
+  };
+
 
   // Sync panel + backdrop to visualViewport so iOS keyboard can't expose the page behind
   useEffect(() => {
@@ -70,26 +68,33 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
   useEffect(() => {
     markRead(currentUserId, activeId);
     markAsRead(activeId);
-    setMobileView("chat");
   }, [activeId, currentUserId, markAsRead]);
 
   // Fetch the latest page for the active conversation (older loads on demand)
   useEffect(() => {
-    setLoading(true);
-    setHasMore(false);
-    supabase
-      .from("messages")
-      .select("id, body, created_at, sender_id, file_url, file_name, file_type, sender:sender_id (id, full_name)")
-      .eq("conversation_id", activeId)
-      .order("created_at", { ascending: false })
-      .limit(MESSAGE_PAGE_SIZE)
-      .then(({ data }) => {
-        setMessages(
-          (data ?? []).reverse().map((m) => ({ ...m, sender: Array.isArray(m.sender) ? m.sender[0] : m.sender })) as ChatMessage[],
-        );
-        setHasMore((data ?? []).length === MESSAGE_PAGE_SIZE);
-        setLoading(false);
-      });
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setHasMore(false);
+      supabase
+        .from("messages")
+        .select("id, body, created_at, sender_id, file_url, file_name, file_type, sender:sender_id (id, full_name)")
+        .eq("conversation_id", activeId)
+        .order("created_at", { ascending: false })
+        .limit(MESSAGE_PAGE_SIZE)
+        .then(({ data }) => {
+          if (cancelled) return;
+          setMessages(
+            (data ?? []).reverse().map((m) => ({ ...m, sender: Array.isArray(m.sender) ? m.sender[0] : m.sender })) as ChatMessage[],
+          );
+          setHasMore((data ?? []).length === MESSAGE_PAGE_SIZE);
+          setLoading(false);
+        });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [activeId, supabase]);
 
   // Sender names seen so far; lets the realtime handler build messages from the
@@ -156,13 +161,13 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
   }, [messages]);
 
   const handleSend = async (body: string | null, attachment?: FileAttachment | null) => {
-    const { error } = await supabase.from("messages").insert({
-      conversation_id: activeId,
-      sender_id: currentUserId,
-      body: body ?? null,
-      ...(attachment ? { file_url: attachment.url, file_name: attachment.name, file_type: attachment.type } : {}),
+    const response = await fetch("/api/chat/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ conversationId: activeId, body, attachment: attachment ?? null }),
     });
-    return error ? error.message : null;
+    const result = await response.json().catch(() => ({}));
+    return response.ok ? null : result.error ?? "Could not send message.";
   };
 
   const activeContact = contacts.find((c) => c.conversationId === activeId);
@@ -208,7 +213,7 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
               return (
                 <button
                   key={conversationId}
-                  onClick={() => setActiveId(conversationId)}
+                  onClick={() => selectConversation(conversationId)}
                   style={{
                     width: "100%", display: "flex", alignItems: "center", gap: "14px",
                     padding: "14px 20px", background: "none", border: "none",
@@ -264,7 +269,7 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
               return (
                 <button
                   key={conversationId}
-                  onClick={() => setActiveId(conversationId)}
+                  onClick={() => selectConversation(conversationId)}
                   style={{
                     display: "flex", alignItems: "center", gap: "10px",
                     padding: "10px 14px", background: isActive ? "var(--color-soft)" : "none",
@@ -334,7 +339,7 @@ export function ChatDrawer({ contacts, initialConversationId, currentUserId, rea
                     </button>
                   </div>
                 )}
-                <MessageList messages={messages} currentUserId={currentUserId} adminView={adminView} />
+                <MessageList messages={messages} currentUserId={currentUserId} />
               </>
             ) : (
               <p className="text-sm text-muted">No messages yet. Say hello!</p>

@@ -369,9 +369,9 @@ export function TeacherDashboard({ assignments, teacherId, view = "overview" }: 
 
   return (
     <>
-    <div style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
+    <div className={view === "chats" ? "mobile-chat-dashboard" : undefined} style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
       {/* Welcome */}
-      <div>
+      <div className={view === "chats" ? "mobile-chat-page-heading" : undefined}>
         <h1 className="text-2xl font-semibold text-navy">{copy.title}</h1>
         {copy.description && (
           <p className="text-sm text-muted" style={{ marginTop: "4px" }}>

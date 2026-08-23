@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { MessageSquarePlus, Search, Users, ChevronLeft } from "lucide-react";
 
 import { ChatWindow, type ChatMessage } from "@/components/chat/chat-window";
@@ -23,18 +24,36 @@ function initials(name: string) {
 }
 
 function lastMessagePreview(c: ConversationSummary): string {
-  if (!c.lastMessage) return "No messages yet";
+  if (!c.lastMessage) return "Start the conversation";
   if (c.lastMessage.body) return c.lastMessage.body;
-  if (c.lastMessage.fileName) return `📎 ${c.lastMessage.fileName}`;
+  if (c.lastMessage.fileName) return `Attachment · ${c.lastMessage.fileName}`;
   return "Attachment";
+}
+
+function conversationTime(c: ConversationSummary): string {
+  const raw = c.lastMessage?.createdAt ?? c.updatedAt;
+  const date = new Date(raw);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const requestedConversationId = searchParams.get("conversation");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(requestedConversationId);
   const [showNew, setShowNew] = useState(false);
+  const [query, setQuery] = useState("");
+  const threadOverlayRef = useRef<HTMLDivElement>(null);
   const { unread } = useUnread();
 
   const supabase = useMemo(() => createClient(), []);
@@ -42,14 +61,20 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
   const loadConversations = useCallback(async () => {
     // Unique URL + no-store defeats any HTTP/304 caching so a just-created
     // conversation always shows up on the immediate post-create refresh.
-    const res = await fetch(`/api/chat/conversations?t=${Date.now()}`, { cache: "no-store" });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) setConversations((data.conversations as ConversationSummary[]) ?? []);
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/chat/conversations?t=${Date.now()}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setConversations((data.conversations as ConversationSummary[]) ?? []);
+    } catch (error) {
+      console.error("Failed to load conversations:", error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    void loadConversations();
+    const timer = window.setTimeout(() => void loadConversations(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadConversations]);
 
   // Keep the list live: any new message refreshes ordering + previews.
@@ -66,10 +91,63 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
   }, [supabase, currentUserId, loadConversations]);
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
+  const filteredConversations = conversations.filter((conversation) =>
+    `${conversation.title} ${lastMessagePreview(conversation)}`.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+
+  useEffect(() => {
+    if (!loading && requestedConversationId && conversations.some((conversation) => conversation.id === requestedConversationId)) {
+      markRead(currentUserId, requestedConversationId);
+    }
+  }, [conversations, currentUserId, loading, requestedConversationId]);
+
+  useEffect(() => {
+    const syncThreadFromHistory = () => {
+      setActiveId(new URLSearchParams(window.location.search).get("conversation"));
+    };
+    window.addEventListener("popstate", syncThreadFromHistory);
+    return () => window.removeEventListener("popstate", syncThreadFromHistory);
+  }, []);
+
+  // A thread replaces the entire mobile shell, like iMessage/WhatsApp. Keep the
+  // overlay synced to the visual viewport so the keyboard resizes the thread
+  // instead of lifting the global tab bar into view.
+  useEffect(() => {
+    if (!isMobile || !activeId) return;
+    const overlay = threadOverlayRef.current;
+    if (!overlay) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const syncViewport = () => {
+      const viewport = window.visualViewport;
+      overlay.style.top = `${viewport?.offsetTop ?? 0}px`;
+      overlay.style.height = `${viewport?.height ?? window.innerHeight}px`;
+    };
+
+    syncViewport();
+    window.visualViewport?.addEventListener("resize", syncViewport);
+    window.visualViewport?.addEventListener("scroll", syncViewport);
+    window.addEventListener("resize", syncViewport);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.visualViewport?.removeEventListener("resize", syncViewport);
+      window.visualViewport?.removeEventListener("scroll", syncViewport);
+      window.removeEventListener("resize", syncViewport);
+    };
+  }, [activeId, isMobile]);
 
   const openConversation = (id: string) => {
     setActiveId(id);
+    window.history.pushState({ insightThread: true }, "", `${pathname}?conversation=${encodeURIComponent(id)}`);
     markRead(currentUserId, id);
+  };
+
+  const closeConversation = () => {
+    setActiveId(null);
+    window.history.replaceState({ ...window.history.state, insightThread: false }, "", pathname);
   };
 
   const handleCreated = async (conversationId: string) => {
@@ -83,15 +161,18 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
 
   return (
     <section
-      className="border border-border bg-surface"
+      className={isMobile ? "bg-surface" : "border border-border bg-surface"}
       style={{
         display: "grid",
         gridTemplateColumns: isMobile ? "1fr" : "320px 1fr",
-        borderRadius: "12px",
+        borderRadius: isMobile ? 0 : "12px",
         overflow: "hidden",
-        // Fill the viewport below the page heading; `dvh` shrinks with the mobile
-        // keyboard so the composer stays visible instead of hiding behind it.
-        height: isMobile ? "calc(100dvh - 15rem)" : "calc(100dvh - 13rem)",
+        // On phones the inbox is the screen, not a card inside a dashboard.
+        // Subtract the app header + tab bar, including both iPhone safe areas.
+        height: isMobile
+          ? "calc(100dvh - 60px - 64px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))"
+          : "calc(100dvh - 13rem)",
+        minHeight: isMobile ? "420px" : undefined,
       }}
     >
       {/* Conversation list */}
@@ -105,23 +186,91 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
             minWidth: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", padding: isMobile ? "10px 12px" : "14px 16px", borderBottom: "1px solid var(--color-border)" }}>
-            <p className="text-base font-semibold text-navy">{isMobile ? "Messages" : "Chats"}</p>
-            <Button size="sm" onClick={() => setShowNew(true)}>
-              <MessageSquarePlus style={{ height: "16px", width: "16px", marginRight: "6px" }} />
-              New
-            </Button>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+              padding: isMobile ? "14px 16px 12px" : "14px 16px",
+              borderBottom: "1px solid var(--color-border)",
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+              <p
+                className="font-semibold text-navy"
+                style={{ margin: 0, fontSize: isMobile ? "28px" : "16px", letterSpacing: isMobile ? "-0.03em" : undefined }}
+              >
+                Messages
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowNew(true)}
+                aria-label="Start a new conversation"
+                style={{
+                  width: "42px",
+                  height: "42px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "none",
+                  borderRadius: "50%",
+                  background: "var(--color-accent-soft)",
+                  color: "var(--color-navy)",
+                  cursor: "pointer",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                <MessageSquarePlus size={20} />
+              </button>
+            </div>
+            {isMobile && (
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  height: "38px",
+                  padding: "0 12px",
+                  borderRadius: "12px",
+                  background: "var(--color-soft)",
+                  color: "var(--color-muted)",
+                }}
+              >
+                <Search size={16} aria-hidden />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search"
+                  aria-label="Search conversations"
+                  style={{
+                    width: "100%",
+                    border: 0,
+                    outline: 0,
+                    background: "transparent",
+                    color: "var(--color-foreground)",
+                    font: "inherit",
+                    fontSize: "15px",
+                  }}
+                />
+              </label>
+            )}
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {loading ? (
               <p className="text-sm text-muted" style={{ padding: "16px" }}>Loading chats…</p>
-            ) : conversations.length === 0 ? (
-              <p className="text-sm text-muted" style={{ padding: "16px", lineHeight: 1.5 }}>
-                No chats yet. Tap <span className="font-semibold">New</span> to start a conversation or group.
-              </p>
+            ) : filteredConversations.length === 0 ? (
+              <div style={{ padding: "48px 24px", textAlign: "center" }}>
+                <p className="text-sm font-semibold text-navy" style={{ margin: 0 }}>
+                  {query ? "No conversations found" : "No messages yet"}
+                </p>
+                <p className="text-sm text-muted" style={{ margin: "6px 0 0", lineHeight: 1.5 }}>
+                  {query ? "Try a different name or message." : "Start a conversation when you need to coordinate."}
+                </p>
+              </div>
             ) : (
-              conversations.map((c) => {
+              filteredConversations.map((c) => {
                 const unreadCount = unread[c.id] ?? 0;
                 const isActive = c.id === activeId;
                 return (
@@ -135,17 +284,19 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
                       gap: "12px",
                       width: "100%",
                       textAlign: "left",
-                      padding: "12px 16px",
+                      padding: isMobile ? "11px 16px" : "12px 16px",
+                      minHeight: isMobile ? "72px" : undefined,
                       border: "none",
                       borderBottom: "1px solid var(--color-border)",
                       background: isActive ? "var(--color-soft)" : "transparent",
                       cursor: "pointer",
+                      WebkitTapHighlightColor: "transparent",
                     }}
                   >
                     <div
                       style={{
-                        width: "42px",
-                        height: "42px",
+                        width: isMobile ? "50px" : "42px",
+                        height: isMobile ? "50px" : "42px",
                         borderRadius: "50%",
                         flexShrink: 0,
                         display: "flex",
@@ -160,35 +311,44 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
                       {c.isGroup ? <Users size={18} /> : initials(c.title)}
                     </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                        <p className="text-sm font-semibold text-navy" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
+                        <p className="text-sm font-semibold text-navy" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {c.title}
+                        </p>
+                        <span
+                          className="text-xs"
+                          style={{ flexShrink: 0, color: unreadCount > 0 ? "var(--color-navy)" : "var(--color-muted)", fontWeight: unreadCount > 0 ? 600 : 400 }}
+                        >
+                          {conversationTime(c)}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
+                        <p className="text-sm text-muted" style={{ minWidth: 0, flex: 1, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {c.isGroup ? `${c.members.length} members · ` : ""}
+                          {lastMessagePreview(c)}
                         </p>
                         {unreadCount > 0 && (
                           <span
+                            aria-label={`${unreadCount} unread messages`}
                             style={{
                               flexShrink: 0,
                               background: "var(--color-navy)",
                               color: "#fff",
                               borderRadius: "9999px",
-                              fontSize: "11px",
+                              fontSize: "10px",
                               fontWeight: 700,
-                              minWidth: "18px",
-                              height: "18px",
+                              minWidth: "19px",
+                              height: "19px",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                               padding: "0 5px",
                             }}
                           >
-                            {unreadCount}
+                            {unreadCount > 99 ? "99+" : unreadCount}
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {c.isGroup ? `${c.members.length} members · ` : ""}
-                        {lastMessagePreview(c)}
-                      </p>
                     </div>
                   </button>
                 );
@@ -200,13 +360,31 @@ export function ChatsPanel({ currentUserId }: ChatsPanelProps) {
 
       {/* Active conversation */}
       {showThread && (
-        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
+        <div
+          ref={isMobile ? threadOverlayRef : undefined}
+          style={isMobile
+            ? {
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: "100dvh",
+                zIndex: 80,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+                minWidth: 0,
+                background: "var(--color-surface)",
+              }
+            : { display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 }}
+        >
           {activeConversation ? (
             <ActiveConversation
               key={activeConversation.id}
               conversation={activeConversation}
               currentUserId={currentUserId}
-              onBack={isMobile ? () => setActiveId(null) : undefined}
+              onBack={isMobile ? closeConversation : undefined}
+              fullScreen={isMobile}
             />
           ) : (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
@@ -232,14 +410,19 @@ function ActiveConversation({
   conversation,
   currentUserId,
   onBack,
+  fullScreen = false,
 }: {
   conversation: ConversationSummary;
   currentUserId: string;
   onBack?: () => void;
+  fullScreen?: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [initial, setInitial] = useState<ChatMessage[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const handleIncomingMessage = useCallback(() => {
+    markRead(currentUserId, conversation.id);
+  }, [conversation.id, currentUserId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -274,9 +457,12 @@ function ActiveConversation({
             display: "flex",
             alignItems: "center",
             gap: "10px",
-            padding: "8px 12px",
-            borderBottom: "1px solid var(--color-border)",
-            backgroundColor: "var(--color-surface)",
+            padding: "8px 10px",
+            paddingTop: fullScreen ? "calc(8px + env(safe-area-inset-top, 0px))" : "8px",
+            borderBottom: "1px solid color-mix(in oklab, var(--color-border) 75%, transparent)",
+            backgroundColor: "color-mix(in oklab, var(--color-surface) 94%, transparent)",
+            backdropFilter: "saturate(180%) blur(18px)",
+            WebkitBackdropFilter: "saturate(180%) blur(18px)",
             flexShrink: 0,
           }}
         >
@@ -302,8 +488,8 @@ function ActiveConversation({
           <div
             aria-hidden
             style={{
-              width: "34px",
-              height: "34px",
+              width: "40px",
+              height: "40px",
               borderRadius: "50%",
               flexShrink: 0,
               display: "flex",
@@ -339,6 +525,8 @@ function ActiveConversation({
             initialHasMore={hasMore}
             fill
             hideHeader={Boolean(onBack)}
+            showSenderNames={conversation.isGroup}
+            onIncomingMessage={handleIncomingMessage}
           />
         </div>
       )}
