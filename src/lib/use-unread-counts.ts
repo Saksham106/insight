@@ -4,7 +4,7 @@ import type { ChatContact } from "@/lib/chat-types";
 import { useUnread } from "@/lib/unread-context";
 
 // Storage helpers + event moved to unread-context; re-exported for existing imports.
-export { MARK_READ_EVENT, getLastRead, markRead } from "@/lib/unread-context";
+export { MARK_READ_EVENT, markRead } from "@/lib/unread-context";
 
 // Thin view over the layout-level UnreadProvider: no queries or subscriptions of
 // its own. `total` preserves the old semantics (sum over this caller's contacts).

@@ -23,6 +23,8 @@ interface SettingsPageProps {
   isActive: boolean;
   avatarUrl: string | null;
   reminder24h: boolean;
+  notifyChatMessages: boolean;
+  notifySessionChanges: boolean;
   timezone: string | null;
   createdAt: string | null;
 }
@@ -48,6 +50,8 @@ export function SettingsPage({
   isActive,
   avatarUrl,
   reminder24h,
+  notifyChatMessages,
+  notifySessionChanges,
   timezone,
   createdAt,
 }: SettingsPageProps) {
@@ -66,6 +70,8 @@ export function SettingsPage({
   const [selectedTimezone, setSelectedTimezone] = useState(timezone ?? "");
   const [reminderState, setReminderState] = useState({
     reminder_24h: reminder24h,
+    notify_chat_messages: notifyChatMessages,
+    notify_session_changes: notifySessionChanges,
   });
   const [reminderSaving, setReminderSaving] = useState<string | null>(null);
   const [reminderError, setReminderError] = useState<string | null>(null);
@@ -138,7 +144,7 @@ export function SettingsPage({
   };
 
 
-  const handleReminderToggle = async (field: "reminder_24h", value: boolean) => {
+  const handleReminderToggle = async (field: "reminder_24h" | "notify_chat_messages" | "notify_session_changes", value: boolean) => {
     setReminderError(null);
     setReminderSaving(field);
     setReminderState((current) => ({ ...current, [field]: value }));
@@ -153,7 +159,9 @@ export function SettingsPage({
     if (!response.ok) {
       setReminderState((current) => ({ ...current, [field]: !value }));
       setReminderError("Could not save reminder preferences.");
+      return;
     }
+    window.dispatchEvent(new Event("insight-notification-preferences-changed"));
   };
 
   const handlePasswordSave = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -416,7 +424,7 @@ export function SettingsPage({
                 Install Insight Academy and keep it up to date.
               </p>
             </CardHeader>
-            <CardContent>
+            <CardContent className="settings-section-content">
               <PwaAppSettings />
             </CardContent>
           </Card>
@@ -427,7 +435,7 @@ export function SettingsPage({
             <CardHeader className="settings-section-header">
               <CardTitle className="text-navy">Notifications</CardTitle>
               <p className="text-sm text-muted" style={{ margin: 0 }}>
-                Turn on phone alerts and choose your session reminders.
+                Choose exactly which alerts and reminders you receive.
               </p>
             </CardHeader>
             <CardContent style={{ display: "flex", flexDirection: "column", gap: "18px", minWidth: 0 }}>
@@ -435,6 +443,25 @@ export function SettingsPage({
                 <PushNotificationControl variant="settings" />
               </div>
               <NotificationQuickGuide />
+              <div style={{ height: "1px", background: "var(--color-border)" }} />
+              <div>
+                <p className="text-sm font-semibold text-navy" style={{ margin: 0 }}>Alert categories</p>
+                <p className="text-xs text-muted" style={{ margin: "3px 0 0" }}>Control phone and in-app alerts without hiding the underlying messages or sessions.</p>
+              </div>
+              <ReminderToggle
+                title="Chat messages"
+                description="Send a phone alert when someone messages you."
+                checked={reminderState.notify_chat_messages}
+                disabled={reminderSaving === "notify_chat_messages"}
+                onChange={(value) => void handleReminderToggle("notify_chat_messages", value)}
+              />
+              <ReminderToggle
+                title="Session changes"
+                description="Show alerts for session proposals, changes, and cancellations."
+                checked={reminderState.notify_session_changes}
+                disabled={reminderSaving === "notify_session_changes"}
+                onChange={(value) => void handleReminderToggle("notify_session_changes", value)}
+              />
               <div style={{ height: "1px", background: "var(--color-border)" }} />
               <div>
                 <p className="text-sm font-semibold text-navy" style={{ margin: 0 }}>Session reminders</p>

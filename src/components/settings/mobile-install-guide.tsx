@@ -160,9 +160,9 @@ export function NotificationQuickGuide() {
     ["3", "Enable and allow", "Tap Enable, then approve the phone’s Allow prompt."],
   ];
   return (
-    <section aria-label="Notification setup guide" style={{ display: "flex", width: "100%", maxWidth: "100%", minWidth: 0, gap: "8px", overflowX: "auto", paddingBottom: "4px", WebkitOverflowScrolling: "touch", scrollSnapType: "x proximity" }}>
+    <section className="notification-quick-guide" aria-label="Notification setup guide">
       {steps.map(([number, title, detail]) => (
-        <div key={number} style={{ flex: "1 0 160px", maxWidth: "210px", padding: "12px", borderRadius: "10px", background: "var(--color-soft)", border: "1px solid var(--color-border)", scrollSnapAlign: "start" }}>
+        <div key={number} style={{ minWidth: 0, padding: "12px", borderRadius: "10px", background: "var(--color-soft)", border: "1px solid var(--color-border)" }}>
           <span style={{ width: "24px", height: "24px", display: "grid", placeItems: "center", borderRadius: "7px", background: "var(--color-navy)", color: "white", fontSize: "11px", fontWeight: 800 }}>{number}</span>
           <p className="text-sm font-semibold text-navy" style={{ margin: "9px 0 0" }}>{title}</p>
           <p className="text-xs text-muted" style={{ margin: "3px 0 0", lineHeight: 1.4 }}>{detail}</p>

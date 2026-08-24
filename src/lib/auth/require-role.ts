@@ -40,12 +40,12 @@ export async function requireUser(): Promise<UserProfile> {
         .single();
 
       if (fallbackData) {
-        return { ...fallbackData, avatar_url: null } as UserProfile;
+        return { ...fallbackData, avatar_url: null, primary_role: fallbackData.role, available_roles: [fallbackData.role] } as UserProfile;
       }
     }
 
     if (data) {
-      return data as UserProfile;
+      return { ...data, primary_role: data.role, available_roles: [data.role] } as UserProfile;
     }
   }
 

@@ -197,7 +197,22 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: var(--shadow-lift);
 }
 
+.notification-quick-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
 @media (max-width: 768px) {
+  .notification-quick-guide {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
   .app-modal-backdrop {
     align-items: flex-end !important;
     padding: env(safe-area-inset-top, 0px) 0 0 !important;
@@ -231,6 +246,10 @@ h1, h2, h3, h4, h5, h6 {
 
   .settings-section-header {
     display: none !important;
+  }
+
+  .settings-section-content {
+    padding-top: 20px;
   }
 
   .landing-contact-grid {

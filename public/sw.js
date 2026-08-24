@@ -3,7 +3,7 @@
 //   - navigations: network-first, cache fallback so the shell opens offline
 //   - static assets (images/CSS/JS/fonts): stale-while-revalidate
 //   - never touches Supabase/API traffic — auth and data must stay live
-const CACHE_NAME = "insight-v7";
+const CACHE_NAME = "insight-v8";
 const OFFLINE_FALLBACKS = ["/", "/login"];
 
 self.addEventListener("install", (event) => {

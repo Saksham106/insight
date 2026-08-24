@@ -8,9 +8,7 @@ import { Suspense } from "react";
 import { ComposeEmailButton } from "@/components/admin/compose-email-button";
 import { InviteUserForm } from "@/components/admin/invite-user-form";
 import { AdminChatsViewer } from "@/components/admin/admin-chats-viewer";
-import { ParentsTable } from "@/components/admin/parents-table";
-import { StudentsTable } from "@/components/admin/students-table";
-import { TeachersTable } from "@/components/admin/teachers-table";
+import { UsersDirectory } from "@/components/admin/users-directory";
 import type {
   AdminAssignmentRow,
   AdminSession,
@@ -181,20 +179,14 @@ export function AdminDashboard({
         <>
           <InviteUserForm />
 
-          <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <h2 className="text-lg font-semibold text-navy">Teachers</h2>
-            <TeachersTable teachers={teachers} allLabels={labels} />
-          </section>
-
-          <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <h2 className="text-lg font-semibold text-navy">Students</h2>
-            <StudentsTable students={studentsWithParents} allParents={parentOptions} />
-          </section>
-
-          <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <h2 className="text-lg font-semibold text-navy">Parents</h2>
-            <ParentsTable parents={parentsWithChildren} allStudents={studentOptions} />
-          </section>
+          <UsersDirectory
+            teachers={teachers}
+            students={studentsWithParents}
+            parents={parentsWithChildren}
+            allLabels={labels}
+            studentOptions={studentOptions}
+            parentOptions={parentOptions}
+          />
         </>
       )}
 
