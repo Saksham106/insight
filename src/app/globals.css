@@ -229,6 +229,10 @@ h1, h2, h3, h4, h5, h6 {
     grid-template-columns: 1fr !important;
   }
 
+  .settings-section-header {
+    display: none !important;
+  }
+
   .landing-contact-grid {
     grid-template-columns: 1fr !important;
   }
