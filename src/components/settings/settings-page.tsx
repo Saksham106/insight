@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bell, Camera, CheckCircle, KeyRound, Smartphone, UserRound } from "lucide-react";
+import { Bell, Camera, CheckCircle, ChevronLeft, ChevronRight, KeyRound, Smartphone, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { PushNotificationControl } from "@/components/layout/push-notification-c
 import { NotificationQuickGuide } from "@/components/settings/mobile-install-guide";
 import { PwaAppSettings } from "@/components/settings/pwa-app-settings";
 import { createClient } from "@/lib/supabase/client";
+import { useMediaQuery } from "@/lib/use-media-query";
 
 type SettingsTab = "account" | "app" | "notifications" | "password";
 
@@ -33,11 +34,11 @@ const roleLabels: Record<SettingsPageProps["role"], string> = {
   parent: "Parent",
 };
 
-const tabs: { id: SettingsTab; label: string; icon: typeof UserRound }[] = [
-  { id: "account", label: "Account", icon: UserRound },
-  { id: "app", label: "Mobile app", icon: Smartphone },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "password", label: "Password", icon: KeyRound },
+const tabs: { id: SettingsTab; label: string; description: string; icon: typeof UserRound }[] = [
+  { id: "account", label: "Account", description: "Profile, email, and timezone", icon: UserRound },
+  { id: "app", label: "Mobile app", description: "Install and update the app", icon: Smartphone },
+  { id: "notifications", label: "Notifications", description: "Phone alerts and reminders", icon: Bell },
+  { id: "password", label: "Password", description: "Change your sign-in password", icon: KeyRound },
 ];
 
 export function SettingsPage({
@@ -51,9 +52,11 @@ export function SettingsPage({
   createdAt,
 }: SettingsPageProps) {
   const router = useRouter();
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
+  const [mobileSection, setMobileSection] = useState<SettingsTab | null>(null);
   const [name, setName] = useState(fullName);
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState(avatarUrl);
   const [accountStatus, setAccountStatus] = useState<string | null>(null);
@@ -217,41 +220,74 @@ export function SettingsPage({
     setPasswordSuccess(true);
   };
 
+  const selectedTab = isMobile ? mobileSection : activeTab;
+  const selectedLabel = tabs.find((tab) => tab.id === mobileSection)?.label;
+
+  const openSection = (id: SettingsTab) => {
+    if (isMobile) {
+      setMobileSection(id);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    setActiveTab(id);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate" style={{ marginBottom: "8px" }}>
-            Insight Academy
-          </p>
-          <h1 className="text-navy" style={{ fontSize: "28px", fontWeight: 700, margin: 0 }}>
-            Settings
-          </h1>
-          <p className="text-sm text-muted" style={{ marginTop: "6px" }}>
-            Manage your account, mobile app, notifications, and password.
-          </p>
+      {isMobile && mobileSection ? (
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <button
+            type="button"
+            aria-label="Back to Settings"
+            onClick={() => {
+              setMobileSection(null);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            style={{ width: "40px", height: "40px", border: 0, borderRadius: "10px", display: "grid", placeItems: "center", background: "var(--color-soft)", color: "var(--color-navy)", cursor: "pointer", flexShrink: 0 }}
+          >
+            <ChevronLeft size={21} />
+          </button>
+          <div>
+            <p className="text-xs text-muted" style={{ margin: 0 }}>Settings</p>
+            <h1 className="text-navy" style={{ fontSize: "24px", fontWeight: 700, margin: "2px 0 0" }}>{selectedLabel}</h1>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate" style={{ marginBottom: "8px" }}>
+              Insight Academy
+            </p>
+            <h1 className="text-navy" style={{ fontSize: "28px", fontWeight: 700, margin: 0 }}>
+              Settings
+            </h1>
+            <p className="text-sm text-muted" style={{ marginTop: "6px" }}>
+              Manage your account, mobile app, notifications, and password.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="settings-layout" style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: "20px", alignItems: "start" }}>
-        <Card>
-          <CardContent style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "4px" }}>
-            {tabs.map(({ id, label, icon: Icon }) => {
-              const active = activeTab === id;
+        {(!isMobile || mobileSection === null) && <Card>
+          <CardContent style={{ padding: isMobile ? 0 : "10px", display: "flex", flexDirection: "column", gap: isMobile ? 0 : "4px", overflow: "hidden" }}>
+            {tabs.map(({ id, label, description, icon: Icon }, index) => {
+              const active = !isMobile && activeTab === id;
               return (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setActiveTab(id)}
+                  onClick={() => openSection(id)}
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "10px",
+                    gap: "12px",
                     width: "100%",
-                    minHeight: "42px",
-                    border: "1px solid transparent",
-                    borderRadius: "8px",
-                    padding: "0 12px",
+                    minHeight: isMobile ? "68px" : "42px",
+                    border: 0,
+                    borderTop: isMobile && index > 0 ? "1px solid var(--color-border)" : "none",
+                    borderRadius: isMobile ? 0 : "8px",
+                    padding: isMobile ? "10px 14px" : "0 12px",
                     background: active ? "var(--color-accent-soft)" : "transparent",
                     color: active ? "var(--color-navy)" : "var(--color-slate)",
                     cursor: "pointer",
@@ -260,17 +296,23 @@ export function SettingsPage({
                     textAlign: "left",
                   }}
                 >
-                  <Icon size={16} />
-                  {label}
+                  <span style={{ width: isMobile ? "38px" : "auto", height: isMobile ? "38px" : "auto", borderRadius: "10px", display: "grid", placeItems: "center", background: isMobile ? "var(--color-soft)" : "transparent", color: "var(--color-navy)", flexShrink: 0 }}>
+                    <Icon size={isMobile ? 18 : 16} />
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", color: "var(--color-navy)", fontWeight: 700 }}>{label}</span>
+                    {isMobile && <span className="text-xs text-muted" style={{ display: "block", marginTop: "2px", fontWeight: 400 }}>{description}</span>}
+                  </span>
+                  {isMobile && <ChevronRight size={18} color="var(--color-muted)" />}
                 </button>
               );
             })}
           </CardContent>
-        </Card>
+        </Card>}
 
-        {activeTab === "account" && (
+        {selectedTab === "account" && (
           <Card>
-            <CardHeader>
+            <CardHeader className="settings-section-header">
               <CardTitle className="text-navy">Account</CardTitle>
               <p className="text-sm text-muted" style={{ margin: 0 }}>
                 Update your profile and review your account details.
@@ -366,9 +408,9 @@ export function SettingsPage({
           </Card>
         )}
 
-        {activeTab === "app" && (
+        {selectedTab === "app" && (
           <Card>
-            <CardHeader>
+            <CardHeader className="settings-section-header">
               <CardTitle className="text-navy">Mobile app</CardTitle>
               <p className="text-sm text-muted" style={{ margin: 0 }}>
                 Install Insight Academy and keep it up to date.
@@ -380,9 +422,9 @@ export function SettingsPage({
           </Card>
         )}
 
-        {activeTab === "notifications" && (
+        {selectedTab === "notifications" && (
           <Card style={{ minWidth: 0 }}>
-            <CardHeader>
+            <CardHeader className="settings-section-header">
               <CardTitle className="text-navy">Notifications</CardTitle>
               <p className="text-sm text-muted" style={{ margin: 0 }}>
                 Turn on phone alerts and choose your session reminders.
@@ -413,9 +455,9 @@ export function SettingsPage({
           </Card>
         )}
 
-        {activeTab === "password" && (
+        {selectedTab === "password" && (
           <Card>
-            <CardHeader>
+            <CardHeader className="settings-section-header">
               <CardTitle className="text-navy">Password</CardTitle>
               <p className="text-sm text-muted" style={{ margin: 0 }}>
                 Change the password you use to sign in.

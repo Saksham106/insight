@@ -1,68 +1,74 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
-import { Bell, Check, ChevronLeft, ChevronRight, Copy, MoreHorizontal, Share2, Smartphone } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 
 export type MobilePlatform = "ios" | "android";
-type Artwork = "safari" | "ios-menu" | "ios-share" | "ios-add" | "home" | "chrome" | "android-menu" | "android-install" | "notify";
 
 interface GuideStep {
   title: string;
   detail: string;
-  artwork: Artwork;
+  image: string;
+  alt: string;
+
 }
 
 const IOS_STEPS: GuideStep[] = [
   {
     title: "Open Insight Academy in Safari",
     detail: "Open Safari and go to myinsightacademy.com. Apple only allows Home Screen installation from Safari.",
-    artwork: "safari",
+    image: "/onboarding/iphone-safari.webp",
+    alt: "Real iPhone Safari screen open on Insight Academy with the website address visible at the bottom",
+
   },
   {
     title: "Tap the three dots",
     detail: "Tap the three dots beside myinsightacademy.com at the bottom of your screen.",
-    artwork: "ios-menu",
+    image: "/onboarding/iphone-more-menu.webp",
+    alt: "Real iPhone Safari toolbar with the three-dot menu beside myinsightacademy.com",
+
   },
   {
     title: "Tap Share",
-    detail: "In the menu that opens, tap Share.",
-    artwork: "ios-share",
+    detail: "The Safari menu opens above the page. Tap Share at the top.",
+    image: "/onboarding/iphone-share.webp",
+    alt: "Real iPhone Safari menu with Share as the first action",
+
   },
   {
     title: "Add to Home Screen",
-    detail: "Scroll down in the Share menu, then tap Add to Home Screen and tap Add.",
-    artwork: "ios-add",
-  },
-  {
-    title: "Turn on notifications",
-    detail: "Open the new Insight Academy app, tap the bell, tap Enable, then tap Allow on the iPhone prompt.",
-    artwork: "notify",
+    detail: "Scroll down in the Share Sheet, tap Add to Home Screen, then tap Add.",
+    image: "/onboarding/iphone-add-home-redacted.webp",
+    alt: "Real redacted iPhone Share Sheet with Add to Home Screen at the bottom",
+
   },
 ];
 
 const ANDROID_STEPS: GuideStep[] = [
   {
     title: "Open Insight Academy in Chrome",
-    detail: "Open Chrome and go to myinsightacademy.com.",
-    artwork: "chrome",
+    detail: "Go to myinsightacademy.com in Chrome, then tap the three dots beside the address bar.",
+    image: "/onboarding/android-chrome.webp",
+    alt: "Real Android Chrome screen open on the Insight Academy login page",
+
   },
   {
-    title: "Open Chrome’s menu",
-    detail: "Tap the three dots beside the address bar.",
-    artwork: "android-menu",
+    title: "Add it to your Home screen",
+    detail: "Tap Add to Home screen. Chrome may instead call this Install and create shortcut or Install app.",
+    image: "/onboarding/android-menu.webp",
+    alt: "Real Android Chrome menu with Add to Home screen visible",
+
   },
   {
-    title: "Install the app",
-    detail: "Tap Install and create shortcut. Some phones call this Install app or Add to Home screen.",
-    artwork: "android-install",
-  },
-  {
-    title: "Turn on notifications",
-    detail: "Open Insight Academy, tap the bell, tap Enable, then approve Chrome’s notification prompt.",
-    artwork: "notify",
+    title: "Confirm the shortcut",
+    detail: "Keep the name Insight Academy and tap Add.",
+    image: "/onboarding/android-add.webp",
+    alt: "Real Android Create shortcut dialog for Insight Academy with the Add action visible",
+
   },
 ];
 
@@ -105,7 +111,7 @@ export function MobileInstallGuide({ platform, onClose }: { platform: MobilePlat
         }}
         style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}
       >
-        <GuideArtwork kind={current.artwork} platform={platform} />
+        <ScreenshotStep step={current} />
 
         <div aria-live="polite" style={{ minHeight: "74px" }}>
           <p className="text-base font-semibold text-navy" style={{ margin: 0 }}>{current.title}</p>
@@ -120,13 +126,7 @@ export function MobileInstallGuide({ platform, onClose }: { platform: MobilePlat
         )}
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-          <button
-            type="button"
-            aria-label="Previous step"
-            disabled={step === 0}
-            onClick={() => go(step - 1)}
-            style={navButtonStyle(step === 0)}
-          >
+          <button type="button" aria-label="Previous step" disabled={step === 0} onClick={() => go(step - 1)} style={navButtonStyle(step === 0)}>
             <ChevronLeft size={18} />
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -156,7 +156,7 @@ export function MobileInstallGuide({ platform, onClose }: { platform: MobilePlat
 export function NotificationQuickGuide() {
   const steps = [
     ["1", "Install the app", "Add Insight Academy to your Home Screen first."],
-    ["2", "Tap the bell", "Open the app and tap the bell in the top-right corner."],
+    ["2", "Open Notifications", "In the installed app, open Settings and tap Notifications."],
     ["3", "Enable and allow", "Tap Enable, then approve the phone’s Allow prompt."],
   ];
   return (
@@ -172,110 +172,11 @@ export function NotificationQuickGuide() {
   );
 }
 
-function GuideArtwork({ kind, platform }: { kind: Artwork; platform: MobilePlatform }) {
-  const menuOpen = kind === "ios-share" || kind === "ios-add" || kind === "android-menu" || kind === "android-install";
+function ScreenshotStep({ step }: { step: GuideStep }) {
   return (
-    <div style={{ height: "250px", display: "grid", placeItems: "center", borderRadius: "16px", overflow: "hidden", background: "linear-gradient(145deg, var(--color-soft), var(--color-background))", border: "1px solid var(--color-border)" }}>
-      {kind === "home" ? <HomeScreen /> : (
-        <div style={{ width: "174px", height: "224px", borderRadius: "26px", border: "5px solid var(--color-navy)", background: "var(--color-background)", overflow: "hidden", position: "relative", boxShadow: "0 14px 28px rgba(36, 53, 65, 0.16)" }}>
-          <div style={{ height: "18px", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 12px", fontSize: "7px", fontWeight: 800, background: "var(--color-surface)" }}><span>9:41</span><span>● ●</span></div>
-          <MiniApp />
-          {platform === "ios" ? <SafariBar highlight={kind === "ios-menu"} /> : <ChromeBar highlight={kind === "android-menu"} />}
-          {menuOpen && <BrowserMenu kind={kind} />}
-          {kind === "notify" && <NotificationMock />}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MiniApp() {
-  return (
-    <div style={{ position: "absolute", inset: "18px 0 42px", padding: "10px", background: "var(--color-background)" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontFamily: "serif", fontSize: "10px", fontWeight: 800, color: "var(--color-navy)" }}>Insight Academy</span>
-        <Bell size={11} color="var(--color-navy)" />
-      </div>
-      <div style={{ marginTop: "13px", height: "30px", borderRadius: "8px", background: "var(--color-accent-soft)" }} />
-      <div style={{ marginTop: "7px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-        <div style={{ height: "50px", borderRadius: "8px", background: "var(--color-surface)", border: "1px solid var(--color-border)" }} />
-        <div style={{ height: "50px", borderRadius: "8px", background: "var(--color-surface)", border: "1px solid var(--color-border)" }} />
-      </div>
-    </div>
-  );
-}
-
-function SafariBar({ highlight }: { highlight: boolean }) {
-  return (
-    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "42px", display: "flex", alignItems: "center", gap: "6px", padding: "5px 8px 8px", background: "rgba(248,248,248,.96)", borderTop: "1px solid var(--color-border)" }}>
-      <span style={{ fontSize: "10px" }}>‹</span>
-      <div style={{ flex: 1, height: "27px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "4px", padding: "0 8px", borderRadius: "10px", background: "white", fontSize: "7px", color: "var(--color-muted)", boxShadow: highlight ? "0 0 0 3px var(--color-accent-soft)" : undefined }}>
-        <span>myinsightacademy.com</span><MoreHorizontal size={13} color="var(--color-navy)" />
-      </div>
-    </div>
-  );
-}
-
-function ChromeBar({ highlight }: { highlight: boolean }) {
-  return (
-    <div style={{ position: "absolute", left: 0, right: 0, top: "18px", height: "35px", display: "flex", alignItems: "center", gap: "5px", padding: "5px 7px", background: "white", borderBottom: "1px solid var(--color-border)" }}>
-      <div style={{ flex: 1, height: "24px", borderRadius: "12px", background: "var(--color-soft)", display: "flex", alignItems: "center", padding: "0 8px", fontSize: "7px" }}>myinsightacademy.com</div>
-      <MoreHorizontal size={14} color="var(--color-navy)" style={{ boxShadow: highlight ? "0 0 0 4px var(--color-accent-soft)" : undefined, borderRadius: "50%" }} />
-    </div>
-  );
-}
-
-function BrowserMenu({ kind }: { kind: Artwork }) {
-  const share = kind === "ios-share";
-  const add = kind === "ios-add";
-  const androidInstall = kind === "android-install";
-  return (
-    <div style={{ position: "absolute", left: "8px", right: "8px", bottom: kind.startsWith("ios") ? "44px" : "12px", padding: "8px", borderRadius: "13px", background: "rgba(255,255,255,.98)", border: "1px solid var(--color-border)", boxShadow: "0 10px 24px rgba(35,44,50,.2)" }}>
-      {add ? (
-        <>
-          <MenuRow icon={<Share2 size={11} />} label="Share" />
-          <MenuRow icon={<Smartphone size={11} />} label="Add to Home Screen" active />
-          <MenuRow icon={<Copy size={11} />} label="Copy" />
-        </>
-      ) : androidInstall ? (
-        <>
-          <MenuRow icon={<Smartphone size={11} />} label="Install and create shortcut" active />
-          <MenuRow icon={<Share2 size={11} />} label="Share" />
-        </>
-      ) : (
-        <>
-          <MenuRow icon={<Share2 size={11} />} label="Share" active={share} />
-          <MenuRow icon={<Copy size={11} />} label="Copy" />
-          <MenuRow icon={<Smartphone size={11} />} label={kind === "android-menu" ? "Install and create shortcut" : "Add to Home Screen"} />
-        </>
-      )}
-    </div>
-  );
-}
-
-function MenuRow({ icon, label, active = false }: { icon: React.ReactNode; label: string; active?: boolean }) {
-  return <div style={{ height: "28px", display: "flex", alignItems: "center", gap: "8px", padding: "0 8px", borderRadius: "7px", background: active ? "var(--color-accent-soft)" : "transparent", color: "var(--color-navy)", fontSize: "8px", fontWeight: active ? 800 : 600 }}>{icon}{label}</div>;
-}
-
-function HomeScreen() {
-  return (
-    <div style={{ width: "174px", height: "224px", borderRadius: "26px", border: "5px solid var(--color-navy)", padding: "30px 17px", background: "linear-gradient(155deg, var(--color-accent-soft), var(--color-background))" }}>
-      <div style={{ width: "46px", textAlign: "center" }}>
-        <div style={{ width: "46px", height: "46px", borderRadius: "11px", display: "grid", placeItems: "center", background: "var(--color-navy)", color: "white", fontFamily: "serif", fontSize: "18px", fontWeight: 800 }}>IA</div>
-        <p style={{ margin: "4px -8px 0", fontSize: "7px", fontWeight: 700 }}>Insight Academy</p>
-      </div>
-    </div>
-  );
-}
-
-function NotificationMock() {
-  return (
-    <div style={{ position: "absolute", left: "8px", right: "8px", top: "55px", padding: "10px", borderRadius: "13px", background: "white", border: "1px solid var(--color-border)", boxShadow: "0 10px 22px rgba(35,44,50,.2)" }}>
-      <p style={{ margin: 0, fontSize: "9px", fontWeight: 800, color: "var(--color-navy)" }}>Phone notifications</p>
-      <p style={{ margin: "3px 0 8px", fontSize: "7px", color: "var(--color-muted)" }}>Get chat alerts when the app is closed</p>
-      <div style={{ height: "24px", display: "grid", placeItems: "center", borderRadius: "8px", background: "var(--color-navy)", color: "white", fontSize: "8px", fontWeight: 800 }}>Enable</div>
-      <div style={{ marginTop: "7px", padding: "7px", borderRadius: "8px", background: "var(--color-soft)", fontSize: "7px", textAlign: "center" }}>“Insight Academy” would like to send notifications<br/><strong>Don’t Allow &nbsp; Allow</strong></div>
-    </div>
+    <figure style={{ position: "relative", height: "clamp(280px, 46dvh, 430px)", margin: 0, borderRadius: "16px", overflow: "hidden", background: "#292b2d", border: "1px solid var(--color-border)" }}>
+      <Image src={step.image} alt={step.alt} fill sizes="(max-width: 768px) 92vw, 560px" priority style={{ objectFit: "contain" }} />
+    </figure>
   );
 }
 

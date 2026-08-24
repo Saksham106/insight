@@ -156,6 +156,10 @@ export function PwaAppSettings() {
         )}
       </section>
 
+      <p className="text-xs text-muted" style={{ margin: "-2px 2px 0", lineHeight: 1.5 }}>
+        After installing: open Insight Academy, then go to Settings → Notifications to enable phone alerts.
+      </p>
+
       <section style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", padding: "16px", border: "1px solid var(--color-border)", borderRadius: "10px", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
           <span style={{ width: "40px", height: "40px", borderRadius: "10px", display: "grid", placeItems: "center", background: "var(--color-soft)", color: "var(--color-navy)", flexShrink: 0 }}>

@@ -57,18 +57,46 @@ test("keyboard focus removes stale safe-area padding without forcing a message j
   assert.doesNotMatch(chat, /if \(event\.target instanceof HTMLTextAreaElement\) \{\s*shouldAutoScrollRef\.current = true/s);
 });
 
-test("mobile onboarding uses visual, platform-correct install and notification steps", () => {
+test("mobile onboarding uses real, platform-correct install screenshots", () => {
   const app = read("src/components/settings/pwa-app-settings.tsx");
   const guide = read("src/components/settings/mobile-install-guide.tsx");
+  const iosBlock = guide.slice(guide.indexOf("const IOS_STEPS"), guide.indexOf("const ANDROID_STEPS"));
+  const androidBlock = guide.slice(guide.indexOf("const ANDROID_STEPS"), guide.indexOf("export function MobileInstallGuide"));
   assert.match(app, /<MobileInstallGuide platform=\{guide\}/);
+  assert.match(app, /Settings → Notifications/);
   assert.match(guide, /Copy website link/);
   assert.match(guide, /three dots beside myinsightacademy\.com/);
-  assert.match(guide, /Tap Share/);
-  assert.match(guide, /Add to Home Screen/);
-  assert.match(guide, /Install and create shortcut/);
+  assert.match(guide, /iphone-share\.webp/);
+  assert.match(guide, /iphone-add-home-redacted\.webp/);
+  assert.match(guide, /android-menu\.webp/);
+  assert.match(guide, /android-add\.webp/);
   assert.match(guide, /aria-label="Previous step"/);
   assert.match(guide, /aria-label="Next step"/);
-  assert.match(guide, /Turn on notifications/);
+  assert.doesNotMatch(iosBlock, /notifications/i);
+  assert.doesNotMatch(androidBlock, /notifications/i);
+  assert.doesNotMatch(guide, /function MiniApp|function SafariBar|function ChromeBar/);
+  for (const asset of [
+    "iphone-safari.webp",
+    "iphone-more-menu.webp",
+    "iphone-share.webp",
+    "iphone-add-home-redacted.webp",
+    "android-chrome.webp",
+    "android-menu.webp",
+    "android-add.webp",
+  ]) {
+    assert.ok(fs.existsSync(path.join(process.cwd(), "public/onboarding", asset)), `missing ${asset}`);
+  }
+});
+
+test("mobile Settings uses drill-in navigation instead of stacked desktop tabs", () => {
+  const settings = read("src/components/settings/settings-page.tsx");
+  const css = read("src/app/globals.css");
+  assert.match(settings, /useMediaQuery\("\(max-width: 768px\)"\)/);
+  assert.match(settings, /mobileSection/);
+  assert.match(settings, /aria-label="Back to Settings"/);
+  assert.match(settings, /<ChevronRight/);
+  assert.match(settings, /mobileSection === null/);
+  assert.match(css, /\.settings-section-header[\s\S]*display: none !important/);
 });
 
 test("Settings exposes push controls under Notifications", () => {
