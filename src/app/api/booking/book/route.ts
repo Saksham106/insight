@@ -113,7 +113,7 @@ async function sendNotification(
 
   const { data: profiles } = await admin
     .from("profiles")
-    .select("id, full_name, timezone")
+    .select("id, full_name, timezone, notify_session_changes")
     .in("id", [teacherId, studentId]);
 
   const teacherProfile = profiles?.find((p) => p.id === teacherId);
@@ -124,7 +124,7 @@ async function sendNotification(
 
   const { data: authUser } = await admin.auth.admin.getUserById(teacherId);
   const recipientEmail = authUser?.user?.email;
-  if (!recipientEmail) return;
+  if (!recipientEmail || teacherProfile?.notify_session_changes === false) return;
 
   await sendSessionEmail({
     event,

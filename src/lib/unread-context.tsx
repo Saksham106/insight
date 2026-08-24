@@ -35,28 +35,36 @@ export function UnreadProvider({ userId, children }: UnreadProviderProps) {
   const supabase = useMemo(() => createClient(), []);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const convIdsRef = useRef<Set<string>>(new Set());
+  const confirmedReadAtRef = useRef<Map<string, number>>(new Map());
+  const eventRevisionRef = useRef(0);
 
   const refresh = useCallback(async () => {
-    // Membership is the single source of truth — covers 1:1 (backfilled) and
-    // group conversations. RLS lets a user read their own participant rows.
-    const { data } = await supabase
-      .from("conversation_participants")
-      .select("conversation_id")
-      .eq("user_id", userId);
+    // A realtime insert can land while either query is in flight. Never let an
+    // older server snapshot overwrite that newer local event.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const revision = eventRevisionRef.current;
+      const { data } = await supabase
+        .from("conversation_participants")
+        .select("conversation_id")
+        .eq("user_id", userId);
 
-    const ids: string[] = (data ?? []).map((row) => row.conversation_id as string);
-    convIdsRef.current = new Set(ids);
+      const ids: string[] = (data ?? []).map((row) => row.conversation_id as string);
+      const { data: counts } = ids.length === 0
+        ? { data: [] }
+        : await supabase.rpc("get_unread_counts", {
+            p_conversations: ids.map((id) => ({ conversation_id: id, last_read: null })),
+          });
 
-    if (ids.length === 0) { setUnread({}); return; }
-    const { data: counts } = await supabase.rpc("get_unread_counts", {
-      p_conversations: ids.map((id) => ({ conversation_id: id, last_read: null })),
-    });
-    const next: Record<string, number> = {};
-    ids.forEach((id) => { next[id] = 0; });
-    (counts ?? []).forEach((row: { conversation_id: string; unread_count: number }) => {
-      next[row.conversation_id] = Number(row.unread_count) || 0;
-    });
-    setUnread(next);
+      if (revision !== eventRevisionRef.current) continue;
+      convIdsRef.current = new Set(ids);
+      const next: Record<string, number> = {};
+      ids.forEach((id) => { next[id] = 0; });
+      (counts ?? []).forEach((row: { conversation_id: string; unread_count: number }) => {
+        next[row.conversation_id] = Number(row.unread_count) || 0;
+      });
+      setUnread(next);
+      return;
+    }
   }, [supabase, userId]);
 
   useEffect(() => {
@@ -71,6 +79,10 @@ export function UnreadProvider({ userId, children }: UnreadProviderProps) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
         if (payload.new.sender_id === userId) return;
         const convId = payload.new.conversation_id as string;
+        const createdAt = Date.parse(payload.new.created_at as string);
+        const confirmedReadAt = confirmedReadAtRef.current.get(convId) ?? 0;
+        if (Number.isFinite(createdAt) && createdAt <= confirmedReadAt) return;
+        eventRevisionRef.current += 1;
         if (convIdsRef.current.has(convId)) {
           setUnread((prev) => ({ ...prev, [convId]: (prev[convId] ?? 0) + 1 }));
         } else {
@@ -88,10 +100,23 @@ export function UnreadProvider({ userId, children }: UnreadProviderProps) {
     const handler = (e: Event) => {
       const convId = (e as CustomEvent).detail?.conversationId as string | undefined;
       if (!convId) return;
+      eventRevisionRef.current += 1;
       setUnread((prev) => (prev[convId] ? { ...prev, [convId]: 0 } : prev));
-      void supabase.rpc("mark_conversation_read", { p_conversation_id: convId }).then(({ error }) => {
-        if (error) void refresh();
-      });
+      void (async () => {
+        const { data, error } = await supabase.rpc("mark_conversation_read", {
+          p_conversation_id: convId,
+        });
+        if (!error && data) {
+          confirmedReadAtRef.current.set(
+            convId,
+            Math.max(
+              confirmedReadAtRef.current.get(convId) ?? 0,
+              Date.parse(data as string),
+            ),
+          );
+        }
+        await refresh();
+      })();
     };
     window.addEventListener(MARK_READ_EVENT, handler);
     return () => window.removeEventListener(MARK_READ_EVENT, handler);
