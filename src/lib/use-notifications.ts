@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export interface Notification {
@@ -15,23 +15,31 @@ export interface Notification {
 export function useNotifications(userId: string) {
   const supabase = useMemo(() => createClient(), []);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const loadRequestRef = useRef(0);
 
   const load = useCallback(async () => {
-    const [{ data }, { data: preferences }] = await Promise.all([
-      supabase
-        .from("notifications")
-        .select("id, title, body, is_read, created_at, session_id")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(20),
-      supabase
-        .from("profiles")
-        .select("notify_session_changes")
-        .eq("id", userId)
-        .single(),
-    ]);
-    const showSessionChanges = preferences?.notify_session_changes !== false;
-    setNotifications((data ?? []).filter((notification) => showSessionChanges || notification.session_id === null));
+    const requestId = ++loadRequestRef.current;
+    const { data: preferences } = await supabase
+      .from("profiles")
+      .select("notify_session_changes")
+      .eq("id", userId)
+      .single();
+
+    if (requestId !== loadRequestRef.current) return;
+
+    let query = supabase
+      .from("notifications")
+      .select("id, title, body, is_read, created_at, session_id")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (preferences?.notify_session_changes === false) {
+      query = query.is("session_id", null);
+    }
+
+    const { data } = await query.limit(20);
+    if (requestId !== loadRequestRef.current) return;
+    setNotifications(data ?? []);
   }, [supabase, userId]);
 
   useEffect(() => {
@@ -47,6 +55,7 @@ export function useNotifications(userId: string) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, () => void load())
       .subscribe();
     return () => {
+      loadRequestRef.current += 1;
       window.clearTimeout(timer);
       void supabase.removeChannel(channel);
     };

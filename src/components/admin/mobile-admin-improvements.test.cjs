@@ -62,6 +62,20 @@ test("chat read state is server-backed so a read message cannot leave a stale ba
   assert.match(migration, /create or replace function public\.get_unread_counts/);
 });
 
+test("marking a conversation read reconciles realtime inserts against the server timestamp", () => {
+  const unread = read("src/lib/unread-context.tsx");
+  assert.match(unread, /confirmedReadAtRef/);
+  assert.match(unread, /eventRevisionRef/);
+  assert.match(unread, /payload\.new\.created_at/);
+  assert.match(unread, /data[\s\S]*confirmedReadAtRef\.current\.set/);
+  assert.match(unread, /await refresh\(\)/);
+});
+
+test("out-of-order mark-read responses cannot move the confirmed cutoff backward", () => {
+  const unread = read("src/lib/unread-context.tsx");
+  assert.match(unread, /Math\.max\([\s\S]*confirmedReadAtRef\.current\.get\(convId\)[\s\S]*Date\.parse\(data as string\)/);
+});
+
 test("notification settings control chat alerts, session changes, and reminders", () => {
   const settings = read("src/components/settings/settings-page.tsx");
   const route = read("src/app/api/user/reminders/route.ts");
@@ -75,6 +89,27 @@ test("notification settings control chat alerts, session changes, and reminders"
   assert.match(notifications, /notify_session_changes/);
   assert.match(settings, /insight-notification-preferences-changed/);
   assert.match(notifications, /insight-notification-preferences-changed/);
+});
+
+test("every session-change email producer honors the recipient preference", () => {
+  for (const path of [
+    "src/lib/email/session-notify.ts",
+    "src/app/api/sessions/route.ts",
+    "src/app/api/sessions/[id]/route.ts",
+    "src/app/api/booking/book/route.ts",
+  ]) {
+    const producer = read(path);
+    assert.match(producer, /notify_session_changes/, `${path} must load the preference`);
+    assert.match(producer, /notify_session_changes\s*===\s*false/, `${path} must suppress opted-out email`);
+  }
+});
+
+test("notification reloads cannot overwrite newer state and filter before the result limit", () => {
+  const notifications = read("src/lib/use-notifications.ts");
+  assert.match(notifications, /loadRequestRef/);
+  assert.match(notifications, /requestId\s*!==\s*loadRequestRef\.current/);
+  assert.match(notifications, /\.is\("session_id", null\)[\s\S]*\.limit\(20\)/);
+  assert.match(notifications, /return \(\) => \{[\s\S]*loadRequestRef\.current \+= 1/);
 });
 
 test("notification setup steps stack cleanly on narrow screens", () => {

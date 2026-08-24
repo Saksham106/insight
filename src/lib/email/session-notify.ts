@@ -38,11 +38,11 @@ export async function notifyAssignmentBothParties(params: {
     recipients.map(async (r) => {
       const [{ data: authUser }, { data: recipientProfile }] = await Promise.all([
         admin.auth.admin.getUserById(r.id),
-        admin.from("profiles").select("timezone").eq("id", r.id).single(),
+        admin.from("profiles").select("timezone, notify_session_changes").eq("id", r.id).single(),
       ]);
 
       const recipientEmail = authUser?.user?.email;
-      if (!recipientEmail) return;
+      if (!recipientEmail || recipientProfile?.notify_session_changes === false) return;
 
       await sendSessionEmail({
         event: params.event,

@@ -105,11 +105,11 @@ async function sendNotification(
 
   const [{ data: authUser }, { data: recipientProfile }] = await Promise.all([
     admin.auth.admin.getUserById(recipientId),
-    admin.from("profiles").select("timezone").eq("id", recipientId).single(),
+    admin.from("profiles").select("timezone, notify_session_changes").eq("id", recipientId).single(),
   ]);
 
   const recipientEmail = authUser?.user?.email;
-  if (!recipientEmail) return;
+  if (!recipientEmail || recipientProfile?.notify_session_changes === false) return;
 
   await sendSessionEmail({
     event,
