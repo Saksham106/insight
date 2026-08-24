@@ -12,7 +12,7 @@ function urlBase64ToUint8Array(value: string) {
   return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
 }
 
-export function PushNotificationControl() {
+export function PushNotificationControl({ variant = "sheet" }: { variant?: "sheet" | "settings" }) {
   const [state, setState] = useState<PushState>("loading");
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -110,12 +110,16 @@ export function PushNotificationControl() {
   if (state === "loading" || state === "unsupported" || state === "unconfigured") return null;
 
   return (
-    <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+    <div
+      style={variant === "settings"
+        ? { padding: "16px", border: "1px solid var(--color-border)", borderRadius: "10px", background: "var(--color-surface)" }
+        : { padding: "12px 16px", borderBottom: "1px solid var(--color-border)" }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
         <div style={{ width: "36px", height: "36px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-accent-soft)", color: "var(--color-navy)", flexShrink: 0 }}>
           <BellRing size={17} />
         </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ minWidth: "140px", flex: 1 }}>
           <p className="text-sm font-semibold text-navy" style={{ margin: 0 }}>Phone notifications</p>
           <p className="text-xs text-muted" style={{ margin: "2px 0 0", lineHeight: 1.35 }}>
             {state === "on" ? "Enabled on this device" : state === "blocked" ? "Blocked in phone settings" : "Get chat alerts when the app is closed"}

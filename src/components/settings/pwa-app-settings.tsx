@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Download, MoreVertical, RefreshCw, Share, Smartphone } from "lucide-react";
+import { CheckCircle2, RefreshCw, Smartphone } from "lucide-react";
 
 import type { InsightInstallPromptEvent } from "@/components/service-worker-boundary";
+import { MobileInstallGuide, type MobilePlatform } from "@/components/settings/mobile-install-guide";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
 
-type Guide = "ios" | "android" | null;
+type Guide = MobilePlatform | null;
 type UpdateState = "idle" | "checking" | "current" | "ready" | "error";
 
 function isStandalone() {
@@ -166,35 +166,7 @@ export function PwaAppSettings() {
 
       {installMessage && <p className="text-sm text-muted" style={{ margin: 0 }}>{installMessage}</p>}
 
-      {guide === "ios" && (
-        <Modal title="Install on iPhone" description="Apple requires three quick Safari steps." onClose={() => setGuide(null)}>
-          <InstallStep number="1" icon={<Smartphone size={18} />} title="Open in Safari" detail="If you are in another browser, open myinsightacademy.com in Safari." />
-          <InstallStep number="2" icon={<Share size={18} />} title="Tap Share" detail="Tap the square with the upward arrow in Safari's toolbar." />
-          <InstallStep number="3" icon={<Download size={18} />} title="Add to Home Screen" detail="Scroll if needed, tap Add to Home Screen, then tap Add." />
-          <p className="text-xs text-muted" style={{ margin: 0, lineHeight: 1.45 }}>iPhone does not let websites press the install button for you. Once added, open Insight Academy from the new Home Screen icon.</p>
-        </Modal>
-      )}
-
-      {guide === "android" && (
-        <Modal title="Install on Android" description="Chrome may show an automatic install prompt. If it does not:" onClose={() => setGuide(null)}>
-          <InstallStep number="1" icon={<MoreVertical size={18} />} title="Open the Chrome menu" detail="Tap the three dots in the browser toolbar." />
-          <InstallStep number="2" icon={<Download size={18} />} title="Tap Install app" detail="It may also be labelled Add to Home screen." />
-          <InstallStep number="3" icon={<CheckCircle2 size={18} />} title="Confirm Install" detail="Open Insight Academy from the new app icon." />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function InstallStep({ number, icon, title, detail }: { number: string; icon: React.ReactNode; title: string; detail: string }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "30px 40px 1fr", alignItems: "center", gap: "10px" }}>
-      <span className="text-xs font-semibold text-muted" style={{ textAlign: "center" }}>{number}</span>
-      <span style={{ width: "40px", height: "40px", borderRadius: "10px", display: "grid", placeItems: "center", background: "var(--color-soft)", color: "var(--color-navy)" }}>{icon}</span>
-      <div>
-        <p className="text-sm font-semibold text-navy" style={{ margin: 0 }}>{title}</p>
-        <p className="text-xs text-muted" style={{ margin: "3px 0 0", lineHeight: 1.4 }}>{detail}</p>
-      </div>
+      {guide && <MobileInstallGuide platform={guide} onClose={() => setGuide(null)} />}
     </div>
   );
 }

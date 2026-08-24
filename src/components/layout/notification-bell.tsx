@@ -13,8 +13,8 @@ interface NotificationBellProps {
 }
 
 /**
- * Bell button + notification popover. On phone widths the popover becomes a
- * bottom sheet (thumb-reachable, iOS-like) instead of a dropdown.
+ * Bell button + notification popover. On phones the panel sits high enough to
+ * make the permission action obvious instead of hiding at the screen edge.
  */
 export function NotificationBell({ notifications, unreadCount, onOpen }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
@@ -81,7 +81,7 @@ export function NotificationBell({ notifications, unreadCount, onOpen }: Notific
       {open && (isPhone || pos.top > 0) && (
         <>
           <div
-            style={{ position: "fixed", inset: 0, zIndex: 40 }}
+            style={{ position: "fixed", inset: 0, zIndex: 40, background: isPhone ? "rgba(22, 35, 44, 0.22)" : "transparent", backdropFilter: isPhone ? "blur(2px)" : undefined }}
             onClick={() => setOpen(false)}
           />
           <div
@@ -89,15 +89,13 @@ export function NotificationBell({ notifications, unreadCount, onOpen }: Notific
               isPhone
                 ? {
                     position: "fixed",
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
+                    top: "max(calc(env(safe-area-inset-top, 0px) + 72px), 10vh)",
+                    left: "12px",
+                    right: "12px",
                     zIndex: 50,
-                    maxHeight: "72vh",
+                    maxHeight: "70vh",
                     overflowY: "auto",
-                    paddingBottom: "env(safe-area-inset-bottom, 0px)",
-                    borderTopLeftRadius: "16px",
-                    borderTopRightRadius: "16px",
+                    borderRadius: "16px",
                   }
                 : {
                     position: "fixed",
