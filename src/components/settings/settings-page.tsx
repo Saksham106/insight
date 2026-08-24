@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PushNotificationControl } from "@/components/layout/push-notification-control";
+import { NotificationQuickGuide } from "@/components/settings/mobile-install-guide";
 import { PwaAppSettings } from "@/components/settings/pwa-app-settings";
 import { createClient } from "@/lib/supabase/client";
 
-type SettingsTab = "account" | "app" | "reminders" | "password";
+type SettingsTab = "account" | "app" | "notifications" | "password";
 
 interface SettingsPageProps {
   email: string;
@@ -34,7 +36,7 @@ const roleLabels: Record<SettingsPageProps["role"], string> = {
 const tabs: { id: SettingsTab; label: string; icon: typeof UserRound }[] = [
   { id: "account", label: "Account", icon: UserRound },
   { id: "app", label: "Mobile app", icon: Smartphone },
-  { id: "reminders", label: "Reminders", icon: Bell },
+  { id: "notifications", label: "Notifications", icon: Bell },
   { id: "password", label: "Password", icon: KeyRound },
 ];
 
@@ -226,7 +228,7 @@ export function SettingsPage({
             Settings
           </h1>
           <p className="text-sm text-muted" style={{ marginTop: "6px" }}>
-            Manage your account, mobile app, reminders, and password.
+            Manage your account, mobile app, notifications, and password.
           </p>
         </div>
       </div>
@@ -378,15 +380,24 @@ export function SettingsPage({
           </Card>
         )}
 
-        {activeTab === "reminders" && (
-          <Card>
+        {activeTab === "notifications" && (
+          <Card style={{ minWidth: 0 }}>
             <CardHeader>
-              <CardTitle className="text-navy">Reminders</CardTitle>
+              <CardTitle className="text-navy">Notifications</CardTitle>
               <p className="text-sm text-muted" style={{ margin: 0 }}>
-                Choose when email reminders are sent for upcoming sessions.
+                Turn on phone alerts and choose your session reminders.
               </p>
             </CardHeader>
-            <CardContent style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <CardContent style={{ display: "flex", flexDirection: "column", gap: "18px", minWidth: 0 }}>
+              <div data-notification-control>
+                <PushNotificationControl variant="settings" />
+              </div>
+              <NotificationQuickGuide />
+              <div style={{ height: "1px", background: "var(--color-border)" }} />
+              <div>
+                <p className="text-sm font-semibold text-navy" style={{ margin: 0 }}>Session reminders</p>
+                <p className="text-xs text-muted" style={{ margin: "3px 0 0" }}>Email reminders for upcoming lessons.</p>
+              </div>
               <ReminderToggle
                 title="24 hours before"
                 description="Reminder sent the day before your session."

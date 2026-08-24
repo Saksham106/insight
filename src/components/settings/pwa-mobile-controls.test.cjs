@@ -57,6 +57,36 @@ test("keyboard focus removes stale safe-area padding without forcing a message j
   assert.doesNotMatch(chat, /if \(event\.target instanceof HTMLTextAreaElement\) \{\s*shouldAutoScrollRef\.current = true/s);
 });
 
+test("mobile onboarding uses visual, platform-correct install and notification steps", () => {
+  const app = read("src/components/settings/pwa-app-settings.tsx");
+  const guide = read("src/components/settings/mobile-install-guide.tsx");
+  assert.match(app, /<MobileInstallGuide platform=\{guide\}/);
+  assert.match(guide, /Copy website link/);
+  assert.match(guide, /three dots beside myinsightacademy\.com/);
+  assert.match(guide, /Tap Share/);
+  assert.match(guide, /Add to Home Screen/);
+  assert.match(guide, /Install and create shortcut/);
+  assert.match(guide, /aria-label="Previous step"/);
+  assert.match(guide, /aria-label="Next step"/);
+  assert.match(guide, /Turn on notifications/);
+});
+
+test("Settings exposes push controls under Notifications", () => {
+  const settings = read("src/components/settings/settings-page.tsx");
+  assert.match(settings, /id: "notifications", label: "Notifications"/);
+  assert.match(settings, /data-notification-control/);
+  assert.match(settings, /<PushNotificationControl variant="settings" \/>/);
+  assert.match(settings, /24 hours before/);
+});
+
+test("the phone notification panel is raised and centered instead of bottom-docked", () => {
+  const bell = read("src/components/layout/notification-bell.tsx");
+  assert.match(bell, /top: "max\(calc\(env\(safe-area-inset-top, 0px\) \+ 72px\), 10vh\)"/);
+  assert.match(bell, /left: "12px"/);
+  assert.match(bell, /right: "12px"/);
+  assert.doesNotMatch(bell, /isPhone[\s\S]*?bottom: 0,[\s\S]*?maxHeight: "72vh"/);
+});
+
 test("notification test sends only to the authenticated user", () => {
   const route = read("src/app/api/push/test/route.ts");
   const control = read("src/components/layout/push-notification-control.tsx");
@@ -70,12 +100,13 @@ test("notification test sends only to the authenticated user", () => {
 test("settings exposes install guidance and a controlled update flow", () => {
   const settings = read("src/components/settings/settings-page.tsx");
   const app = read("src/components/settings/pwa-app-settings.tsx");
+  const guide = read("src/components/settings/mobile-install-guide.tsx");
   const boundary = read("src/components/service-worker-boundary.tsx");
   const worker = read("public/sw.js");
 
   assert.match(settings, /id: "app", label: "Mobile app"/);
-  assert.match(app, /Install on iPhone/);
-  assert.match(app, /Install on Android/);
+  assert.match(guide, /Install on iPhone/);
+  assert.match(guide, /Install on Android/);
   assert.match(app, /window\.__insightInstallPrompt/);
   assert.match(app, /registration\.update\(\)/);
   assert.match(app, /postMessage\(\{ type: "SKIP_WAITING" \}\)/);
