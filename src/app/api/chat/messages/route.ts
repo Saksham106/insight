@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   const { data: recipients } = await admin
     .from("conversation_participants")
-    .select("user_id, profile:user_id (role)")
+    .select("user_id, profile:user_id (role, notify_chat_messages)")
     .eq("conversation_id", conversationId)
     .neq("user_id", profile.id);
 
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   for (const recipient of recipients ?? []) {
     const profileRow = Array.isArray(recipient.profile) ? recipient.profile[0] : recipient.profile;
     const role = profileRow?.role;
-    if (typeof role !== "string") continue;
+    if (typeof role !== "string" || profileRow?.notify_chat_messages === false) continue;
     recipientGroups.set(role, [...(recipientGroups.get(role) ?? []), recipient.user_id]);
   }
 

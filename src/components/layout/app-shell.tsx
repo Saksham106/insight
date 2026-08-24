@@ -10,19 +10,20 @@ import { BottomNavigation } from "@/components/layout/bottom-navigation";
 interface AppShellProps {
   userName: string;
   role: "admin" | "teacher" | "student" | "parent";
+  availableRoles: ("admin" | "teacher" | "student" | "parent")[];
   userId: string;
   avatarUrl?: string | null;
   children: React.ReactNode;
 }
 
-export function AppShell({ userName, role, userId, avatarUrl, children }: AppShellProps) {
+export function AppShell({ userName, role, availableRoles, userId, avatarUrl, children }: AppShellProps) {
   return (
     <div className="bg-background" style={{ minHeight: "100dvh" }}>
       <OfflineIndicator />
       <NavigationProgress />
       <TimezoneSync />
       <UnreadProvider userId={userId} role={role}>
-        <DashboardHeader userName={userName} role={role} userId={userId} avatarUrl={avatarUrl} />
+        <DashboardHeader userName={userName} role={role} availableRoles={availableRoles} userId={userId} avatarUrl={avatarUrl} />
         <ContactModal />
         <PageMain>{children}</PageMain>
         <BottomNavigation role={role} />

@@ -167,6 +167,12 @@ function itemIcon(item: NavItem): string {
   return "home";
 }
 
+function isNavItemActive(item: NavItem, pathname: string, role: Role) {
+  return item.href === `/${role}`
+    ? pathname === item.href
+    : pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
 /**
  * Fixed bottom tab bar for phone widths (≤768px), styled after iOS tab bars:
  * translucent blurred surface, filled icon + bold label for the active tab,
@@ -206,8 +212,7 @@ export function BottomNavigation({ role }: { role: Role }) {
       }}
     >
       {roleNavItems[role].map((item) => {
-        const active =
-          pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const active = isNavItemActive(item, pathname, role);
         const color = active ? "var(--color-navy)" : "var(--color-muted)";
         return (
           <Link

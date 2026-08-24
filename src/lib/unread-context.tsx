@@ -6,19 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 
 export const MARK_READ_EVENT = "insight-chat-mark-read";
 
-function lrKey(userId: string, conversationId: string) {
-  return `insight-chat-lr-${userId}-${conversationId}`;
-}
-
-export function getLastRead(userId: string, conversationId: string): string | null {
-  try { return localStorage.getItem(lrKey(userId, conversationId)); } catch { return null; }
-}
-
-export function markRead(userId: string, conversationId: string) {
-  try {
-    localStorage.setItem(lrKey(userId, conversationId), new Date().toISOString());
-    window.dispatchEvent(new CustomEvent(MARK_READ_EVENT, { detail: { conversationId } }));
-  } catch {}
+export function markRead(_userId: string, conversationId: string) {
+  window.dispatchEvent(new CustomEvent(MARK_READ_EVENT, { detail: { conversationId } }));
 }
 
 interface UnreadContextValue {
@@ -60,7 +49,7 @@ export function UnreadProvider({ userId, children }: UnreadProviderProps) {
 
     if (ids.length === 0) { setUnread({}); return; }
     const { data: counts } = await supabase.rpc("get_unread_counts", {
-      p_conversations: ids.map((id) => ({ conversation_id: id, last_read: getLastRead(userId, id) })),
+      p_conversations: ids.map((id) => ({ conversation_id: id, last_read: null })),
     });
     const next: Record<string, number> = {};
     ids.forEach((id) => { next[id] = 0; });
@@ -70,7 +59,10 @@ export function UnreadProvider({ userId, children }: UnreadProviderProps) {
     setUnread(next);
   }, [supabase, userId]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(timer);
+  }, [refresh]);
 
   // Single stable-named channel; RLS already scopes events to rows this user can see.
   useEffect(() => {
@@ -95,11 +87,15 @@ export function UnreadProvider({ userId, children }: UnreadProviderProps) {
   useEffect(() => {
     const handler = (e: Event) => {
       const convId = (e as CustomEvent).detail?.conversationId as string | undefined;
-      if (convId) setUnread((prev) => (prev[convId] ? { ...prev, [convId]: 0 } : prev));
+      if (!convId) return;
+      setUnread((prev) => (prev[convId] ? { ...prev, [convId]: 0 } : prev));
+      void supabase.rpc("mark_conversation_read", { p_conversation_id: convId }).then(({ error }) => {
+        if (error) void refresh();
+      });
     };
     window.addEventListener(MARK_READ_EVENT, handler);
     return () => window.removeEventListener(MARK_READ_EVENT, handler);
-  }, []);
+  }, [refresh, supabase]);
 
   const markAsRead = useCallback((conversationId: string) => {
     markRead(userId, conversationId);

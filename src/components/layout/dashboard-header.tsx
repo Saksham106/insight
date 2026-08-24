@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { HelpCircle, User } from "lucide-react";
+import { ArrowLeftRight, HelpCircle, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 interface DashboardHeaderProps {
   userName: string;
   role: "admin" | "teacher" | "student" | "parent";
+  availableRoles: ("admin" | "teacher" | "student" | "parent")[];
   userId: string;
   avatarUrl?: string | null;
 }
@@ -52,10 +53,11 @@ const roleNav: Record<DashboardHeaderProps["role"], { href: string; label: strin
   ],
 };
 
-export function DashboardHeader({ userName, role, userId, avatarUrl }: DashboardHeaderProps) {
+export function DashboardHeader({ userName, role, availableRoles, userId, avatarUrl }: DashboardHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [switchingRole, setSwitchingRole] = useState<DashboardHeaderProps["role"] | null>(null);
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { notifications, unreadCount, markAllRead } = useNotifications(userId);
   const chatUnread = useChatUnreadTotal();
@@ -87,6 +89,23 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
   const openHelp = () => {
     setDropdownOpen(false);
     window.dispatchEvent(new Event("insight:open-help"));
+  };
+
+  const switchRole = async (nextRole: DashboardHeaderProps["role"]) => {
+    setSwitchingRole(nextRole);
+    const response = await fetch("/api/auth/switch-role", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: nextRole }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setSwitchingRole(null);
+      return;
+    }
+    setDropdownOpen(false);
+    router.replace((result as { destination: string }).destination);
+    router.refresh();
   };
 
   return (
@@ -238,6 +257,32 @@ export function DashboardHeader({ userName, role, userId, avatarUrl }: Dashboard
                       zIndex: 50,
                     }}
                   >
+                    {availableRoles.filter((availableRole) => availableRole !== role).map((availableRole) => (
+                      <button
+                        key={availableRole}
+                        type="button"
+                        disabled={switchingRole !== null}
+                        onClick={() => void switchRole(availableRole)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          width: "100%",
+                          padding: "11px 16px",
+                          textAlign: "left",
+                          background: "var(--color-accent-soft)",
+                          border: "none",
+                          borderBottom: "1px solid var(--color-border)",
+                          cursor: switchingRole ? "wait" : "pointer",
+                          fontSize: "14px",
+                          fontWeight: 600,
+                          color: "var(--color-navy)",
+                        }}
+                      >
+                        <ArrowLeftRight size={15} />
+                        {switchingRole === availableRole ? "Switching…" : `Switch to ${roleLabels[availableRole]}`}
+                      </button>
+                    ))}
                     <button
                       onClick={openSettings}
                       style={{

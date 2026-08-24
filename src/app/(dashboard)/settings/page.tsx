@@ -8,7 +8,7 @@ export default async function SettingsRoute() {
   const { data: userData } = await supabase.auth.getUser();
   const { data: settings } = await supabase
     .from("profiles")
-    .select("full_name, role, is_active, avatar_url, reminder_24h, timezone, created_at")
+    .select("full_name, role, is_active, avatar_url, reminder_24h, notify_chat_messages, notify_session_changes, timezone, created_at")
     .eq("id", profile.id)
     .single();
 
@@ -20,6 +20,8 @@ export default async function SettingsRoute() {
       isActive={settings?.is_active ?? profile.is_active}
       avatarUrl={settings?.avatar_url ?? profile.avatar_url}
       reminder24h={settings?.reminder_24h ?? true}
+      notifyChatMessages={settings?.notify_chat_messages ?? true}
+      notifySessionChanges={settings?.notify_session_changes ?? true}
       timezone={settings?.timezone ?? null}
       createdAt={settings?.created_at ?? null}
     />
