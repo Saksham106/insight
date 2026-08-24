@@ -107,6 +107,7 @@ test("settings exposes install guidance and a controlled update flow", () => {
   assert.match(settings, /id: "app", label: "Mobile app"/);
   assert.match(guide, /Install on iPhone/);
   assert.match(guide, /Install on Android/);
+  assert.match(app, /catch \{[\s\S]*setGuide\("android"\)/);
   assert.match(app, /window\.__insightInstallPrompt/);
   assert.match(app, /registration\.update\(\)/);
   assert.match(app, /postMessage\(\{ type: "SKIP_WAITING" \}\)/);

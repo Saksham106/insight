@@ -46,16 +46,24 @@ export function PwaAppSettings() {
     }
 
     setInstallMessage(null);
-    await prompt.prompt();
-    const choice = await prompt.userChoice;
-    window.__insightInstallPrompt = undefined;
-    setInstallPrompt(null);
-    if (choice.outcome === "accepted") {
-      setInstalled(true);
-      setGuide(null);
-      setInstallMessage("Insight Academy was added to your device.");
-    } else {
-      setInstallMessage("Installation was cancelled.");
+    try {
+      await prompt.prompt();
+      const choice = await prompt.userChoice;
+      window.__insightInstallPrompt = undefined;
+      setInstallPrompt(null);
+      if (choice.outcome === "accepted") {
+        setInstalled(true);
+        setGuide(null);
+        setInstallMessage("Insight Academy was added to your device.");
+      } else {
+        setInstallMessage("Installation was cancelled.");
+      }
+    } catch {
+      // Chrome can retain an install event that is no longer promptable. The
+      // manual walkthrough is the reliable fallback for that stale state.
+      window.__insightInstallPrompt = undefined;
+      setInstallPrompt(null);
+      setGuide("android");
     }
   };
 
