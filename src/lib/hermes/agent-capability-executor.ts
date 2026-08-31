@@ -27,6 +27,20 @@ function feeStatementToken(clientRequestId: string) {
     .toString("base64url");
 }
 
+function feeStatementAppOrigin() {
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  if (!configured) throw new Error("capability_execution_unavailable");
+  try {
+    const url = new URL(configured);
+    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+      throw new Error("unsafe_statement_origin");
+    }
+    return url.origin;
+  } catch {
+    throw new Error("capability_execution_unavailable");
+  }
+}
+
 function projectOccurrence(row: Record<string, unknown>) {
   return {
     id: String(row.id),
@@ -55,6 +69,7 @@ export async function executeAgentCapability(
   switch (action.capabilityName) {
     case "fee_statement.create": {
       if (actor.kind !== "admin") throw new Error("capability_not_executable");
+      const appOrigin = feeStatementAppOrigin();
       // Stable for one request ID so an uncertain RPC retry returns the same usable bearer URL.
       const publicToken = feeStatementToken(action.clientRequestId);
       const publicTokenHash = createHash("sha256").update(publicToken, "utf8").digest("hex");
@@ -73,16 +88,25 @@ export async function executeAgentCapability(
         p_actor_identifier_hash: actor.externalIdHash ?? null,
         p_client_request_id: action.clientRequestId,
       });
-      dbError(error);
-      const statement = Array.isArray(data) ? data[0] : data;
+      if (error?.message?.includes("client_request_payload_mismatch")) dbError(error);
+      let statement = Array.isArray(data) ? data[0] : data;
+      if (error && !statement) {
+        const recovered = await client
+          .from("academy_fee_statements")
+          .select("id, statement_reference, status")
+          .eq("client_request_id", action.clientRequestId)
+          .eq("public_token_hash", publicTokenHash)
+          .maybeSingle();
+        if (!recovered.error) statement = recovered.data;
+      }
+      if (!statement) dbError(error);
       if (!statement) throw new Error("capability_execution_unavailable");
       const record = statement as Record<string, unknown>;
-      const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
       return {
         statementId: String(record.id),
         statementReference: String(record.statement_reference),
         status: String(record.status),
-        publicUrl: `${appUrl}/statement/${publicToken}`,
+        publicUrl: `${appOrigin}/statement/${publicToken}`,
       };
     }
     case "class.reminder.send": {

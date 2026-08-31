@@ -16,7 +16,9 @@ const { executeAgentCapability } = require(path.join(__dirname, "agent-capabilit
 
 test("publishes a fee statement with only a token hash stored in the database", async () => {
   const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
   process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  process.env.NEXT_PUBLIC_APP_URL = "https://academy.example";
   try {
     const calls = [];
     const client = { async rpc(name, payload) {
@@ -46,6 +48,81 @@ test("publishes a fee statement with only a token hash stored in the database", 
   } finally {
     if (originalSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
     else process.env.ACADEMY_AGENT_EVALUATION_SECRET = originalSecret;
+    if (originalAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+  }
+});
+
+test("fails before creating a statement when the public app URL is not a safe HTTPS origin", async () => {
+  const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  const calls = [];
+  const client = { async rpc(name, payload) {
+    calls.push({ name, payload });
+    return { data: null, error: null };
+  } };
+  const action = {
+    capabilityName: "fee_statement.create", capabilityVersion: 1, clientRequestId: "statement-request-invalid-origin",
+    normalizedInput: {
+      studentName: "Example Student", billedToName: null, periodStart: "2026-08-01", periodEnd: "2026-08-31", dueDate: null,
+      currency: "VND", totalMinor: 500000,
+      lineItems: [{ lessonDate: "2026-08-11", teacherName: "Teacher A", subject: "Maths", durationMinutes: 60, rateMinor: 500000, amountMinor: 500000, source: { workbook: "Workbook", sheet: "August", row: 3 } }],
+    },
+  };
+  const actor = { kind: "admin", profileId: "admin-1", externalIdHash: "a".repeat(64), channel: "imessage" };
+  try {
+    for (const invalid of [undefined, "http://localhost:3000", "https://academy.example/path", "https://user:pass@academy.example"]) {
+      if (invalid === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+      else process.env.NEXT_PUBLIC_APP_URL = invalid;
+      await assert.rejects(() => executeAgentCapability(client, actor, action), /capability_execution_unavailable/);
+    }
+    assert.equal(calls.length, 0);
+  } finally {
+    if (originalSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+    else process.env.ACADEMY_AGENT_EVALUATION_SECRET = originalSecret;
+    if (originalAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+  }
+});
+
+test("recovers an already-committed statement after an ambiguous RPC response", async () => {
+  const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  process.env.NEXT_PUBLIC_APP_URL = "https://academy.example";
+  const calls = [];
+  const existing = { id: "statement-1", statement_reference: "MIA-202608-A1B2C3", status: "published" };
+  const client = {
+    async rpc(name, payload) {
+      calls.push(["rpc", name, payload]);
+      return { data: null, error: { message: "network response unavailable" } };
+    },
+    from(table) {
+      calls.push(["from", table]);
+      return { select() { return { eq(field, value) { calls.push(["eq", field, value]); return { eq(secondField, secondValue) { calls.push(["eq", secondField, secondValue]); return { maybeSingle: async () => ({ data: existing, error: null }) }; } }; } }; } };
+    },
+  };
+  const action = {
+    capabilityName: "fee_statement.create", capabilityVersion: 1, clientRequestId: "statement-request-ambiguous",
+    normalizedInput: {
+      studentName: "Example Student", billedToName: null, periodStart: "2026-08-01", periodEnd: "2026-08-31", dueDate: null,
+      currency: "VND", totalMinor: 500000,
+      lineItems: [{ lessonDate: "2026-08-11", teacherName: "Teacher A", subject: "Maths", durationMinutes: 60, rateMinor: 500000, amountMinor: 500000, source: { workbook: "Workbook", sheet: "August", row: 3 } }],
+    },
+  };
+  const actor = { kind: "admin", profileId: "admin-1", externalIdHash: "a".repeat(64), channel: "imessage" };
+  try {
+    const result = await executeAgentCapability(client, actor, action);
+    assert.equal(result.statementId, "statement-1");
+    assert.match(result.publicUrl, /^https:\/\/academy\.example\/statement\/[A-Za-z0-9_-]{32,}$/);
+    assert.equal(calls.filter(([kind]) => kind === "rpc").length, 1);
+    assert.deepEqual(calls.filter(([kind]) => kind === "eq").map((call) => call[1]), ["client_request_id", "public_token_hash"]);
+  } finally {
+    if (originalSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+    else process.env.ACADEMY_AGENT_EVALUATION_SECRET = originalSecret;
+    if (originalAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
   }
 });
 
