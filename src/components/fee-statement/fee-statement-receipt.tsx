@@ -1,10 +1,7 @@
 import type { PublicFeeStatement } from "@/lib/hermes/fee-statements";
+import { formatMinorCurrency } from "@/lib/format-minor-currency";
 
 import styles from "./fee-statement-receipt.module.css";
-
-function money(value: number, currency: string) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
-}
 
 function day(value: string) {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
@@ -63,14 +60,14 @@ export function FeeStatementReceipt({ statement }: { statement: PublicFeeStateme
                 {item.note ? <small className={styles.note}>{item.note}</small> : null}
               </div>
               <span className={styles.duration}>{hours(item.durationMinutes)}</span>
-              <span className={styles.amount}>{money(item.amountMinor, statement.currency)}</span>
+              <span className={styles.amount}>{formatMinorCurrency(item.amountMinor, statement.currency)}</span>
             </article>
           ))}
         </div>
 
         <div className={styles.totalRow}>
           <span>Total due</span>
-          <strong>{money(statement.totalMinor, statement.currency)}</strong>
+          <strong>{formatMinorCurrency(statement.totalMinor, statement.currency)}</strong>
         </div>
 
         <footer>

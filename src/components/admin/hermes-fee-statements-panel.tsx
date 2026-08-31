@@ -1,10 +1,8 @@
 import { ReceiptText } from "lucide-react";
 
-import { Empty, PanelCard, type HermesFeeStatementSummary } from "./hermes-dashboard-shared";
+import { formatMinorCurrency } from "@/lib/format-minor-currency";
 
-function money(value: number, currency: string) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
-}
+import { Empty, PanelCard, type HermesFeeStatementSummary } from "./hermes-dashboard-shared";
 
 export function HermesFeeStatementsPanel({ statements }: { statements: HermesFeeStatementSummary[] }) {
   return (
@@ -22,7 +20,7 @@ export function HermesFeeStatementsPanel({ statements }: { statements: HermesFee
                 <p className="text-xs text-muted" style={{ marginTop: "3px" }}>{statement.statement_reference} · {statement.period_start} to {statement.period_end}</p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <strong className="text-navy">{money(statement.total_minor, statement.currency)}</strong>
+                <strong className="text-navy">{formatMinorCurrency(statement.total_minor, statement.currency)}</strong>
                 <p className="text-xs text-muted" style={{ marginTop: "3px", textTransform: "capitalize" }}>{statement.status}</p>
               </div>
             </article>
