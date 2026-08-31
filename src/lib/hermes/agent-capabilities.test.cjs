@@ -36,10 +36,32 @@ test("publishes safe contact capability manifests without internal executors", (
   }
 });
 
-test("keeps routine management discoverable only to administrators", () => {
+test("keeps routine management and fee statement publishing discoverable only to administrators", () => {
   const { listCapabilityManifests } = require(registryPath);
-  assert.equal(listCapabilityManifests("contact").some((item) => item.name === "routine.manage"), false);
-  assert.equal(listCapabilityManifests("admin").some((item) => item.name === "routine.manage"), true);
+  const contactNames = listCapabilityManifests("contact").map((item) => item.name);
+  const adminNames = listCapabilityManifests("admin").map((item) => item.name);
+  assert.equal(contactNames.includes("routine.manage"), false);
+  assert.equal(contactNames.includes("fee_statement.create"), false);
+  assert.equal(adminNames.includes("routine.manage"), true);
+  assert.equal(adminNames.includes("fee_statement.create"), true);
+});
+
+test("normalizes a reconciled fee statement snapshot", () => {
+  const { getCapability } = require(registryPath);
+  const input = {
+    studentName: "Example Student",
+    periodStart: "2026-08-01",
+    periodEnd: "2026-08-31",
+    currency: "VND",
+    lineItems: [{
+      lessonDate: "2026-08-11", teacherName: "Teacher A", subject: "Maths",
+      durationMinutes: 60, rateMinor: 500000, amountMinor: 500000,
+      source: { workbook: "Workbook A", sheet: "August", row: 3 },
+    }],
+  };
+  const normalized = getCapability("fee_statement.create", 1).normalize(input);
+  assert.equal(normalized.totalMinor, 500000);
+  assert.equal(normalized.lineItems[0].source.row, 3);
 });
 
 test("resolves exact versions and rejects unknown capabilities", () => {

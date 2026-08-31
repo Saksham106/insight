@@ -66,6 +66,21 @@ export interface HermesMessage {
   contact: { display_name: string | null } | Array<{ display_name: string | null }> | null;
 }
 
+export interface HermesFeeStatementSummary {
+  id: string;
+  statement_reference: string;
+  student_name: string;
+  billed_to_name: string | null;
+  period_start: string;
+  period_end: string;
+  currency: string;
+  total_minor: number;
+  status: string;
+  issued_at: string;
+  paid_at: string | null;
+  voided_at: string | null;
+}
+
 export interface HermesSettlementCycle {
   id: string;
   period_start: string;
@@ -80,6 +95,7 @@ export interface HermesSettlementCycle {
 export const HERMES_TABS = [
   "conversations",
   "ledger",
+  "statements",
   "contacts",
   "classes",
   "scheduling",

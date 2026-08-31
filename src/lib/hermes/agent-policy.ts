@@ -51,6 +51,7 @@ function missingRequiredFields(capabilityName: string, input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return [];
   const value = input as Record<string, unknown>;
   const required: Record<string, string[]> = {
+    "fee_statement.create": ["studentName", "periodStart", "periodEnd", "currency", "lineItems"],
     "class.one_off.create": ["title", "timezone", "startsAt", "endsAt", "localDate", "studentContactIds"],
     "class.reminder.send": ["occurrenceId", "recipientId"],
     "class.attendance.record": ["occurrenceId", "enrollmentHandle", "selectionToken", "status"],

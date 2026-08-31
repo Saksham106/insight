@@ -207,7 +207,7 @@ test("tab bar leads with the sections Swati opens most", () => {
     .match(/export const HERMES_TABS = \[([\s\S]*?)\] as const;/)[1]
     .match(/"([a-z]+)"/g)
     .map((quoted) => quoted.replaceAll('"', ""));
-  assert.deepEqual(order, ["conversations", "ledger", "contacts", "classes", "scheduling", "attention"]);
+  assert.deepEqual(order, ["conversations", "ledger", "statements", "contacts", "classes", "scheduling", "attention"]);
 
   const tabModel = read("src/lib/hermes/admin-tabs.ts");
   const rendered = [...tabModel.matchAll(/\{ id: "([a-z]+)", label:/g)].map((match) => match[1]);

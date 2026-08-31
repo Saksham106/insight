@@ -69,6 +69,7 @@ test("every tab keeps its place in the established order", () => {
   assert.deepEqual(buildHermesTabs(COUNTS).map((tab) => tab.id), [
     "conversations",
     "ledger",
+    "statements",
     "contacts",
     "classes",
     "scheduling",

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
+import { PrivacySafeAnalytics } from "@/components/privacy-safe-analytics";
 import { ServiceWorkerBoundary } from "@/components/service-worker-boundary";
 
 const geistSans = Geist({
@@ -60,7 +60,7 @@ export default function RootLayout({
     >
       <body className="bg-background text-foreground" style={{ minHeight: "100dvh" }}>
         <ServiceWorkerBoundary>{children}</ServiceWorkerBoundary>
-        <Analytics />
+        <PrivacySafeAnalytics />
       </body>
     </html>
   );

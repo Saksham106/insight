@@ -3,7 +3,7 @@
 //   - navigations: network-first, cache fallback so the shell opens offline
 //   - static assets (images/CSS/JS/fonts): stale-while-revalidate
 //   - never touches Supabase/API traffic — auth and data must stay live
-const CACHE_NAME = "insight-v8";
+const CACHE_NAME = "insight-v9";
 const OFFLINE_FALLBACKS = ["/", "/login"];
 
 self.addEventListener("install", (event) => {
@@ -42,6 +42,7 @@ self.addEventListener("fetch", (event) => {
     request.method !== "GET" ||
     url.origin !== self.location.origin ||
     url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/statement/") ||
     url.hostname.includes("supabase")
   ) {
     return;

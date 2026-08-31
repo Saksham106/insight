@@ -27,6 +27,7 @@ export function buildHermesTabs(counts: HermesTabCounts): HermesTabModel[] {
   return [
     { id: "conversations", label: "Conversations" },
     { id: "ledger", label: "Ledger", count: counts.ledgerItems },
+    { id: "statements", label: "Fee statements" },
     { id: "contacts", label: "Contacts" },
     { id: "classes", label: "Classes" },
     { id: "scheduling", label: "Scheduling", count: counts.openSchedulingCases },

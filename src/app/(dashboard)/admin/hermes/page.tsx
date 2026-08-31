@@ -39,6 +39,7 @@ export default async function HermesAdminPage({
     approvals,
     messages,
     settlements,
+    statements,
     summaryResult,
     lessonResult,
     classUpcomingOccurrences,
@@ -76,6 +77,11 @@ export default async function HermesAdminPage({
         .select("id, period_start, currency, status, updated_at, tutor_reports:academy_tutor_reports(status), family_invoices:academy_family_invoices(status), tutor_payouts:academy_tutor_payouts(status)")
         .order("period_start", { ascending: false })
         .limit(12),
+      supabase
+        .from("academy_fee_statements")
+        .select("id, statement_reference, student_name, billed_to_name, period_start, period_end, currency, total_minor, status, issued_at, paid_at, voided_at")
+        .order("issued_at", { ascending: false })
+        .limit(50),
       loadConversationSummaries(supabase)
         .then((data) => ({ data, error: false }))
         .catch(() => ({ data: [], error: true })),
@@ -249,8 +255,9 @@ export default async function HermesAdminPage({
       lessonLedgerError={
         lessonResult.error ? "Lesson ledger temporarily unavailable." : null
       }
+      statements={statements.data ?? []}
       settlements={settlements.data ?? []}
-      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error || classUpcomingOccurrences.error || classHistoryOccurrences.error || classSeries.error || classNotificationIssues.error || classAttentionResult.error || classChangeRequestedOccurrences.error || classAttentionOccurrences.error || relationshipRows.error || enrollmentRows.error || participantRows.error ? "Some Kitty information could not be loaded." : null}
+      loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error || statements.error || classUpcomingOccurrences.error || classHistoryOccurrences.error || classSeries.error || classNotificationIssues.error || classAttentionResult.error || classChangeRequestedOccurrences.error || classAttentionOccurrences.error || relationshipRows.error || enrollmentRows.error || participantRows.error ? "Some Kitty information could not be loaded." : null}
       classOccurrences={classOccurrences}
       classSeries={classSeries.data ?? []}
       classNotificationIssues={classNotificationIssues.data ?? []}

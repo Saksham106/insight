@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { AgentActor } from "./agent-capability-types";
@@ -15,6 +15,16 @@ function idempotencyKey(clientRequestId: string) {
   return clientRequestId.length <= 194
     ? `agent:${clientRequestId}`
     : `agent:${createHash("sha256").update(clientRequestId).digest("hex")}`;
+}
+
+function feeStatementToken(clientRequestId: string) {
+  const secret = process.env.HERMES_ACTION_TOKEN_SECRET ?? process.env.HERMES_EVALUATION_SECRET;
+  if (!secret || secret.length < 32) throw new Error("capability_execution_unavailable");
+  return createHmac("sha256", secret)
+    .update(`fee-statement:v1:${clientRequestId}`, "utf8")
+    .digest()
+    .subarray(0, 24)
+    .toString("base64url");
 }
 
 function projectOccurrence(row: Record<string, unknown>) {
@@ -43,6 +53,37 @@ export async function executeAgentCapability(
   if (action.capabilityVersion !== 1) throw new Error("capability_not_executable");
   const input = action.normalizedInput;
   switch (action.capabilityName) {
+    case "fee_statement.create": {
+      if (actor.kind !== "admin") throw new Error("capability_not_executable");
+      // Stable for one request ID so an uncertain RPC retry returns the same usable bearer URL.
+      const publicToken = feeStatementToken(action.clientRequestId);
+      const publicTokenHash = createHash("sha256").update(publicToken, "utf8").digest("hex");
+      const { data, error } = await client.rpc("create_academy_fee_statement", {
+        p_public_token_hash: publicTokenHash,
+        p_student_name: String(input.studentName),
+        p_billed_to_name: input.billedToName ? String(input.billedToName) : null,
+        p_period_start: String(input.periodStart),
+        p_period_end: String(input.periodEnd),
+        p_due_date: input.dueDate ? String(input.dueDate) : null,
+        p_currency: String(input.currency),
+        p_total_minor: Number(input.totalMinor),
+        p_line_items: input.lineItems,
+        p_source_channel: actor.channel,
+        p_actor_profile_id: actor.profileId,
+        p_client_request_id: action.clientRequestId,
+      });
+      dbError(error);
+      const statement = Array.isArray(data) ? data[0] : data;
+      if (!statement) throw new Error("capability_execution_unavailable");
+      const record = statement as Record<string, unknown>;
+      const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+      return {
+        statementId: String(record.id),
+        statementReference: String(record.statement_reference),
+        status: String(record.status),
+        publicUrl: `${appUrl}/statement/${publicToken}`,
+      };
+    }
     case "class.reminder.send": {
       const { data, error } = await client.from("kitty_class_notification_outbox").insert({
         occurrence_id: String(input.occurrenceId),

@@ -3,6 +3,7 @@ import type {
   AgentCapabilityDefinition,
   AgentCapabilityManifest,
 } from "./agent-capability-types";
+import { sanitizeFeeStatementInput } from "./fee-statements";
 
 function objectInput(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("invalid_capability_input");
@@ -40,6 +41,26 @@ function schema(properties: Record<string, unknown>, required: string[]) {
 const stringField = { type: "string", minLength: 1, maxLength: 500 };
 
 const definitions: AgentCapabilityDefinition[] = [
+  {
+    manifest: {
+      name: "fee_statement.create", version: 1,
+      purpose: "Publish a private-link fee statement from reconciled lesson rows.",
+      risk: "medium", schedulable: false, composable: true,
+      inputSchema: schema({
+        studentName: stringField,
+        billedToName: stringField,
+        periodStart: stringField,
+        periodEnd: stringField,
+        dueDate: stringField,
+        currency: { type: "string", minLength: 3, maxLength: 3 },
+        lineItems: { type: "array", minItems: 1, maxItems: 100, items: { type: "object" } },
+      }, ["studentName", "periodStart", "periodEnd", "currency", "lineItems"]),
+    },
+    allowedActorKinds: ["admin"],
+    normalize(input) {
+      return sanitizeFeeStatementInput(input) as unknown as Record<string, unknown>;
+    },
+  },
   {
     manifest: {
       name: "class.attendance.record", version: 1, purpose: "Record an attendance update for a selected class occurrence.",
