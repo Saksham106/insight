@@ -92,7 +92,7 @@ test("accepts honest aggregate tutor rows only when missing dates are disclosed"
 test("public projection omits spreadsheet coordinates while keeping the immutable charges", () => {
   const { projectPublicFeeStatement, sanitizeFeeStatementInput } = require(modulePath);
   const normalized = sanitizeFeeStatementInput(sampleInput());
-  const projected = projectPublicFeeStatement({
+  const rawRow = {
     id: "statement-1",
     statement_reference: "MIA-202608-A1B2C3",
     status: "published",
@@ -107,11 +107,21 @@ test("public projection omits spreadsheet coordinates while keeping the immutabl
     due_date: normalized.dueDate,
     total_minor: normalized.totalMinor,
     line_items: normalized.lineItems,
-  });
+  };
+  const projected = projectPublicFeeStatement(rawRow);
   assert.equal(projected.statementReference, "MIA-202608-A1B2C3");
   assert.equal(projected.lineItems[0].amountMinor, 900000);
   assert.equal(JSON.stringify(projected).includes("August Classes"), false);
   assert.equal(JSON.stringify(projected).includes('"row":12'), false);
+
+  assert.throws(() => projectPublicFeeStatement({
+    ...rawRow,
+    total_minor: normalized.totalMinor + 1,
+  }), /statement_total_mismatch/);
+
+  const duplicateSource = structuredClone(rawRow);
+  duplicateSource.line_items[1].source = { ...duplicateSource.line_items[0].source };
+  assert.throws(() => projectPublicFeeStatement(duplicateSource), /duplicate_statement_source/);
 });
 
 test("accepts only high-entropy URL-safe statement tokens", () => {

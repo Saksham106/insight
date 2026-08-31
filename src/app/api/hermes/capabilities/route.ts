@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { evaluateAction, executeEvaluatedAction, listAgentCapabilities } from "@/lib/hermes/agent-actions";
@@ -28,7 +29,12 @@ export async function POST(request: Request) {
   const client = createAdminClient();
   let actor: AgentActor;
   if (imessageActor) {
-    actor = { kind: "admin", profileId: null, channel: "imessage" };
+    actor = {
+      kind: "admin",
+      profileId: null,
+      externalIdHash: createHash("sha256").update(imessageActor.stableId, "utf8").digest("hex"),
+      channel: "imessage",
+    };
   } else {
     const { data: contact } = await client.from("hermes_contacts")
       .select("id, role, consent_status, communication_policy, is_active")

@@ -157,36 +157,41 @@ export function statementTokenHash(token: string): string {
 }
 
 export function projectPublicFeeStatement(row: Record<string, unknown>): PublicFeeStatement {
-  const lineItems = Array.isArray(row.line_items) ? row.line_items : [];
   const status = row.status === "paid" ? "paid" : row.status === "published" ? "published" : fail("unavailable_statement");
+  const normalized = sanitizeFeeStatementInput({
+    studentName: row.student_name,
+    billedToName: row.billed_to_name,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    dueDate: row.due_date,
+    currency: row.currency,
+    lineItems: row.line_items,
+  });
+  const totalMinor = integer(row.total_minor, "total_minor", 0, Number.MAX_SAFE_INTEGER);
+  if (normalized.totalMinor !== totalMinor) fail("statement_total_mismatch");
+  if (normalized.currency !== row.currency) fail("invalid_statement_currency");
 
   return {
     id: cleanText(row.id, "statement_id"),
     statementReference: cleanText(row.statement_reference, "statement_reference"),
     status,
-    studentName: cleanText(row.student_name, "student_name"),
-    billedToName: optionalText(row.billed_to_name, "billed_to_name"),
-    periodStart: date(row.period_start, "period_start"),
-    periodEnd: date(row.period_end, "period_end"),
-    dueDate: optionalDate(row.due_date, "due_date"),
-    currency: cleanText(row.currency, "statement_currency", 3),
-    totalMinor: integer(row.total_minor, "total_minor", 0, Number.MAX_SAFE_INTEGER),
+    studentName: normalized.studentName,
+    billedToName: normalized.billedToName,
+    periodStart: normalized.periodStart,
+    periodEnd: normalized.periodEnd,
+    dueDate: normalized.dueDate,
+    currency: normalized.currency,
+    totalMinor,
     issuedAt: cleanText(row.issued_at, "issued_at", 40),
     paidAt: optionalText(row.paid_at, "paid_at", 40),
-    lineItems: lineItems.map((raw) => {
-      const item = plainObject(raw);
-      const note = optionalText(item.note, "line_item_note", 240);
-      const lessonDate = optionalDate(item.lessonDate, "lesson_date");
-      if (!lessonDate && !note) fail("aggregate_statement_note_required");
-      return {
-        lessonDate,
-        teacherName: cleanText(item.teacherName, "teacher_name"),
-        subject: optionalText(item.subject, "subject"),
-        durationMinutes: integer(item.durationMinutes, "duration_minutes", 1, 24 * 60),
-        rateMinor: integer(item.rateMinor, "rate_minor", 0, 1_000_000_000_000),
-        amountMinor: integer(item.amountMinor, "amount_minor", 0, 1_000_000_000_000),
-        ...(note ? { note } : {}),
-      };
-    }),
+    lineItems: normalized.lineItems.map((item) => ({
+      lessonDate: item.lessonDate,
+      teacherName: item.teacherName,
+      subject: item.subject,
+      durationMinutes: item.durationMinutes,
+      rateMinor: item.rateMinor,
+      amountMinor: item.amountMinor,
+      ...(item.note ? { note: item.note } : {}),
+    })),
   };
 }

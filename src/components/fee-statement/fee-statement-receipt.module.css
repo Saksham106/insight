@@ -82,10 +82,12 @@
 .itemHead span:nth-child(n+2) { text-align: right; }
 .item { padding: 1rem .2rem; border-top: 1px solid #ebe3d4; }
 .item:first-of-type { border-top: 0; }
-.item time, .item strong, .item small { display: block; }
-.item time { color: #788391; font-size: .75rem; }
-.item strong { margin-top: .2rem; font-size: .96rem; }
-.item small { margin-top: .2rem; color: #667284; }
+.item time { display: block; color: #9a5e10; font: 700 .98rem/1.2 var(--font-geist-mono); letter-spacing: -.02em; }
+.classLine { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .45rem; margin-top: .3rem; }
+.classLine strong { font-size: .96rem; }
+.classLine small, .note { color: #667284; }
+.classLine small { font-size: .82rem; }
+.note { display: block; margin-top: .25rem; }
 .duration, .amount { text-align: right; font: 600 .86rem/1.2 var(--font-geist-mono); }
 .amount { color: #162d51; }
 .totalRow { grid-template-columns: 1fr auto; gap: 1rem; margin: 1.4rem -.45rem 0; padding: 1.2rem .65rem; border-top: 2px solid #172e53; border-bottom: 1px solid #172e53; }

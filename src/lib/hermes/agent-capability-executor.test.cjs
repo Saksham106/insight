@@ -15,8 +15,8 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 const { executeAgentCapability } = require(path.join(__dirname, "agent-capability-executor.ts"));
 
 test("publishes a fee statement with only a token hash stored in the database", async () => {
-  const originalSecret = process.env.HERMES_ACTION_TOKEN_SECRET;
-  process.env.HERMES_ACTION_TOKEN_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
   try {
     const calls = [];
     const client = { async rpc(name, payload) {
@@ -31,20 +31,21 @@ test("publishes a fee statement with only a token hash stored in the database", 
         lineItems: [{ lessonDate: "2026-08-11", teacherName: "Teacher A", subject: "Maths", durationMinutes: 60, rateMinor: 500000, amountMinor: 500000, source: { workbook: "Workbook", sheet: "August", row: 3 } }],
       },
     };
-    const actor = { kind: "admin", profileId: "admin-1", channel: "imessage" };
+    const actor = { kind: "admin", profileId: "admin-1", externalIdHash: "a".repeat(64), channel: "imessage" };
     const result = await executeAgentCapability(client, actor, action);
     const retry = await executeAgentCapability(client, actor, action);
     assert.equal(calls[0].name, "create_academy_fee_statement");
     assert.match(calls[0].payload.p_public_token_hash, /^[a-f0-9]{64}$/);
     assert.equal("p_public_token" in calls[0].payload, false);
+    assert.equal(calls[0].payload.p_actor_identifier_hash, "a".repeat(64));
     const token = new URL(result.publicUrl).pathname.split("/").pop();
     assert.match(token, /^[A-Za-z0-9_-]{32,}$/);
     assert.notEqual(token, calls[0].payload.p_public_token_hash);
     assert.equal(retry.publicUrl, result.publicUrl);
     assert.equal(calls[1].payload.p_public_token_hash, calls[0].payload.p_public_token_hash);
   } finally {
-    if (originalSecret === undefined) delete process.env.HERMES_ACTION_TOKEN_SECRET;
-    else process.env.HERMES_ACTION_TOKEN_SECRET = originalSecret;
+    if (originalSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+    else process.env.ACADEMY_AGENT_EVALUATION_SECRET = originalSecret;
   }
 });
 

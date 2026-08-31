@@ -18,7 +18,7 @@ function idempotencyKey(clientRequestId: string) {
 }
 
 function feeStatementToken(clientRequestId: string) {
-  const secret = process.env.HERMES_ACTION_TOKEN_SECRET ?? process.env.HERMES_EVALUATION_SECRET;
+  const secret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
   if (!secret || secret.length < 32) throw new Error("capability_execution_unavailable");
   return createHmac("sha256", secret)
     .update(`fee-statement:v1:${clientRequestId}`, "utf8")
@@ -70,6 +70,7 @@ export async function executeAgentCapability(
         p_line_items: input.lineItems,
         p_source_channel: actor.channel,
         p_actor_profile_id: actor.profileId,
+        p_actor_identifier_hash: actor.externalIdHash ?? null,
         p_client_request_id: action.clientRequestId,
       });
       dbError(error);

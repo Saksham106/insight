@@ -56,9 +56,11 @@ export function FeeStatementReceipt({ statement }: { statement: PublicFeeStateme
             <article className={styles.item} key={`${item.lessonDate ?? "aggregate"}-${item.teacherName}-${index}`}>
               <div>
                 {item.lessonDate ? <time dateTime={item.lessonDate}>{day(item.lessonDate)}</time> : <time>{month(statement.periodStart)} total</time>}
-                <strong>{item.subject ?? "Tutoring"}</strong>
-                <small>with {item.teacherName}</small>
-                {item.note ? <small>{item.note}</small> : null}
+                <div className={styles.classLine}>
+                  <strong>{item.subject ?? "Tutoring"}</strong>
+                  <small>with {item.teacherName}</small>
+                </div>
+                {item.note ? <small className={styles.note}>{item.note}</small> : null}
               </div>
               <span className={styles.duration}>{hours(item.durationMinutes)}</span>
               <span className={styles.amount}>{money(item.amountMinor, statement.currency)}</span>
