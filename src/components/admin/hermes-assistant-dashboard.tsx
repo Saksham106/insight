@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { AlertCircle, Banknote, Bot, CalendarDays, Clock3, Contact, Users } from "lucide-react";
+import { AlertCircle, Banknote, Bot, CalendarDays, Clock3, Contact, ReceiptText, Users } from "lucide-react";
 
 import { HermesAttentionPanel } from "@/components/admin/hermes-attention-panel";
 import { HermesContactsPanel } from "@/components/admin/hermes-contacts-panel";
 import { HermesConversationsPanel } from "@/components/admin/hermes-conversations-panel";
+import { HermesFeeStatementsPanel } from "@/components/admin/hermes-fee-statements-panel";
 import { HermesClassesPanel } from "@/components/admin/hermes-classes-panel";
 import {
   DEFAULT_HERMES_TAB,
@@ -11,6 +12,7 @@ import {
   type HermesAdminContact,
   type HermesApproval,
   type HermesContactIdentity,
+  type HermesFeeStatementSummary,
   type HermesMessage,
   type HermesSettlementCycle,
   type HermesTab,
@@ -38,6 +40,7 @@ interface HermesAssistantDashboardProps {
   messages: HermesMessage[];
   lessonCycles: AdminLessonCycle[];
   lessonLedgerError: string | null;
+  statements: HermesFeeStatementSummary[];
   settlements: HermesSettlementCycle[];
   loadError: string | null;
   classOccurrences: Array<{ id: string; series_id: string | null; title: string; subject: string | null; starts_at: string; ends_at: string; timezone: string; status: string; version: number }>;
@@ -71,6 +74,7 @@ export function HermesAssistantDashboard({
   messages,
   lessonCycles,
   lessonLedgerError,
+  statements,
   settlements,
   loadError,
   classOccurrences,
@@ -102,6 +106,7 @@ export function HermesAssistantDashboard({
   const tabIcons: Record<HermesTab, React.ReactNode> = {
     conversations: <Users size={16} />,
     ledger: <Banknote size={16} />,
+    statements: <ReceiptText size={16} />,
     contacts: <Contact size={16} />,
     classes: <CalendarDays size={16} />,
     scheduling: <Clock3 size={16} />,
@@ -205,6 +210,8 @@ export function HermesAssistantDashboard({
           settlements={settlements}
         />
       ) : null}
+
+      {tab === "statements" ? <HermesFeeStatementsPanel statements={statements} /> : null}
 
       {tab === "contacts" ? <HermesContactsPanel contacts={directoryContacts} relationships={relationships} /> : null}
 
