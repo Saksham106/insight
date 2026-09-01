@@ -20,7 +20,13 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 
 const routePath = path.join(__dirname, "route.ts");
 
-function loadRoute({ profile, storedHash = "stored-hash", derivedHash = "stored-hash" }) {
+function loadRoute({
+  profile,
+  storedHash = "stored-hash",
+  derivedHash = "stored-hash",
+  status = "published",
+  linkError = false,
+}) {
   const originalLoad = Module._load;
   let privilegedReads = 0;
   Module._load = function load(request, parent, isMain) {
@@ -41,11 +47,14 @@ function loadRoute({ profile, storedHash = "stored-hash", derivedHash = "stored-
     }
     if (request === "@/lib/hermes/fee-statement-link") {
       return {
-        feeStatementPublicUrl: () => ({
-          token: "private-token",
-          tokenHash: derivedHash,
-          url: "https://academy.example/statement/private-token",
-        }),
+        feeStatementPublicUrl: () => {
+          if (linkError) throw new Error("capability_execution_unavailable");
+          return {
+            token: "private-token",
+            tokenHash: derivedHash,
+            url: "https://academy.example/statement/private-token",
+          };
+        },
         feeStatementTokenHash: () => derivedHash,
       };
     }
@@ -64,7 +73,7 @@ function loadRoute({ profile, storedHash = "stored-hash", derivedHash = "stored-
                           data: {
                             client_request_id: "statement-request-1",
                             public_token_hash: storedHash,
-                            status: "published",
+                            status,
                           },
                           error: null,
                         }),
@@ -119,5 +128,29 @@ test("a rotated or mismatched secret never returns an invalid private link", asy
   assert.equal(response.status, 409);
   assert.deepEqual(await response.json(), {
     error: "This statement link cannot be recovered safely.",
+  });
+});
+
+test("void statements never return an active private link", async () => {
+  const { route } = loadRoute({
+    profile: { id: "admin-1", role: "admin" },
+    status: "void",
+  });
+  const response = await route.POST(new Request("https://academy.example/api"), context);
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), {
+    error: "Voided statements do not have an active payment link.",
+  });
+});
+
+test("missing or unsafe recovery configuration fails closed", async () => {
+  const { route } = loadRoute({
+    profile: { id: "admin-1", role: "admin" },
+    linkError: true,
+  });
+  const response = await route.POST(new Request("https://academy.example/api"), context);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    error: "Statement links are temporarily unavailable.",
   });
 });
