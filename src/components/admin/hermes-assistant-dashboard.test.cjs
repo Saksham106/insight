@@ -195,6 +195,9 @@ test("fee statements form a searchable private-link library for administrators",
   assert.match(panel, /\/api\/admin\/hermes\/fee-statements\/\$\{statementId\}\/link/);
   assert.match(panel, /navigator\.clipboard\.writeText/);
   assert.match(panel, /window\.open/);
+  assert.match(panel, /statement\.status === "paid"/);
+  assert.match(panel, /it has been marked paid/);
+  assert.match(panel, /The total due is/);
   assert.doesNotMatch(panel, /public_token_hash|client_request_id/);
 
   const route = read("src/app/api/admin/hermes/fee-statements/[id]/link/route.ts");

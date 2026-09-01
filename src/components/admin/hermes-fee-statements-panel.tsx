@@ -115,8 +115,12 @@ export function HermesFeeStatementsPanel({
         opened?.location.replace(url);
         setNotice(`Opened ${statement.student_name}'s statement.`);
       } else {
+        const amount = formatMinorCurrency(statement.total_minor, statement.currency);
+        const paymentSummary = statement.status === "paid"
+          ? `The total is ${amount}, and it has been marked paid`
+          : `The total due is ${amount}`;
         const text = action === "whatsapp"
-          ? `Hi, here is ${statement.student_name}'s fee statement for ${monthLabel(statement.period_start)}. The total due is ${formatMinorCurrency(statement.total_minor, statement.currency)}: ${url}`
+          ? `Hi, here is ${statement.student_name}'s fee statement for ${monthLabel(statement.period_start)}. ${paymentSummary}: ${url}`
           : url;
         await copyToClipboard(text);
         setNotice(action === "whatsapp"
