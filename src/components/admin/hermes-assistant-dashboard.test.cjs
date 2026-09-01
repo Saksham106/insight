@@ -180,6 +180,39 @@ test("contact mutation routes authorize administrators before privileged access"
   }
 });
 
+test("fee statements form a searchable private-link library for administrators", () => {
+  const panel = read("src/components/admin/hermes-fee-statements-panel.tsx");
+  for (const label of [
+    "Search students or references",
+    "All months",
+    "All statuses",
+    "Copy link",
+    "Open statement",
+    "Copy WhatsApp message",
+  ]) {
+    assert.ok(panel.includes(label), `missing fee statement control ${label}`);
+  }
+  assert.match(panel, /\/api\/admin\/hermes\/fee-statements\/\$\{statementId\}\/link/);
+  assert.match(panel, /navigator\.clipboard\.writeText/);
+  assert.match(panel, /window\.open/);
+  assert.match(panel, /statement\.status === "paid"/);
+  assert.match(panel, /it has been marked paid/);
+  assert.match(panel, /The total due is/);
+  assert.doesNotMatch(panel, /public_token_hash|client_request_id/);
+
+  const route = read("src/app/api/admin/hermes/fee-statements/[id]/link/route.ts");
+  assert.match(route, /getUserProfile\(\)/);
+  assert.match(route, /profile\.role !== "admin"/);
+  assert.ok(
+    route.indexOf('profile.role !== "admin"') < route.indexOf("createAdminClient()"),
+    "authorization must happen before privileged database access",
+  );
+  assert.match(route, /feeStatementPublicUrl/);
+  assert.match(route, /feeStatementTokenHash/);
+  assert.match(route, /Cache-Control.*no-store/);
+  assert.doesNotMatch(route, /academy_fee_statement_audit_events|insert\(/);
+});
+
 test("pending approvals expose approve and reject controls through an admin-only route", () => {
   const dashboard = read("src/components/admin/hermes-approval-actions.tsx");
   assert.match(dashboard, /Approve/);

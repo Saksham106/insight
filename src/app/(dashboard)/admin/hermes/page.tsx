@@ -81,7 +81,7 @@ export default async function HermesAdminPage({
         .from("academy_fee_statements")
         .select("id, statement_reference, student_name, billed_to_name, period_start, period_end, currency, total_minor, status, issued_at, paid_at, voided_at")
         .order("issued_at", { ascending: false })
-        .limit(50),
+        .limit(500),
       loadConversationSummaries(supabase)
         .then((data) => ({ data, error: false }))
         .catch(() => ({ data: [], error: true })),

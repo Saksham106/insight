@@ -1,8 +1,9 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { AgentActor } from "./agent-capability-types";
 import { manageAgentRoutine } from "./agent-routines";
+import { feeStatementPublicUrl } from "./fee-statement-link";
 import { executeKittyClassTool } from "./kitty-class-tools";
 
 function dbError(error: { message?: string } | null) {
@@ -15,30 +16,6 @@ function idempotencyKey(clientRequestId: string) {
   return clientRequestId.length <= 194
     ? `agent:${clientRequestId}`
     : `agent:${createHash("sha256").update(clientRequestId).digest("hex")}`;
-}
-
-function feeStatementToken(clientRequestId: string) {
-  const secret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
-  if (!secret || secret.length < 32) throw new Error("capability_execution_unavailable");
-  return createHmac("sha256", secret)
-    .update(`fee-statement:v1:${clientRequestId}`, "utf8")
-    .digest()
-    .subarray(0, 24)
-    .toString("base64url");
-}
-
-function feeStatementAppOrigin() {
-  const configured = process.env.NEXT_PUBLIC_APP_URL;
-  if (!configured) throw new Error("capability_execution_unavailable");
-  try {
-    const url = new URL(configured);
-    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
-      throw new Error("unsafe_statement_origin");
-    }
-    return url.origin;
-  } catch {
-    throw new Error("capability_execution_unavailable");
-  }
 }
 
 function projectOccurrence(row: Record<string, unknown>) {
@@ -69,12 +46,10 @@ export async function executeAgentCapability(
   switch (action.capabilityName) {
     case "fee_statement.create": {
       if (actor.kind !== "admin") throw new Error("capability_not_executable");
-      const appOrigin = feeStatementAppOrigin();
       // Stable for one request ID so an uncertain RPC retry returns the same usable bearer URL.
-      const publicToken = feeStatementToken(action.clientRequestId);
-      const publicTokenHash = createHash("sha256").update(publicToken, "utf8").digest("hex");
+      const publicLink = feeStatementPublicUrl(action.clientRequestId);
       const { data, error } = await client.rpc("create_academy_fee_statement", {
-        p_public_token_hash: publicTokenHash,
+        p_public_token_hash: publicLink.tokenHash,
         p_student_name: String(input.studentName),
         p_billed_to_name: input.billedToName ? String(input.billedToName) : null,
         p_period_start: String(input.periodStart),
@@ -95,7 +70,7 @@ export async function executeAgentCapability(
           .from("academy_fee_statements")
           .select("id, statement_reference, status")
           .eq("client_request_id", action.clientRequestId)
-          .eq("public_token_hash", publicTokenHash)
+          .eq("public_token_hash", publicLink.tokenHash)
           .maybeSingle();
         if (!recovered.error) statement = recovered.data;
       }
@@ -106,7 +81,7 @@ export async function executeAgentCapability(
         statementId: String(record.id),
         statementReference: String(record.statement_reference),
         status: String(record.status),
-        publicUrl: `${appOrigin}/statement/${publicToken}`,
+        publicUrl: publicLink.url,
       };
     }
     case "class.reminder.send": {
