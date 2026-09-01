@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { QrCode } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 
 import bankQrCode from "@/assets/bank-qr-code.png";
@@ -41,9 +42,14 @@ export function BankQrPayment({
 
   return (
     <div className={`${styles.paymentAction} ${placement === "bottom" ? styles.paymentActionBottom : ""}`}>
-      <button className={styles.paymentButton} type="button" onClick={openDialog}>
-        <span>Pay by bank QR</span>
-        <small>{amount}</small>
+      <button
+        className={`${styles.paymentButton} ${placement === "bottom" ? styles.paymentButtonBottom : ""}`}
+        type="button"
+        onClick={openDialog}
+      >
+        <QrCode aria-hidden="true" size={18} strokeWidth={2.2} />
+        <span>{placement === "top" ? "Pay by QR" : "Bank details & QR"}</span>
+        {placement === "top" ? <small>{amount}</small> : null}
       </button>
       <dialog
         aria-labelledby={titleId}
