@@ -14,17 +14,31 @@ const PRIVATE_RESPONSE_HEADERS = {
 };
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   const profile = await getUserProfile();
-  if (!profile || profile.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  if (!profile || !profile.is_active || profile.role !== "admin") {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 403, headers: PRIVATE_RESPONSE_HEADERS },
+    );
+  }
+
+  const requestOrigin = new URL(request.url).origin;
+  if (request.headers.get("origin") !== requestOrigin) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 403, headers: PRIVATE_RESPONSE_HEADERS },
+    );
   }
 
   const { id } = await context.params;
   if (!UUID.test(id)) {
-    return NextResponse.json({ error: "Invalid statement." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid statement." },
+      { status: 400, headers: PRIVATE_RESPONSE_HEADERS },
+    );
   }
 
   const supabase = createAdminClient();
