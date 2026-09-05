@@ -85,8 +85,9 @@
 .item time { display: block; color: #9a5e10; font: 700 .98rem/1.2 var(--font-geist-mono); letter-spacing: -.02em; }
 .classLine { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .45rem; margin-top: .3rem; }
 .classLine strong { font-size: .96rem; }
-.classLine small, .note { color: #667284; }
+.classLine small, .note, .calculation { color: #667284; }
 .classLine small { font-size: .82rem; }
+.calculation { display: block; margin-top: .3rem; font: 600 .76rem/1.35 var(--font-geist-mono); }
 .note { display: block; margin-top: .25rem; }
 .duration, .amount { text-align: right; font: 600 .86rem/1.2 var(--font-geist-mono); }
 .amount { color: #162d51; }
@@ -110,6 +111,7 @@
 .itemGroup[open] .groupSummary > div::before { content: "−"; }
 .groupSummary strong { color: #162d51; font-size: .95rem; }
 .groupSummary small { display: block; margin: .35rem 0 0 1.75rem; color: #667284; font-size: .76rem; }
+.groupSummary .calculation { margin-left: 1.75rem; font-family: var(--font-geist-mono); }
 .groupItems { margin: 0 .2rem .65rem 1.7rem; border-left: 2px solid #e3d5bd; }
 .nestedItem { padding-left: 1rem; }
 .paymentAction { display: flex; justify-content: flex-end; margin-top: 1.15rem; }

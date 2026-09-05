@@ -126,6 +126,48 @@ test("recovers an already-committed statement after an ambiguous RPC response", 
   }
 });
 
+test("atomically replaces an incorrect fee statement and returns the new private URL", async () => {
+  const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  process.env.NEXT_PUBLIC_APP_URL = "https://academy.example";
+  const calls = [];
+  const client = { async rpc(name, payload) {
+    calls.push({ name, payload });
+    return { data: { id: "statement-new", statement_reference: "MIA-202608-NEW123", status: "published", replaces_statement_id: "11111111-1111-4111-8111-111111111111" }, error: null };
+  } };
+  const action = {
+    capabilityName: "fee_statement.replace", capabilityVersion: 1, clientRequestId: "devon-august-correction-1",
+    normalizedInput: {
+      correctionReason: "Corrected stale hourly rates",
+      studentName: "Devon", billedToName: null, periodStart: "2026-08-01", periodEnd: "2026-08-31", dueDate: null,
+      currency: "VND", totalMinor: 24000000,
+      lineItems: [{ lessonDate: "2026-08-04", teacherName: "Swati", subject: "Maths", durationMinutes: 90, rateMinor: 1500000, amountMinor: 2250000, source: { workbook: "Swati Tuition", sheet: "Swati Aug classes", row: 5 } }],
+    },
+  };
+  const actor = { kind: "admin", profileId: "admin-1", externalIdHash: "a".repeat(64), channel: "imessage" };
+  try {
+    const result = await executeAgentCapability(client, actor, action);
+    assert.equal(calls[0].name, "replace_academy_fee_statement");
+    assert.equal(calls[0].payload.p_statement_id, null);
+    assert.equal(calls[0].payload.p_correction_reason, "Corrected stale hourly rates");
+    assert.match(calls[0].payload.p_public_token_hash, /^[a-f0-9]{64}$/);
+    assert.deepEqual(result, {
+      statementId: "statement-new",
+      statementReference: "MIA-202608-NEW123",
+      status: "published",
+      publicUrl: result.publicUrl,
+      replacedStatementId: "11111111-1111-4111-8111-111111111111",
+    });
+    assert.match(result.publicUrl, /^https:\/\/academy\.example\/statement\/[A-Za-z0-9_-]{32,}$/);
+  } finally {
+    if (originalSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+    else process.env.ACADEMY_AGENT_EVALUATION_SECRET = originalSecret;
+    if (originalAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+  }
+});
+
 test("a reminder execution reserves only identifiers, never rendered prose", async () => {
   const inserted = [];
   const client = { from(table) {

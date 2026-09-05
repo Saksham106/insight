@@ -68,7 +68,7 @@ export async function executeAgentCapability(
       if (error && !statement) {
         const recovered = await client
           .from("academy_fee_statements")
-          .select("id, statement_reference, status")
+          .select("id, statement_reference, status, replaces_statement_id")
           .eq("client_request_id", action.clientRequestId)
           .eq("public_token_hash", publicLink.tokenHash)
           .maybeSingle();
@@ -82,6 +82,48 @@ export async function executeAgentCapability(
         statementReference: String(record.statement_reference),
         status: String(record.status),
         publicUrl: publicLink.url,
+      };
+    }
+    case "fee_statement.replace": {
+      if (actor.kind !== "admin") throw new Error("capability_not_executable");
+      const publicLink = feeStatementPublicUrl(action.clientRequestId);
+      const { data, error } = await client.rpc("replace_academy_fee_statement", {
+        p_statement_id: input.statementId ? String(input.statementId) : null,
+        p_correction_reason: String(input.correctionReason),
+        p_public_token_hash: publicLink.tokenHash,
+        p_student_name: String(input.studentName),
+        p_billed_to_name: input.billedToName ? String(input.billedToName) : null,
+        p_period_start: String(input.periodStart),
+        p_period_end: String(input.periodEnd),
+        p_due_date: input.dueDate ? String(input.dueDate) : null,
+        p_currency: String(input.currency),
+        p_total_minor: Number(input.totalMinor),
+        p_line_items: input.lineItems,
+        p_source_channel: actor.channel,
+        p_actor_profile_id: actor.profileId,
+        p_actor_identifier_hash: actor.externalIdHash ?? null,
+        p_client_request_id: action.clientRequestId,
+      });
+      if (error?.message?.includes("client_request_payload_mismatch")) dbError(error);
+      let statement = Array.isArray(data) ? data[0] : data;
+      if (error && !statement) {
+        const recovered = await client
+          .from("academy_fee_statements")
+          .select("id, statement_reference, status, replaces_statement_id")
+          .eq("client_request_id", action.clientRequestId)
+          .eq("public_token_hash", publicLink.tokenHash)
+          .maybeSingle();
+        if (!recovered.error) statement = recovered.data;
+      }
+      if (!statement) dbError(error);
+      if (!statement) throw new Error("capability_execution_unavailable");
+      const record = statement as Record<string, unknown>;
+      return {
+        statementId: String(record.id),
+        statementReference: String(record.statement_reference),
+        status: String(record.status),
+        publicUrl: publicLink.url,
+        replacedStatementId: String(record.replaces_statement_id),
       };
     }
     case "class.reminder.send": {

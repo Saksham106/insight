@@ -30,6 +30,9 @@ function LineItemRow({ item, periodStart, currency, nested = false }: { item: Li
           <strong>{item.subject ?? "Tutoring"}</strong>
           <small>with {item.teacherName}</small>
         </div>
+        <small className={styles.calculation}>
+          {hours(item.durationMinutes)} × {formatMinorCurrency(item.rateMinor, currency)} per hour = {formatMinorCurrency(item.amountMinor, currency)}
+        </small>
         {note ? <small className={styles.note}>{note}</small> : null}
       </div>
       <span className={styles.duration}>{hours(item.durationMinutes)}</span>
@@ -88,6 +91,11 @@ export function FeeStatementReceipt({ statement }: { statement: PublicFeeStateme
               <summary className={styles.groupSummary}>
                 <div>
                   <strong>{row.items.length} classes with {row.teacherName}</strong>
+                  <small className={styles.calculation}>
+                    {row.rateMinor === null
+                      ? "Rates shown per class"
+                      : `${hours(row.durationMinutes)} × ${formatMinorCurrency(row.rateMinor, statement.currency)} per hour = ${formatMinorCurrency(row.amountMinor, statement.currency)}`}
+                  </small>
                   <small>Tap to see individual classes</small>
                 </div>
                 <span className={styles.duration}>{hours(row.durationMinutes)}</span>

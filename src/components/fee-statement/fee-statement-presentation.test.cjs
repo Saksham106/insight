@@ -30,7 +30,7 @@ function item(teacherName, lessonDate, durationMinutes = 60, amountMinor = 75000
     teacherName,
     subject: "English",
     durationMinutes,
-    rateMinor: amountMinor,
+    rateMinor: (amountMinor * 60) / durationMinutes,
     amountMinor,
     ...(note ? { note } : {}),
   };
@@ -68,8 +68,29 @@ test("long statements collapse repeated dated classes with the same tutor", () =
   assert.equal(group.items.length, 4);
   assert.equal(group.durationMinutes, 270);
   assert.equal(group.amountMinor, 3375000);
+  assert.equal(group.rateMinor, 750000);
   assert.equal(groups.find((row) => row.teacherName === "Mr Minh").items.length, 2);
   assert.equal(groups.find((row) => row.teacherName === "Ms Hoa").items.length, 2);
+});
+
+test("grouped rows expose an hourly rate only when every class uses the same rate", () => {
+  const { buildFeeStatementRows } = presentation();
+  const items = [
+    item("Swati", "2026-08-01", 60, 1500000),
+    item("Swati", "2026-08-08", 90, 2250000),
+    item("Anjali", "2026-08-02", 60, 900000),
+    item("Anjali", "2026-08-09", 60, 1000000),
+    item("A", "2026-08-03"), item("B", "2026-08-04"),
+    item("C", "2026-08-05"), item("D", "2026-08-06"),
+  ];
+  items[0].rateMinor = 1500000;
+  items[1].rateMinor = 1500000;
+  items[2].rateMinor = 900000;
+  items[3].rateMinor = 1000000;
+
+  const groups = buildFeeStatementRows(items).filter((row) => row.kind === "group");
+  assert.equal(groups.find((row) => row.teacherName === "Swati").rateMinor, 1500000);
+  assert.equal(groups.find((row) => row.teacherName === "Anjali").rateMinor, null);
 });
 
 test("aggregate rows are never folded into dated tutor groups", () => {
@@ -105,6 +126,9 @@ test("receipt contains two payment entry points and the approved QR asset", () =
   assert.ok(fs.existsSync(payment), "bank QR payment component is missing");
   const paymentSource = fs.readFileSync(payment, "utf8");
   assert.match(receipt, /BankQrPayment/);
+  assert.match(receipt, /formatMinorCurrency\(item\.rateMinor, currency\)/);
+  assert.match(receipt, /per hour =/);
+  assert.match(receipt, /row\.rateMinor/);
   assert.match(receipt, /placement="top"/);
   assert.match(receipt, /placement="bottom"/);
   assert.match(paymentSource, /bank-qr-code\.png/);
