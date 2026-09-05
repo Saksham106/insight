@@ -66,3 +66,17 @@ test("fee statement action results cannot retain private bearer links", () => {
   assert.match(privacySql, /not \(result \? 'publicUrl'\)/);
   assert.match(privacySql, /not \(result \? 'whatsappMessage'\)/);
 });
+
+test("fee statement action result hardening matches the exact capability prefix and nested bearer keys", () => {
+  const file = path.join(migrationDir, "20260905140000_harden_fee_statement_action_link_scrub.sql");
+  assert.equal(fs.existsSync(file), true);
+  const privacySql = fs.readFileSync(file, "utf8");
+  assert.match(privacySql, /(?:pg_catalog\.)?starts_with\(capability_name, 'fee_statement\.'\)/);
+  assert.doesNotMatch(privacySql, /like\s+'fee_statement\.%'/i);
+  assert.match(privacySql, /(?:pg_catalog\.)?jsonb_path_exists\(result, '\$\.\*\*\."publicUrl"'\)/);
+  assert.match(privacySql, /(?:pg_catalog\.)?jsonb_path_exists\(result, '\$\.\*\*\."whatsappMessage"'\)/);
+  assert.match(privacySql, /jsonb_strip_fee_statement_bearer_fields/);
+  assert.match(privacySql, /jsonb_array_elements[\s\S]*with ordinality/);
+  assert.match(privacySql, /jsonb_agg[\s\S]*order by item\.position/);
+  assert.match(privacySql, /jsonb_each/);
+});

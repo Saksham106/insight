@@ -126,6 +126,11 @@ test("fee statement bearer links are never persisted and are reconstructed on re
       statementId: "statement-devon",
       publicUrl: "https://academy.example/statement/private-token",
       whatsappMessage: "Ready-to-copy message with https://academy.example/statement/private-token",
+      metadata: {
+        note: "safe metadata",
+        publicUrl: "https://academy.example/statement/nested-private-token",
+        nested: [{ keep: true, whatsappMessage: "Nested private copy" }],
+      },
     };
   };
   const request = { evaluationToken: evaluated.evaluationToken, clientRequestId: "statement-lookup-1" };
@@ -133,8 +138,11 @@ test("fee statement bearer links are never persisted and are reconstructed on re
     secret, execute, now: 1_786_447_200_100,
   });
   const persisted = [...deps.rows.values()][0].result;
-  assert.deepEqual(persisted, { statementId: "statement-devon" });
-  assert.doesNotMatch(JSON.stringify(persisted), /private-token|statement\//);
+  assert.deepEqual(persisted, {
+    statementId: "statement-devon",
+    metadata: { note: "safe metadata", nested: [{ keep: true }] },
+  });
+  assert.doesNotMatch(JSON.stringify(persisted), /private-token|statement\/|private copy/i);
 
   const second = await executeEvaluatedAction(deps.store, admin, request, {
     secret, execute, now: 1_786_447_200_200,
