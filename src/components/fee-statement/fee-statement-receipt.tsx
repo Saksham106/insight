@@ -2,7 +2,7 @@ import type { PublicFeeStatement } from "@/lib/hermes/fee-statements";
 import { formatMinorCurrency } from "@/lib/format-minor-currency";
 
 import { BankQrPayment } from "./bank-qr-payment";
-import { buildFeeStatementRows, canOfferBankQr, parentVisibleNote } from "./fee-statement-presentation";
+import { buildFeeStatementRows, canOfferBankQr, formatDurationHours, parentVisibleNote } from "./fee-statement-presentation";
 import styles from "./fee-statement-receipt.module.css";
 
 function day(value: string) {
@@ -11,11 +11,6 @@ function day(value: string) {
 
 function month(value: string) {
   return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
-}
-
-function hours(minutes: number) {
-  const value = minutes / 60;
-  return `${Number.isInteger(value) ? value : value.toFixed(1)} hr${value === 1 ? "" : "s"}`;
 }
 
 type LineItem = PublicFeeStatement["lineItems"][number];
@@ -30,9 +25,12 @@ function LineItemRow({ item, periodStart, currency, nested = false }: { item: Li
           <strong>{item.subject ?? "Tutoring"}</strong>
           <small>with {item.teacherName}</small>
         </div>
+        <small className={styles.calculation}>
+          {formatDurationHours(item.durationMinutes)} × {formatMinorCurrency(item.rateMinor, currency)} per hour = {formatMinorCurrency(item.amountMinor, currency)}
+        </small>
         {note ? <small className={styles.note}>{note}</small> : null}
       </div>
-      <span className={styles.duration}>{hours(item.durationMinutes)}</span>
+      <span className={styles.duration}>{formatDurationHours(item.durationMinutes)}</span>
       <span className={styles.amount}>{formatMinorCurrency(item.amountMinor, currency)}</span>
     </article>
   );
@@ -88,9 +86,14 @@ export function FeeStatementReceipt({ statement }: { statement: PublicFeeStateme
               <summary className={styles.groupSummary}>
                 <div>
                   <strong>{row.items.length} classes with {row.teacherName}</strong>
+                  <small className={styles.calculation}>
+                    {row.rateMinor === null
+                      ? "Rates shown per class"
+                      : `${formatDurationHours(row.durationMinutes)} × ${formatMinorCurrency(row.rateMinor, statement.currency)} per hour = ${formatMinorCurrency(row.amountMinor, statement.currency)}`}
+                  </small>
                   <small>Tap to see individual classes</small>
                 </div>
-                <span className={styles.duration}>{hours(row.durationMinutes)}</span>
+                <span className={styles.duration}>{formatDurationHours(row.durationMinutes)}</span>
                 <span className={styles.amount}>{formatMinorCurrency(row.amountMinor, statement.currency)}</span>
               </summary>
               <div className={styles.groupItems}>

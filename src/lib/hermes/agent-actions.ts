@@ -40,6 +40,15 @@ export type AgentActionStore = {
   claim(id: string): Promise<AgentActionRow | null>;
   complete(id: string, result: Record<string, unknown>): Promise<AgentActionRow>;
   fail(id: string, errorCode: string): Promise<AgentActionRow>;
+  retry(id: string, errorCode: string): Promise<AgentActionRow>;
+  renewEvaluation(
+    id: string,
+    expectedStatus: AgentActionRow["executionStatus"],
+    resetExecution: boolean,
+    issuedAt: number,
+    expiresAt: number,
+    tokenHash: string,
+  ): Promise<AgentActionRow>;
 };
 
 export type AgentActionProposal = {
@@ -107,6 +116,7 @@ export async function evaluateAction(
 ) {
   const clientRequestId = validRequestId(proposal.clientRequestId);
   const actorKey = agentActorKey(actor);
+  const now = options.now ?? Date.now();
   const inputDigest = digest({
     capabilityName: proposal.capabilityName,
     capabilityVersion: proposal.capabilityVersion,
@@ -115,6 +125,29 @@ export async function evaluateAction(
   const existing = await store.findByActorRequest(actorKey, clientRequestId);
   if (existing) {
     if (existing.inputDigest !== inputDigest) throw new Error("client_request_payload_mismatch");
+    const canRenew = existing.decision.kind === "allowed"
+      && existing.expiresAt !== null
+      && existing.expiresAt <= now
+      && ((existing.executionStatus === "completed" && Boolean(existing.result))
+        || existing.executionStatus === "executing"
+        || (existing.executionStatus === "pending" && existing.errorCode === "capability_execution_uncertain"));
+    if (canRenew) {
+      const resetExecution = existing.executionStatus !== "completed";
+      const refreshed = {
+        ...existing,
+        issuedAt: now,
+        expiresAt: now + 5 * 60_000,
+        executionStatus: resetExecution ? "pending" as const : existing.executionStatus,
+        errorCode: resetExecution ? "capability_execution_uncertain" : existing.errorCode,
+      };
+      const evaluationToken = issueEvaluationToken(claimsForRow(refreshed), options.secret);
+      refreshed.tokenHash = hashEvaluationToken(evaluationToken);
+      await store.renewEvaluation(
+        refreshed.id, existing.executionStatus, resetExecution,
+        refreshed.issuedAt, refreshed.expiresAt, refreshed.tokenHash,
+      );
+      return { decision: refreshed.decision, evaluationToken, duplicate: true };
+    }
     const evaluationToken = existing.decision.kind === "allowed"
       ? issueEvaluationToken(claimsForRow(existing), options.secret)
       : undefined;
@@ -128,7 +161,6 @@ export async function evaluateAction(
     proposedInput: proposal.proposedInput,
     repository,
   });
-  const now = options.now ?? Date.now();
   const row: AgentActionRow = {
     id: randomUUID(), actorKey, clientRequestId,
     capabilityName: proposal.capabilityName,
@@ -180,18 +212,28 @@ export async function executeEvaluatedAction(
     if (current?.executionStatus === "completed" && current.result) return { result: current.result, duplicate: true };
     throw new Error("action_execution_in_progress");
   }
+  let result: Record<string, unknown>;
   try {
-    const result = boundedResult(await options.execute({
+    result = boundedResult(await options.execute({
       actor,
       capabilityName: row.capabilityName,
       capabilityVersion: row.capabilityVersion,
       normalizedInput: row.normalizedInput ?? {},
       clientRequestId: row.clientRequestId,
     }));
-    await store.complete(row.id, result);
-    return { result, duplicate: false };
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "capability_execution_uncertain") {
+      await store.retry(row.id, "capability_execution_uncertain");
+      throw new Error("action_execution_retryable");
+    }
     await store.fail(row.id, "action_execution_failed");
     throw new Error("action_execution_failed");
   }
+  try {
+    await store.complete(row.id, result);
+  } catch {
+    try { await store.retry(row.id, "capability_execution_uncertain"); } catch { /* renewed after the execution lease expires */ }
+    throw new Error("action_execution_retryable");
+  }
+  return { result, duplicate: false };
 }

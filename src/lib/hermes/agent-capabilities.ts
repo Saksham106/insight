@@ -34,6 +34,14 @@ function textList(value: unknown) {
   return normalized;
 }
 
+function uuid(value: unknown) {
+  const normalized = text(value);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)) {
+    throw new Error("invalid_capability_input");
+  }
+  return normalized;
+}
+
 function schema(properties: Record<string, unknown>, required: string[]) {
   return { type: "object", additionalProperties: false, properties, required };
 }
@@ -59,6 +67,38 @@ const definitions: AgentCapabilityDefinition[] = [
     allowedActorKinds: ["admin"],
     normalize(input) {
       return sanitizeFeeStatementInput(input) as unknown as Record<string, unknown>;
+    },
+  },
+  {
+    manifest: {
+      name: "fee_statement.replace", version: 1,
+      purpose: "Void an incorrect fee statement and publish its corrected immutable replacement.",
+      risk: "high", schedulable: false, composable: false,
+      inputSchema: schema({
+        statementId: { type: "string", format: "uuid" },
+        correctionReason: stringField,
+        studentName: stringField,
+        billedToName: stringField,
+        periodStart: stringField,
+        periodEnd: stringField,
+        dueDate: stringField,
+        currency: { type: "string", minLength: 3, maxLength: 3 },
+        lineItems: { type: "array", minItems: 1, maxItems: 100, items: { type: "object" } },
+      }, ["correctionReason", "studentName", "periodStart", "periodEnd", "currency", "lineItems"]),
+    },
+    allowedActorKinds: ["admin"],
+    normalize(input) {
+      const value = exactInput(
+        input,
+        ["correctionReason", "studentName", "periodStart", "periodEnd", "currency", "lineItems"],
+        ["statementId", "billedToName", "dueDate"],
+      );
+      const { statementId, correctionReason, ...replacement } = value;
+      return {
+        ...(statementId === undefined ? {} : { statementId: uuid(statementId) }),
+        correctionReason: text(correctionReason),
+        ...sanitizeFeeStatementInput(replacement),
+      } as unknown as Record<string, unknown>;
     },
   },
   {

@@ -2,6 +2,12 @@ import type { PublicFeeStatement } from "@/lib/hermes/fee-statements";
 
 type LineItem = PublicFeeStatement["lineItems"][number];
 
+export function formatDurationHours(minutes: number) {
+  const value = minutes / 60;
+  const displayed = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+  return `${displayed} hr${value === 1 ? "" : "s"}`;
+}
+
 export type FeeStatementRow =
   | { kind: "item"; item: LineItem; sourceIndex: number }
   | {
@@ -9,6 +15,7 @@ export type FeeStatementRow =
       teacherName: string;
       items: Array<{ item: LineItem; sourceIndex: number }>;
       durationMinutes: number;
+      rateMinor: number | null;
       amountMinor: number;
     };
 
@@ -48,11 +55,13 @@ export function buildFeeStatementRows(lineItems: PublicFeeStatement["lineItems"]
     if (emitted.has(key)) return;
     emitted.add(key);
     const entries = datedByTeacher.get(key) ?? [];
+    const rates = new Set(entries.map((entry) => entry.item.rateMinor));
     rows.push({
       kind: "group",
       teacherName: item.teacherName,
       items: entries,
       durationMinutes: entries.reduce((sum, entry) => sum + entry.item.durationMinutes, 0),
+      rateMinor: rates.size === 1 ? entries[0].item.rateMinor : null,
       amountMinor: entries.reduce((sum, entry) => sum + entry.item.amountMinor, 0),
     });
   });

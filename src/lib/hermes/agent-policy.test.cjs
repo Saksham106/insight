@@ -96,3 +96,16 @@ test("administrator routine management is allowed but remains separately evaluat
   assert.equal(decision.kind, "allowed");
   assert.deepEqual(decision.normalizedInput, { operation: "disable", routineId: "routine-1" });
 });
+
+test("fee statement replacement asks for missing correction fields before normalization", async () => {
+  const decision = await decide(
+    { kind: "admin", profileId: "swati", channel: "imessage" },
+    "fee_statement.replace",
+    { studentName: "Devon", periodStart: "2026-08-01", periodEnd: "2026-08-31", currency: "VND", lineItems: [] },
+  );
+  assert.deepEqual(decision, {
+    kind: "needs_clarification",
+    missingFields: ["correctionReason"],
+    reasonCode: "missing_required_fields",
+  });
+});

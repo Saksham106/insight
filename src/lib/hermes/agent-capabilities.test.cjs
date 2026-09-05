@@ -64,6 +64,33 @@ test("normalizes a reconciled fee statement snapshot", () => {
   assert.equal(normalized.lineItems[0].source.row, 3);
 });
 
+test("normalizes an immutable fee statement replacement for administrators", () => {
+  const { getCapability, listCapabilityManifests } = require(registryPath);
+  assert.equal(listCapabilityManifests("contact").some((item) => item.name === "fee_statement.replace"), false);
+  assert.equal(listCapabilityManifests("admin").some((item) => item.name === "fee_statement.replace"), true);
+
+  const normalized = getCapability("fee_statement.replace", 1).normalize({
+    correctionReason: "Corrected stale hourly rates",
+    studentName: "Devon",
+    periodStart: "2026-08-01",
+    periodEnd: "2026-08-31",
+    currency: "VND",
+    lineItems: [{
+      lessonDate: "2026-08-04", teacherName: "Swati", subject: "Maths",
+      durationMinutes: 90, rateMinor: 1500000, amountMinor: 2250000,
+      source: { workbook: "Swati Tuition", sheet: "Swati Aug classes", row: 5 },
+    }],
+  });
+
+  assert.equal("statementId" in normalized, false);
+  assert.equal(normalized.correctionReason, "Corrected stale hourly rates");
+  assert.equal(normalized.totalMinor, 2250000);
+  assert.throws(() => getCapability("fee_statement.replace", 1).normalize({
+    ...normalized,
+    statementId: "not-a-uuid",
+  }), /invalid_capability_input/);
+});
+
 test("resolves exact versions and rejects unknown capabilities", () => {
   const { getCapability } = require(registryPath);
   assert.equal(getCapability("class.reminder.send", 1).manifest.name, "class.reminder.send");
