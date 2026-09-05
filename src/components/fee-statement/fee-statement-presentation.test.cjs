@@ -120,6 +120,14 @@ test("bank QR is offered only for unpaid VND statements", () => {
   assert.equal(canOfferBankQr("published", "USD"), false);
 });
 
+test("duration labels never round a positive lesson down to zero hours", () => {
+  const { formatDurationHours } = presentation();
+  assert.equal(formatDurationHours(1), "0.02 hrs");
+  assert.equal(formatDurationHours(30), "0.5 hrs");
+  assert.equal(formatDurationHours(60), "1 hr");
+  assert.equal(formatDurationHours(90), "1.5 hrs");
+});
+
 test("receipt contains two payment entry points and the approved QR asset", () => {
   const receipt = fs.readFileSync(path.join(__dirname, "fee-statement-receipt.tsx"), "utf8");
   const payment = path.join(__dirname, "bank-qr-payment.tsx");

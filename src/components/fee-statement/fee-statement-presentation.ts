@@ -2,6 +2,12 @@ import type { PublicFeeStatement } from "@/lib/hermes/fee-statements";
 
 type LineItem = PublicFeeStatement["lineItems"][number];
 
+export function formatDurationHours(minutes: number) {
+  const value = minutes / 60;
+  const displayed = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+  return `${displayed} hr${value === 1 ? "" : "s"}`;
+}
+
 export type FeeStatementRow =
   | { kind: "item"; item: LineItem; sourceIndex: number }
   | {
