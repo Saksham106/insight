@@ -126,6 +126,37 @@ test("recovers an already-committed statement after an ambiguous RPC response", 
   }
 });
 
+test("marks an ambiguous fee replacement retryable when recovery lookup is unavailable", async () => {
+  const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  process.env.NEXT_PUBLIC_APP_URL = "https://academy.example";
+  const client = {
+    async rpc() { return { data: null, error: { message: "network response unavailable" } }; },
+    from() {
+      return { select() { return { eq() { return { eq() { return { maybeSingle: async () => ({ data: null, error: { message: "recovery unavailable" } }) }; } }; } }; } };
+    },
+  };
+  const action = {
+    capabilityName: "fee_statement.replace", capabilityVersion: 1, clientRequestId: "devon-replacement-ambiguous",
+    normalizedInput: {
+      statementId: "11111111-1111-4111-8111-111111111111", correctionReason: "Corrected stale hourly rates",
+      studentName: "Devon", billedToName: null, periodStart: "2026-08-01", periodEnd: "2026-08-31", dueDate: null,
+      currency: "VND", totalMinor: 2250000,
+      lineItems: [{ lessonDate: "2026-08-04", teacherName: "Swati", subject: "Maths", durationMinutes: 90, rateMinor: 1500000, amountMinor: 2250000, source: { workbook: "Swati Tuition", sheet: "August", row: 5 } }],
+    },
+  };
+  const actor = { kind: "admin", profileId: "admin-1", externalIdHash: "a".repeat(64), channel: "imessage" };
+  try {
+    await assert.rejects(() => executeAgentCapability(client, actor, action), /capability_execution_uncertain/);
+  } finally {
+    if (originalSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+    else process.env.ACADEMY_AGENT_EVALUATION_SECRET = originalSecret;
+    if (originalAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+  }
+});
+
 test("atomically replaces an incorrect fee statement and returns the new private URL", async () => {
   const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
   const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;

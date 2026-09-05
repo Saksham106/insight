@@ -80,6 +80,22 @@ export function createSupabaseAgentActionStore(client: SupabaseClient, channel: 
       if (error || !data) throw new Error("action_store_unavailable");
       return actionRow(data);
     },
+    async retry(id, errorCode) {
+      const { data, error } = await client.from("academy_agent_action_requests").update({ execution_status: "pending", error_code: errorCode, executed_at: null, updated_at: new Date().toISOString() }).eq("id", id).eq("execution_status", "executing").select(select).single();
+      if (error || !data) throw new Error("action_store_unavailable");
+      return actionRow(data);
+    },
+    async renewEvaluation(id, expectedStatus, resetExecution, issuedAt, expiresAt, tokenHash) {
+      const update = {
+        evaluation_issued_at: new Date(issuedAt).toISOString(), evaluation_expires_at: new Date(expiresAt).toISOString(),
+        evaluation_token_hash: tokenHash, updated_at: new Date().toISOString(),
+        ...(resetExecution ? { execution_status: "pending", error_code: "capability_execution_uncertain", executed_at: null } : {}),
+      };
+      const { data, error } = await client.from("academy_agent_action_requests").update(update)
+        .eq("id", id).eq("execution_status", expectedStatus).select(select).single();
+      if (error || !data) throw new Error("action_store_unavailable");
+      return actionRow(data);
+    },
   };
 }
 

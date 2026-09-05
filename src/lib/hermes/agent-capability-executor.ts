@@ -72,7 +72,8 @@ export async function executeAgentCapability(
           .eq("client_request_id", action.clientRequestId)
           .eq("public_token_hash", publicLink.tokenHash)
           .maybeSingle();
-        if (!recovered.error) statement = recovered.data;
+        if (recovered.error) throw new Error("capability_execution_uncertain");
+        statement = recovered.data;
       }
       if (!statement) dbError(error);
       if (!statement) throw new Error("capability_execution_unavailable");
@@ -113,7 +114,8 @@ export async function executeAgentCapability(
           .eq("client_request_id", action.clientRequestId)
           .eq("public_token_hash", publicLink.tokenHash)
           .maybeSingle();
-        if (!recovered.error) statement = recovered.data;
+        if (recovered.error) throw new Error("capability_execution_uncertain");
+        statement = recovered.data;
       }
       if (!statement) dbError(error);
       if (!statement) throw new Error("capability_execution_unavailable");
