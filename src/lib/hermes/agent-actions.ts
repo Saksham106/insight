@@ -200,12 +200,19 @@ function hasEphemeralResult(capabilityName: string) {
   return capabilityName.startsWith("fee_statement.");
 }
 
+function stripFeeStatementBearerFields(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripFeeStatementBearerFields);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== "publicUrl" && key !== "whatsappMessage")
+      .map(([key, item]) => [key, stripFeeStatementBearerFields(item)]),
+  );
+}
+
 function resultForPersistence(capabilityName: string, result: Record<string, unknown>) {
   if (!hasEphemeralResult(capabilityName)) return result;
-  const safeResult = { ...result };
-  delete safeResult.publicUrl;
-  delete safeResult.whatsappMessage;
-  return safeResult;
+  return stripFeeStatementBearerFields(result) as Record<string, unknown>;
 }
 
 async function replayCompletedResult(
