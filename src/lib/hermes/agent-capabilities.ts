@@ -42,6 +42,18 @@ function uuid(value: unknown) {
   return normalized;
 }
 
+function isoMonthStart(value: unknown) {
+  const normalized = text(value);
+  const parsed = new Date(`${normalized}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)
+    || Number.isNaN(parsed.getTime())
+    || parsed.toISOString().slice(0, 10) !== normalized
+    || !normalized.endsWith("-01")) {
+    throw new Error("invalid_capability_input");
+  }
+  return normalized;
+}
+
 function schema(properties: Record<string, unknown>, required: string[]) {
   return { type: "object", additionalProperties: false, properties, required };
 }
@@ -99,6 +111,25 @@ const definitions: AgentCapabilityDefinition[] = [
         correctionReason: text(correctionReason),
         ...sanitizeFeeStatementInput(replacement),
       } as unknown as Record<string, unknown>;
+    },
+  },
+  {
+    manifest: {
+      name: "fee_statement.lookup", version: 1,
+      purpose: "Recover the current private fee statement link and ready-to-copy WhatsApp message.",
+      risk: "medium", schedulable: false, composable: true,
+      inputSchema: schema({
+        studentName: stringField,
+        periodStart: { type: "string", format: "date" },
+      }, ["studentName"]),
+    },
+    allowedActorKinds: ["admin"],
+    normalize(input) {
+      const value = exactInput(input, ["studentName"], ["periodStart"]);
+      return {
+        studentName: text(value.studentName),
+        ...(value.periodStart === undefined ? {} : { periodStart: isoMonthStart(value.periodStart) }),
+      };
     },
   },
   {

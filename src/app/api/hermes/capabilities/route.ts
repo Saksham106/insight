@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { evaluateAction, executeEvaluatedAction, listAgentCapabilities } from "@/lib/hermes/agent-actions";
+import {
+  evaluateAction,
+  executeEvaluatedAction,
+  feeStatementLookupErrorStatus,
+  listAgentCapabilities,
+} from "@/lib/hermes/agent-actions";
 import { executeAgentCapability } from "@/lib/hermes/agent-capability-executor";
 import { parseAgentCapabilityRequest } from "@/lib/hermes/agent-capability-request";
 import { createSupabaseAgentActionStore, createSupabaseAgentPolicyRepository } from "@/lib/hermes/agent-supabase";
@@ -72,6 +77,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ...result, notificationDelivery });
   } catch (error) {
     const code = error instanceof Error ? error.message : "capability_service_unavailable";
+    const lookupStatus = feeStatementLookupErrorStatus(code);
+    if (lookupStatus) return response(code, lookupStatus);
     if (["client_request_payload_mismatch", "action_execution_in_progress"].includes(code)) return response(code, 409);
     if (["evaluation_actor_mismatch", "invalid_evaluation_token", "expired_evaluation_token", "evaluation_not_found"].includes(code)) return response(code, 403);
     if (["invalid_client_request_id", "invalid_capability_request"].includes(code)) return response(code, 400);
