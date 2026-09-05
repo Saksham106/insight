@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { evaluateAction, executeEvaluatedAction } = require(path.join(__dirname, "agent-actions.ts"));
+const { evaluateAction, executeEvaluatedAction, feeStatementLookupErrorStatus } = require(path.join(__dirname, "agent-actions.ts"));
 const secret = "test-secret-that-is-at-least-32-characters";
 const actor = { kind: "contact", contactId: "teacher-1", role: "teacher", channel: "whatsapp" };
 const input = { occurrenceId: "occ-1", recipientId: "student-1" };
@@ -103,6 +103,47 @@ test("a completed action can renew an expired token and return its stored result
   assert.equal(duplicate.result.sent, true);
 });
 
+test("fee statement bearer links are never persisted and are reconstructed on retry", async () => {
+  const deps = dependencies();
+  const admin = { kind: "admin", profileId: "swati", channel: "imessage" };
+  const evaluated = await evaluateAction(deps.store, deps.repository, admin, {
+    capabilityName: "fee_statement.lookup", capabilityVersion: 1,
+    proposedInput: { studentName: "Devon" }, clientRequestId: "statement-lookup-1",
+  }, { secret, now: 1_786_447_200_000 });
+  let executorCalls = 0;
+  const replayInputs = [];
+  const execute = async ({ normalizedInput }) => {
+    executorCalls += 1;
+    replayInputs.push(normalizedInput);
+    if (executorCalls > 1 && normalizedInput.statementId !== "statement-devon") {
+      return {
+        statementId: "statement-newer",
+        publicUrl: "https://academy.example/statement/different-token",
+        whatsappMessage: "Different statement",
+      };
+    }
+    return {
+      statementId: "statement-devon",
+      publicUrl: "https://academy.example/statement/private-token",
+      whatsappMessage: "Ready-to-copy message with https://academy.example/statement/private-token",
+    };
+  };
+  const request = { evaluationToken: evaluated.evaluationToken, clientRequestId: "statement-lookup-1" };
+  const first = await executeEvaluatedAction(deps.store, admin, request, {
+    secret, execute, now: 1_786_447_200_100,
+  });
+  const persisted = [...deps.rows.values()][0].result;
+  assert.deepEqual(persisted, { statementId: "statement-devon" });
+  assert.doesNotMatch(JSON.stringify(persisted), /private-token|statement\//);
+
+  const second = await executeEvaluatedAction(deps.store, admin, request, {
+    secret, execute, now: 1_786_447_200_200,
+  });
+  assert.equal(executorCalls, 2);
+  assert.deepEqual(second, { ...first, duplicate: true });
+  assert.deepEqual(replayInputs[1], { studentName: "Devon", statementId: "statement-devon" });
+});
+
 test("an evaluation token cannot be transferred to another actor", async () => {
   const deps = dependencies();
   const evaluated = await evaluateAction(deps.store, deps.repository, actor, {
@@ -178,4 +219,29 @@ test("a result persistence failure leaves the action recoverable", async () => {
   const recovered = await executeEvaluatedAction(deps.store, actor, request, { secret, execute: deps.execute, now: 1_786_447_200_200 });
   assert.equal(completeAttempts, 2);
   assert.equal(recovered.result.sent, true);
+});
+
+test("safe fee statement lookup failures remain actionable", async () => {
+  const deps = dependencies();
+  const admin = { kind: "admin", profileId: "swati", channel: "imessage" };
+  const evaluated = await evaluateAction(deps.store, deps.repository, admin, {
+    capabilityName: "fee_statement.lookup", capabilityVersion: 1,
+    proposedInput: { studentName: "Devon" }, clientRequestId: "statement-lookup-error-1",
+  }, { secret, now: 1_786_447_200_000 });
+  await assert.rejects(() => executeEvaluatedAction(deps.store, admin, {
+    evaluationToken: evaluated.evaluationToken,
+    clientRequestId: "statement-lookup-error-1",
+  }, {
+    secret,
+    now: 1_786_447_200_100,
+    execute: async () => { throw new Error("fee_statement_lookup_ambiguous"); },
+  }), /fee_statement_lookup_ambiguous/);
+  assert.equal([...deps.rows.values()][0].errorCode, "fee_statement_lookup_ambiguous");
+});
+
+test("fee statement lookup failures map to bounded public statuses", () => {
+  assert.equal(feeStatementLookupErrorStatus("fee_statement_not_found"), 404);
+  assert.equal(feeStatementLookupErrorStatus("fee_statement_lookup_ambiguous"), 409);
+  assert.equal(feeStatementLookupErrorStatus("fee_statement_link_unrecoverable"), 409);
+  assert.equal(feeStatementLookupErrorStatus("private database detail"), null);
 });

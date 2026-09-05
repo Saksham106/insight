@@ -109,3 +109,16 @@ test("fee statement replacement asks for missing correction fields before normal
     reasonCode: "missing_required_fields",
   });
 });
+
+test("fee statement lookup asks for the student name", async () => {
+  const decision = await decide(
+    { kind: "admin", profileId: "swati", channel: "imessage" },
+    "fee_statement.lookup",
+    {},
+  );
+  assert.deepEqual(decision, {
+    kind: "needs_clarification",
+    missingFields: ["studentName"],
+    reasonCode: "missing_required_fields",
+  });
+});

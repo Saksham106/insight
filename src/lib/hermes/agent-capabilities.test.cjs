@@ -42,8 +42,10 @@ test("keeps routine management and fee statement publishing discoverable only to
   const adminNames = listCapabilityManifests("admin").map((item) => item.name);
   assert.equal(contactNames.includes("routine.manage"), false);
   assert.equal(contactNames.includes("fee_statement.create"), false);
+  assert.equal(contactNames.includes("fee_statement.lookup"), false);
   assert.equal(adminNames.includes("routine.manage"), true);
   assert.equal(adminNames.includes("fee_statement.create"), true);
+  assert.equal(adminNames.includes("fee_statement.lookup"), true);
 });
 
 test("normalizes a reconciled fee statement snapshot", () => {
@@ -89,6 +91,20 @@ test("normalizes an immutable fee statement replacement for administrators", () 
     ...normalized,
     statementId: "not-a-uuid",
   }), /invalid_capability_input/);
+});
+
+test("normalizes a bounded fee statement lookup", () => {
+  const { getCapability } = require(registryPath);
+  const capability = getCapability("fee_statement.lookup", 1);
+  assert.deepEqual(capability.normalize({ studentName: " Devon ", periodStart: "2026-08-01" }), {
+    studentName: "Devon",
+    periodStart: "2026-08-01",
+  });
+  assert.deepEqual(capability.normalize({ studentName: "Devon" }), { studentName: "Devon" });
+  assert.throws(() => capability.normalize({ studentName: "Devon", periodStart: "August" }), /invalid_capability_input/);
+  assert.throws(() => capability.normalize({ studentName: "Devon", periodStart: "2026-02-31" }), /invalid_capability_input/);
+  assert.throws(() => capability.normalize({ studentName: "Devon", periodStart: "2026-08-15" }), /invalid_capability_input/);
+  assert.throws(() => capability.normalize({ studentName: "Devon", includeVoided: true }), /invalid_capability_input/);
 });
 
 test("resolves exact versions and rejects unknown capabilities", () => {

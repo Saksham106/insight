@@ -53,6 +53,7 @@ function missingRequiredFields(capabilityName: string, input: unknown) {
   const required: Record<string, string[]> = {
     "fee_statement.create": ["studentName", "periodStart", "periodEnd", "currency", "lineItems"],
     "fee_statement.replace": ["correctionReason", "studentName", "periodStart", "periodEnd", "currency", "lineItems"],
+    "fee_statement.lookup": ["studentName"],
     "class.one_off.create": ["title", "timezone", "startsAt", "endsAt", "localDate", "studentContactIds"],
     "class.reminder.send": ["occurrenceId", "recipientId"],
     "class.attendance.record": ["occurrenceId", "enrollmentHandle", "selectionToken", "status"],

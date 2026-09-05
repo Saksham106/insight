@@ -54,3 +54,15 @@ test("statement correction atomically voids the original and links a validated r
   assert.match(sql, /grant execute on function public\.replace_academy_fee_statement[\s\S]*to service_role/);
   assert.doesNotMatch(sql, /grant execute on function public\.replace_academy_fee_statement[\s\S]*to anon/);
 });
+
+test("fee statement action results cannot retain private bearer links", () => {
+  const file = path.join(migrationDir, "20260905130000_scrub_fee_statement_action_links.sql");
+  assert.equal(fs.existsSync(file), true);
+  const privacySql = fs.readFileSync(file, "utf8");
+  assert.match(privacySql, /update public\.academy_agent_action_requests/);
+  assert.match(privacySql, /result\s*-\s*'publicUrl'\s*-\s*'whatsappMessage'/);
+  assert.match(privacySql, /capability_name like 'fee_statement\.%'/);
+  assert.match(privacySql, /add constraint academy_agent_action_fee_statement_result_no_bearer/);
+  assert.match(privacySql, /not \(result \? 'publicUrl'\)/);
+  assert.match(privacySql, /not \(result \? 'whatsappMessage'\)/);
+});

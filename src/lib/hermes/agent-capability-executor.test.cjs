@@ -199,6 +199,134 @@ test("atomically replaces an incorrect fee statement and returns the new private
   }
 });
 
+test("recovers the latest current fee statement and ready-to-copy WhatsApp message", async () => {
+  const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  process.env.NEXT_PUBLIC_APP_URL = "https://academy.example";
+  const { feeStatementPublicUrl } = require(path.join(__dirname, "fee-statement-link.ts"));
+  const privateLink = feeStatementPublicUrl("devon-august-published");
+  const calls = [];
+  const rows = [{
+    id: "statement-devon", statement_reference: "MIA-202608-DEVON", status: "published",
+    student_name: "Devon", billed_to_name: null, period_start: "2026-08-01", period_end: "2026-08-31",
+    currency: "VND", total_minor: 24000000, client_request_id: "devon-august-published",
+    public_token_hash: privateLink.tokenHash, issued_at: "2026-09-05T12:00:00Z",
+  }];
+  const query = {
+    select(fields) { calls.push(["select", fields]); return this; },
+    ilike(field, value) { calls.push(["ilike", field, value]); return this; },
+    in(field, value) { calls.push(["in", field, value]); return this; },
+    order(field, value) { calls.push(["order", field, value]); return this; },
+    limit(value) { calls.push(["limit", value]); return Promise.resolve({ data: rows, error: null }); },
+  };
+  const client = { from(table) { calls.push(["from", table]); return query; } };
+  const actor = { kind: "admin", profileId: "swati", externalIdHash: "a".repeat(64), channel: "imessage" };
+  try {
+    const result = await executeAgentCapability(client, actor, {
+      capabilityName: "fee_statement.lookup", capabilityVersion: 1,
+      normalizedInput: { studentName: "Devon" }, clientRequestId: "lookup-request-1",
+    });
+    assert.deepEqual(result, {
+      statementId: "statement-devon",
+      statementReference: "MIA-202608-DEVON",
+      studentName: "Devon",
+      billedToName: null,
+      periodStart: "2026-08-01",
+      periodEnd: "2026-08-31",
+      totalMinor: 24000000,
+      currency: "VND",
+      status: "published",
+      publicUrl: privateLink.url,
+      whatsappMessage: `Hi, here is Devon's fee statement for August 2026. The total due is ₫24,000,000: ${privateLink.url}`,
+    });
+    assert.deepEqual(calls[1], ["select", "id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, client_request_id, public_token_hash, issued_at"]);
+    assert.deepEqual(calls[2], ["ilike", "student_name", "Devon"]);
+  } finally {
+    if (originalSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+    else process.env.ACADEMY_AGENT_EVALUATION_SECRET = originalSecret;
+    if (originalAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+  }
+});
+
+test("fee statement lookup fails closed for wildcard names, ambiguous periods, and token mismatches", async () => {
+  const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  process.env.NEXT_PUBLIC_APP_URL = "https://academy.example";
+  const actor = { kind: "admin", profileId: "swati", externalIdHash: "a".repeat(64), channel: "imessage" };
+  function clientFor(rows, calls = []) {
+    const query = {
+      select() { return this; },
+      ilike(field, value) { calls.push(["ilike", field, value]); return this; },
+      in() { return this; },
+      order() { return this; },
+      eq(field, value) { calls.push(["eq", field, value]); return this; },
+      limit() { return Promise.resolve({ data: rows, error: null }); },
+    };
+    return { from() { return query; } };
+  }
+  try {
+    const wildcardCalls = [];
+    await assert.rejects(() => executeAgentCapability(clientFor([], wildcardCalls), actor, {
+      capabilityName: "fee_statement.lookup", capabilityVersion: 1,
+      normalizedInput: { studentName: "Dev_on%", periodStart: "2026-08-01" }, clientRequestId: "lookup-wildcard",
+    }), /fee_statement_not_found/);
+    assert.deepEqual(wildcardCalls, [
+      ["ilike", "student_name", "Dev\\_on\\%"],
+      ["eq", "period_start", "2026-08-01"],
+    ]);
+
+    const samePeriod = [
+      { period_start: "2026-08-01" },
+      { period_start: "2026-08-01" },
+    ];
+    await assert.rejects(() => executeAgentCapability(clientFor(samePeriod), actor, {
+      capabilityName: "fee_statement.lookup", capabilityVersion: 1,
+      normalizedInput: { studentName: "Devon" }, clientRequestId: "lookup-ambiguous",
+    }), /fee_statement_lookup_ambiguous/);
+
+    const mismatched = [{
+      id: "statement-devon", statement_reference: "MIA-202608-DEVON", status: "published",
+      student_name: "Devon", billed_to_name: null, period_start: "2026-08-01", period_end: "2026-08-31",
+      currency: "VND", total_minor: 24000000, client_request_id: "devon-august-published",
+      public_token_hash: "0".repeat(64), issued_at: "2026-09-05T12:00:00Z",
+    }];
+    await assert.rejects(() => executeAgentCapability(clientFor(mismatched), actor, {
+      capabilityName: "fee_statement.lookup", capabilityVersion: 1,
+      normalizedInput: { studentName: "Devon" }, clientRequestId: "lookup-mismatch",
+    }), /fee_statement_link_unrecoverable/);
+
+    const { feeStatementPublicUrl } = require(path.join(__dirname, "fee-statement-link.ts"));
+    const pinnedLink = feeStatementPublicUrl("devon-pinned-statement");
+    const pinnedCalls = [];
+    const pinned = [{
+      ...mismatched[0],
+      client_request_id: "devon-pinned-statement",
+      public_token_hash: pinnedLink.tokenHash,
+    }];
+    const pinnedResult = await executeAgentCapability(clientFor(pinned, pinnedCalls), actor, {
+      capabilityName: "fee_statement.lookup", capabilityVersion: 1,
+      normalizedInput: { studentName: "Devon", statementId: "statement-devon" }, clientRequestId: "lookup-replay",
+    });
+    assert.equal(pinnedResult.publicUrl, pinnedLink.url);
+    assert.deepEqual(pinnedCalls, [["eq", "id", "statement-devon"]]);
+
+    await assert.rejects(() => executeAgentCapability({ from() { throw new Error("queried"); } }, {
+      kind: "contact", contactId: "student-1", role: "student", channel: "whatsapp",
+    }, {
+      capabilityName: "fee_statement.lookup", capabilityVersion: 1,
+      normalizedInput: { studentName: "Devon" }, clientRequestId: "lookup-contact",
+    }), /capability_not_executable/);
+  } finally {
+    if (originalSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+    else process.env.ACADEMY_AGENT_EVALUATION_SECRET = originalSecret;
+    if (originalAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+  }
+});
+
 test("a reminder execution reserves only identifiers, never rendered prose", async () => {
   const inserted = [];
   const client = { from(table) {

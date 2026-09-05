@@ -190,6 +190,45 @@ function boundedResult(value: Record<string, unknown>) {
   return JSON.parse(serialized) as Record<string, unknown>;
 }
 
+export function feeStatementLookupErrorStatus(code: string) {
+  if (code === "fee_statement_not_found") return 404;
+  if (["fee_statement_lookup_ambiguous", "fee_statement_link_unrecoverable"].includes(code)) return 409;
+  return null;
+}
+
+function hasEphemeralResult(capabilityName: string) {
+  return capabilityName.startsWith("fee_statement.");
+}
+
+function resultForPersistence(capabilityName: string, result: Record<string, unknown>) {
+  if (!hasEphemeralResult(capabilityName)) return result;
+  const safeResult = { ...result };
+  delete safeResult.publicUrl;
+  delete safeResult.whatsappMessage;
+  return safeResult;
+}
+
+async function replayCompletedResult(
+  row: AgentActionRow,
+  actor: AgentActor,
+  execute: AgentCapabilityExecutor,
+) {
+  if (!hasEphemeralResult(row.capabilityName) && row.result) {
+    return { result: row.result, duplicate: true };
+  }
+  const normalizedInput = row.capabilityName === "fee_statement.lookup" && row.result?.statementId
+    ? { ...(row.normalizedInput ?? {}), statementId: row.result.statementId }
+    : (row.normalizedInput ?? {});
+  const result = boundedResult(await execute({
+    actor,
+    capabilityName: row.capabilityName,
+    capabilityVersion: row.capabilityVersion,
+    normalizedInput,
+    clientRequestId: row.clientRequestId,
+  }));
+  return { result, duplicate: true };
+}
+
 export async function executeEvaluatedAction(
   store: AgentActionStore,
   actor: AgentActor,
@@ -204,12 +243,16 @@ export async function executeEvaluatedAction(
     || row.capabilityName !== claims.capabilityName || row.capabilityVersion !== claims.capabilityVersion
     || row.policyVersion !== claims.policyVersion || canonical(row.relevantVersions) !== canonical(claims.relevantVersions)
     || row.tokenHash !== hashEvaluationToken(request.evaluationToken)) throw new Error("invalid_evaluation_token");
-  if (row.executionStatus === "completed" && row.result) return { result: row.result, duplicate: true };
+  if (row.executionStatus === "completed" && row.result) {
+    return replayCompletedResult(row, actor, options.execute);
+  }
   if (row.executionStatus === "failed") throw new Error(row.errorCode ?? "action_execution_failed");
   const claimed = await store.claim(row.id);
   if (!claimed) {
     const current = await store.findById(row.id);
-    if (current?.executionStatus === "completed" && current.result) return { result: current.result, duplicate: true };
+    if (current?.executionStatus === "completed" && current.result) {
+      return replayCompletedResult(current, actor, options.execute);
+    }
     throw new Error("action_execution_in_progress");
   }
   let result: Record<string, unknown>;
@@ -226,11 +269,13 @@ export async function executeEvaluatedAction(
       await store.retry(row.id, "capability_execution_uncertain");
       throw new Error("action_execution_retryable");
     }
-    await store.fail(row.id, "action_execution_failed");
-    throw new Error("action_execution_failed");
+    const code = error instanceof Error ? error.message : "action_execution_failed";
+    const safeCode = feeStatementLookupErrorStatus(code) ? code : "action_execution_failed";
+    await store.fail(row.id, safeCode);
+    throw new Error(safeCode);
   }
   try {
-    await store.complete(row.id, result);
+    await store.complete(row.id, resultForPersistence(row.capabilityName, result));
   } catch {
     try { await store.retry(row.id, "capability_execution_uncertain"); } catch { /* renewed after the execution lease expires */ }
     throw new Error("action_execution_retryable");

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { formatMinorCurrency } from "../format-minor-currency";
 import type { AgentActor } from "./agent-capability-types";
 import { manageAgentRoutine } from "./agent-routines";
 import { feeStatementPublicUrl } from "./fee-statement-link";
@@ -29,6 +30,18 @@ function projectOccurrence(row: Record<string, unknown>) {
     status: String(row.status),
     version: Number(row.version),
   };
+}
+
+function exactIlikePattern(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+function feeStatementMonthLabel(periodStart: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${periodStart.slice(0, 7)}-01T00:00:00Z`));
 }
 
 export async function executeAgentCapability(
@@ -126,6 +139,55 @@ export async function executeAgentCapability(
         status: String(record.status),
         publicUrl: publicLink.url,
         replacedStatementId: String(record.replaces_statement_id),
+      };
+    }
+    case "fee_statement.lookup": {
+      if (actor.kind !== "admin") throw new Error("capability_not_executable");
+      let query = client
+        .from("academy_fee_statements")
+        .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, client_request_id, public_token_hash, issued_at");
+      query = input.statementId
+        ? query.eq("id", String(input.statementId))
+        : query.ilike("student_name", exactIlikePattern(String(input.studentName)));
+      query = query
+        .in("status", ["published", "paid"])
+        .order("period_start", { ascending: false })
+        .order("issued_at", { ascending: false });
+      if (input.periodStart) query = query.eq("period_start", String(input.periodStart));
+      const { data, error } = await query.limit(3);
+      dbError(error);
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      if (rows.length === 0) throw new Error("fee_statement_not_found");
+      if (rows.length > 1 && (input.periodStart || rows[0].period_start === rows[1].period_start)) {
+        throw new Error("fee_statement_lookup_ambiguous");
+      }
+
+      const statement = rows[0];
+      const publicLink = feeStatementPublicUrl(String(statement.client_request_id));
+      if (publicLink.tokenHash !== statement.public_token_hash) {
+        throw new Error("fee_statement_link_unrecoverable");
+      }
+      const studentName = String(statement.student_name);
+      const periodStart = String(statement.period_start);
+      const status = String(statement.status);
+      const totalMinor = Number(statement.total_minor);
+      const currency = String(statement.currency);
+      const amount = formatMinorCurrency(totalMinor, currency);
+      const paymentSummary = status === "paid"
+        ? `The total is ${amount}, and it has been marked paid`
+        : `The total due is ${amount}`;
+      return {
+        statementId: String(statement.id),
+        statementReference: String(statement.statement_reference),
+        studentName,
+        billedToName: statement.billed_to_name ? String(statement.billed_to_name) : null,
+        periodStart,
+        periodEnd: String(statement.period_end),
+        totalMinor,
+        currency,
+        status,
+        publicUrl: publicLink.url,
+        whatsappMessage: `Hi, here is ${studentName}'s fee statement for ${feeStatementMonthLabel(periodStart)}. ${paymentSummary}: ${publicLink.url}`,
       };
     }
     case "class.reminder.send": {
