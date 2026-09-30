@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { authenticateCapabilityActor } from "@/lib/hermes/agent-capability-actor";
 import {
   evaluateAction,
   executeEvaluatedAction,
@@ -10,8 +11,7 @@ import {
 import { executeAgentCapability } from "@/lib/hermes/agent-capability-executor";
 import { parseAgentCapabilityRequest } from "@/lib/hermes/agent-capability-request";
 import { createSupabaseAgentActionStore, createSupabaseAgentPolicyRepository } from "@/lib/hermes/agent-supabase";
-import { verifyServiceRequest } from "@/lib/hermes/auth";
-import { communicationDecision, parseIMessageAdminActor, parseWhatsAppToolActor } from "@/lib/hermes/cases";
+import { communicationDecision } from "@/lib/hermes/cases";
 import { deliverPendingKittyClassNotifications } from "@/lib/hermes/kitty-class-delivery";
 import type { AgentActor } from "@/lib/hermes/agent-capability-types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -25,25 +25,33 @@ export async function POST(request: Request) {
   if (raw.length > 64_000) return response("invalid_capability_request", 413);
   let parsed;
   try { parsed = parseAgentCapabilityRequest(JSON.parse(raw)); } catch { return response("invalid_capability_request", 400); }
-  const imessageActor = parseIMessageAdminActor(parsed.actor, process.env.HERMES_ADMIN_IMESSAGE_ID_SHA256);
-  const whatsappActor = parseWhatsAppToolActor(parsed.actor);
-  const signingSecret = imessageActor ? process.env.HERMES_ADMIN_TOOL_SHARED_SECRET : process.env.HERMES_TOOL_SHARED_SECRET;
-  const auth = signingSecret ? verifyServiceRequest(request, raw, signingSecret) : null;
-  if (!auth || (!imessageActor && !whatsappActor)) return response("unauthorized", 401);
+  const identity = authenticateCapabilityActor(request, raw, parsed.actor, {
+    adminSecret: process.env.HERMES_ADMIN_TOOL_SHARED_SECRET,
+    contactSecret: process.env.HERMES_TOOL_SHARED_SECRET,
+    adminIMessageDigest: process.env.HERMES_ADMIN_IMESSAGE_ID_SHA256,
+  });
+  if (!identity) return response("unauthorized", 401);
 
   const client = createAdminClient();
   let actor: AgentActor;
-  if (imessageActor) {
+  if (identity.kind === "imessage") {
     actor = {
       kind: "admin",
       profileId: null,
-      externalIdHash: createHash("sha256").update(imessageActor.stableId, "utf8").digest("hex"),
+      externalIdHash: createHash("sha256").update(identity.stableId, "utf8").digest("hex"),
       channel: "imessage",
+    };
+  } else if (identity.kind === "profile") {
+    actor = {
+      kind: "admin",
+      profileId: null,
+      externalIdHash: createHash("sha256").update("swati:protected-profile", "utf8").digest("hex"),
+      channel: "agent_profile",
     };
   } else {
     const { data: contact } = await client.from("hermes_contacts")
       .select("id, role, consent_status, communication_policy, is_active")
-      .eq("whatsapp_e164", whatsappActor!.e164).eq("is_active", true).is("deleted_at", null).maybeSingle();
+      .eq("whatsapp_e164", identity.e164).eq("is_active", true).is("deleted_at", null).maybeSingle();
     const allowedRoles = ["teacher", "student", "parent", "employee", "other", "unclassified"] as const;
     if (!contact || !allowedRoles.includes(contact.role)
       || !communicationDecision({ consentStatus: contact.consent_status, communicationPolicy: contact.communication_policy, isActive: contact.is_active }).allowed) {
@@ -55,7 +63,7 @@ export async function POST(request: Request) {
   const { error: replayError } = await client.from("hermes_audit_events").insert({
     actor_type: actor.kind === "admin" ? "admin" : "contact",
     actor_contact_id: actor.kind === "contact" ? actor.contactId : null,
-    event_type: "agent_capability_requested", entity_type: "agent_action", request_id: auth.requestId,
+    event_type: "agent_capability_requested", entity_type: "agent_action", request_id: identity.requestId,
     metadata: { operation: parsed.operation },
   });
   if (replayError) return response(replayError.code === "23505" ? "replay_rejected" : "audit_unavailable", replayError.code === "23505" ? 409 : 503);

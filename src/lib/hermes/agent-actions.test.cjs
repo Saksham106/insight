@@ -12,7 +12,7 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { evaluateAction, executeEvaluatedAction, feeStatementLookupErrorStatus } = require(path.join(__dirname, "agent-actions.ts"));
+const { agentActorKey, evaluateAction, executeEvaluatedAction, feeStatementLookupErrorStatus } = require(path.join(__dirname, "agent-actions.ts"));
 const secret = "test-secret-that-is-at-least-32-characters";
 const actor = { kind: "contact", contactId: "teacher-1", role: "teacher", channel: "whatsapp" };
 const input = { occurrenceId: "occ-1", recipientId: "student-1" };
@@ -57,6 +57,16 @@ function dependencies() {
   const execute = async ({ normalizedInput }) => { executorCalls += 1; return { sent: true, recipientId: normalizedInput.recipientId }; };
   return { rows, store, repository, execute, get executorCalls() { return executorCalls; } };
 }
+
+test("signed profile discovers only the fee-statement capability", () => {
+  const { listAgentCapabilities } = require(path.join(__dirname, "agent-actions.ts"));
+  assert.deepEqual(listAgentCapabilities({ kind: "admin", profileId: null, channel: "agent_profile" }).map((item) => item.name), ["fee_statement.create"]);
+});
+
+test("signed profile actions have a separate actor key from direct iMessage", () => {
+  assert.equal(agentActorKey({ kind: "admin", profileId: null, channel: "agent_profile" }), "admin:agent_profile");
+  assert.equal(agentActorKey({ kind: "admin", profileId: null, channel: "imessage" }), "admin:primary");
+});
 
 test("evaluation is idempotent per actor request and rejects a changed payload", async () => {
   const deps = dependencies();

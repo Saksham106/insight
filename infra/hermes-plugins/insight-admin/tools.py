@@ -1,4 +1,4 @@
-"""Session-bound MyInsightAcademy administrator tool for Swati's iMessage profile."""
+"""Session-bound MyInsightAcademy administrator tool for Swati's protected profile."""
 
 import hashlib
 import hmac
@@ -83,7 +83,7 @@ def _session_actor():
         return {"platform": platform, "chatId": chat_id, "userId": user_id}
     if get_session_env("HERMES_CRON_SESSION", "") == "1":
         return {"platform": "hermes_local", "source": "cron"}
-    if source in {"cli", "tui"} and platform in {"", "cli"}:
+    if source in {"cli", "tui", "desktop"} and platform in {"", "cli"}:
         return {"platform": "hermes_local", "source": source}
     return None
 

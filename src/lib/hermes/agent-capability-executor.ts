@@ -6,6 +6,7 @@ import type { AgentActor } from "./agent-capability-types";
 import { manageAgentRoutine } from "./agent-routines";
 import { feeStatementPublicUrl } from "./fee-statement-link";
 import { executeKittyClassTool } from "./kitty-class-tools";
+import type { KittyClassActor } from "./kitty-class-service";
 
 function dbError(error: { message?: string } | null) {
   if (!error) return;
@@ -41,7 +42,13 @@ function feeStatementMonthLabel(periodStart: string) {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
-  }).format(new Date(`${periodStart.slice(0, 7)}-01T00:00:00Z`));
+  }).format(new Date(periodStart.slice(0, 7) + "-01T00:00:00Z"));
+}
+
+function kittyActor(actor: AgentActor): KittyClassActor {
+  if (actor.kind === "contact") return { kind: "contact", contactId: actor.contactId, channel: "whatsapp" };
+  if (actor.channel === "agent_profile") throw new Error("capability_not_executable");
+  return { kind: "admin", profileId: actor.profileId, channel: actor.channel };
 }
 
 export async function executeAgentCapability(
@@ -55,6 +62,8 @@ export async function executeAgentCapability(
   },
 ): Promise<Record<string, unknown>> {
   if (action.capabilityVersion !== 1) throw new Error("capability_not_executable");
+  if (actor.kind === "admin" && actor.channel === "agent_profile"
+    && action.capabilityName !== "fee_statement.create") throw new Error("capability_not_executable");
   const input = action.normalizedInput;
   switch (action.capabilityName) {
     case "fee_statement.create": {
@@ -232,12 +241,12 @@ export async function executeAgentCapability(
       return { class: projectOccurrence(occurrence as Record<string, unknown>) };
     }
     case "class.attendance.record":
-      return executeKittyClassTool(client, actor, "record_class_attendance", {
+      return executeKittyClassTool(client, kittyActor(actor), "record_class_attendance", {
         ...input,
         clientRequestId: action.clientRequestId,
       });
     case "class.reschedule.request":
-      return executeKittyClassTool(client, actor, "request_class_change", {
+      return executeKittyClassTool(client, kittyActor(actor), "request_class_change", {
         ...input,
         changeType: "reschedule",
         occurrenceVersion: Number(input.occurrenceVersion),

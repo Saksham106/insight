@@ -14,6 +14,36 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 
 const { executeAgentCapability } = require(path.join(__dirname, "agent-capability-executor.ts"));
 
+test("signed profile publishes only fee statements with its own audit channel", async () => {
+  const oldSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  const oldUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  process.env.NEXT_PUBLIC_APP_URL = "https://academy.example";
+  const calls = [];
+  const client = { async rpc(name, payload) {
+    calls.push({ name, payload });
+    return { data: { id: "statement-1", statement_reference: "MIA-202609-ABC123", status: "published" }, error: null };
+  } };
+  const actor = { kind: "admin", profileId: null, externalIdHash: "a".repeat(64), channel: "agent_profile" };
+  try {
+    await executeAgentCapability(client, actor, {
+      capabilityName: "fee_statement.create", capabilityVersion: 1, clientRequestId: "profile-statement-1",
+      normalizedInput: { studentName: "Student", periodStart: "2026-09-01", periodEnd: "2026-09-30", currency: "VND", totalMinor: 1000000,
+        lineItems: [{ kind: "fee", label: "Test fee", amountMinor: 1000000, source: { workbook: "Fees", sheet: "September", row: 1 } }] },
+    });
+    assert.equal(calls[0].payload.p_source_channel, "agent_profile");
+    await assert.rejects(() => executeAgentCapability(client, actor, {
+      capabilityName: "class.reminder.send", capabilityVersion: 1, clientRequestId: "other-1", normalizedInput: { occurrenceId: "o", recipientId: "r" },
+    }), /capability_not_executable/);
+    assert.equal(calls.length, 1);
+  } finally {
+    if (oldSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+    else process.env.ACADEMY_AGENT_EVALUATION_SECRET = oldSecret;
+    if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = oldUrl;
+  }
+});
+
 test("publishes a fee statement with only a token hash stored in the database", async () => {
   const originalSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
   const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;

@@ -80,7 +80,8 @@ function digest(value: unknown) {
 }
 
 export function agentActorKey(actor: AgentActor) {
-  return actor.kind === "contact" ? `contact:${actor.contactId}` : `admin:${actor.profileId ?? "primary"}`;
+  if (actor.kind === "contact") return `contact:${actor.contactId}`;
+  return actor.channel === "agent_profile" ? "admin:agent_profile" : `admin:${actor.profileId ?? "primary"}`;
 }
 
 function validRequestId(value: unknown) {
@@ -104,7 +105,10 @@ function claimsForRow(row: AgentActionRow): AgentEvaluationClaims {
 }
 
 export function listAgentCapabilities(actor: AgentActor) {
-  return listCapabilityManifests(actor.kind);
+  const manifests = listCapabilityManifests(actor.kind);
+  return actor.kind === "admin" && actor.channel === "agent_profile"
+    ? manifests.filter((item) => item.name === "fee_statement.create")
+    : manifests;
 }
 
 export async function evaluateAction(

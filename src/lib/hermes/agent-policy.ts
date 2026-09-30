@@ -137,6 +137,10 @@ async function evaluateOccurrenceAction(
 }
 
 export async function evaluateAgentAction(context: AgentEvaluationContext): Promise<AgentActionDecision> {
+  if (context.actor.kind === "admin" && context.actor.channel === "agent_profile"
+    && context.capabilityName !== "fee_statement.create") {
+    return { kind: "denied", reasonCode: "action_out_of_scope" };
+  }
   let capability;
   try {
     capability = getCapability(context.capabilityName, context.capabilityVersion);
