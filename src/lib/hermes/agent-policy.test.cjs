@@ -48,6 +48,22 @@ async function decide(agentActor, capabilityName, proposedInput, repo = reposito
   return evaluateAgentAction({ actor: agentActor, capabilityName, capabilityVersion: 1, proposedInput, repository: repo });
 }
 
+test("signed profile capability is limited to fee statements", async () => {
+  const profile = { kind: "admin", profileId: null, channel: "agent_profile" };
+  assert.equal((await decide(profile, "class.reminder.send", { occurrenceId: "occ-1", recipientId: "student-1" })).kind, "denied");
+  assert.deepEqual(await decide(profile, "fee_statement.lookup", { studentName: "Student" }), {
+    kind: "needs_clarification", missingFields: ["periodStart"], reasonCode: "missing_required_fields",
+  });
+  assert.equal((await decide(profile, "routine.manage", { operation: "preview" })).kind, "denied");
+  assert.equal((await decide(profile, "fee_statement.lookup", { studentName: "Student", periodStart: "2026-09-01" })).kind, "allowed");
+  const invoice = await decide(profile, "fee_statement.create", {
+    studentName: "Student", periodStart: "2026-09-01", periodEnd: "2026-09-30", currency: "VND",
+    lineItems: [{ lessonDate: "2026-09-10", teacherName: "Swati", subject: "Maths", durationMinutes: 60,
+      rateMinor: 500000, amountMinor: 500000, source: { workbook: "School", sheet: "September", row: 2 } }],
+  });
+  assert.equal(invoice.kind, "allowed");
+});
+
 test("allows routine teacher and student actions only inside verified relationships", async () => {
   const cases = [
     ["linked teacher one-off", actor("teacher-1", "teacher"), "class.one_off.create", { title: "Chemistry", timezone: "Asia/Ho_Chi_Minh", startsAt: "2026-08-13T12:30:00Z", endsAt: "2026-08-13T13:30:00Z", localDate: "2026-08-13", studentContactIds: ["student-1"] }, "allowed"],

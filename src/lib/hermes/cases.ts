@@ -44,7 +44,7 @@ export function parseIMessageAdminActor(
   return { stableId: userId };
 }
 
-export type LocalHermesAdminSource = "cron" | "cli" | "tui";
+export type LocalHermesAdminSource = "cron" | "cli" | "tui" | "desktop";
 
 export function parseLocalHermesAdminActor(
   input: unknown,
@@ -52,7 +52,7 @@ export function parseLocalHermesAdminActor(
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const actor = input as Record<string, unknown>;
   if (Object.keys(actor).length !== 2 || actor.platform !== "hermes_local") return null;
-  if (actor.source !== "cron" && actor.source !== "cli" && actor.source !== "tui") return null;
+  if (actor.source !== "cron" && actor.source !== "cli" && actor.source !== "tui" && actor.source !== "desktop") return null;
   return { source: actor.source };
 }
 

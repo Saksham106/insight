@@ -80,7 +80,8 @@ function digest(value: unknown) {
 }
 
 export function agentActorKey(actor: AgentActor) {
-  return actor.kind === "contact" ? `contact:${actor.contactId}` : `admin:${actor.profileId ?? "primary"}`;
+  if (actor.kind === "contact") return `contact:${actor.contactId}`;
+  return actor.channel === "agent_profile" ? "admin:agent_profile" : `admin:${actor.profileId ?? "primary"}`;
 }
 
 function validRequestId(value: unknown) {
@@ -104,7 +105,15 @@ function claimsForRow(row: AgentActionRow): AgentEvaluationClaims {
 }
 
 export function listAgentCapabilities(actor: AgentActor) {
-  return listCapabilityManifests(actor.kind);
+  const manifests = listCapabilityManifests(actor.kind);
+  return actor.kind === "admin" && actor.channel === "agent_profile"
+    ? manifests.filter((item) => ["fee_statement.create", "fee_statement.lookup"].includes(item.name)).map((item) =>
+      item.name === "fee_statement.lookup" ? {
+        ...item,
+        purpose: "Check existing statements for one exact student and billing month before publishing; use a fresh clientRequestId for post-create read-back. No bearer link is returned.",
+        inputSchema: { ...item.inputSchema, required: ["studentName", "periodStart"] },
+      } : item)
+    : manifests;
 }
 
 export async function evaluateAction(

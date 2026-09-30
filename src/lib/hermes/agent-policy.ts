@@ -137,6 +137,10 @@ async function evaluateOccurrenceAction(
 }
 
 export async function evaluateAgentAction(context: AgentEvaluationContext): Promise<AgentActionDecision> {
+  if (context.actor.kind === "admin" && context.actor.channel === "agent_profile"
+    && !["fee_statement.create", "fee_statement.lookup"].includes(context.capabilityName)) {
+    return { kind: "denied", reasonCode: "action_out_of_scope" };
+  }
   let capability;
   try {
     capability = getCapability(context.capabilityName, context.capabilityVersion);
@@ -146,6 +150,11 @@ export async function evaluateAgentAction(context: AgentEvaluationContext): Prom
   if (!capability.allowedActorKinds.includes(context.actor.kind)) return { kind: "denied", reasonCode: "action_out_of_scope" };
 
   const missingFields = missingRequiredFields(context.capabilityName, context.proposedInput);
+  if (context.actor.kind === "admin" && context.actor.channel === "agent_profile"
+    && context.capabilityName === "fee_statement.lookup"
+    && context.proposedInput && typeof context.proposedInput === "object"
+    && !Array.isArray(context.proposedInput)
+    && !("periodStart" in context.proposedInput)) missingFields.push("periodStart");
   if (missingFields.length) return { kind: "needs_clarification", missingFields, reasonCode: "missing_required_fields" };
 
   let normalizedInput: Record<string, unknown>;

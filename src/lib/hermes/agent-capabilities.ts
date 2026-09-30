@@ -86,6 +86,22 @@ const statementItemSchema = {
 const definitions: AgentCapabilityDefinition[] = [
   {
     manifest: {
+      name: "fee_statement.lookup", version: 1,
+      purpose: "Recover the current private fee statement link and ready-to-copy WhatsApp message.",
+      risk: "medium", schedulable: false, composable: true,
+      inputSchema: schema({ studentName: stringField, periodStart: { type: "string", format: "date" } }, ["studentName"]),
+    },
+    allowedActorKinds: ["admin"],
+    normalize(input) {
+      const value = exactInput(input, ["studentName"], ["periodStart"]);
+      return {
+        studentName: text(value.studentName),
+        ...(value.periodStart === undefined ? {} : { periodStart: isoMonthStart(value.periodStart) }),
+      };
+    },
+  },
+  {
+    manifest: {
       name: "fee_statement.create", version: 1,
       purpose: "Publish a private-link fee statement from reconciled lesson rows and sourced flat charges (for example, test fees).",
       risk: "medium", schedulable: false, composable: true,
@@ -134,25 +150,6 @@ const definitions: AgentCapabilityDefinition[] = [
         correctionReason: text(correctionReason),
         ...sanitizeFeeStatementInput(replacement),
       } as unknown as Record<string, unknown>;
-    },
-  },
-  {
-    manifest: {
-      name: "fee_statement.lookup", version: 1,
-      purpose: "Recover the current private fee statement link and ready-to-copy WhatsApp message.",
-      risk: "medium", schedulable: false, composable: true,
-      inputSchema: schema({
-        studentName: stringField,
-        periodStart: { type: "string", format: "date" },
-      }, ["studentName"]),
-    },
-    allowedActorKinds: ["admin"],
-    normalize(input) {
-      const value = exactInput(input, ["studentName"], ["periodStart"]);
-      return {
-        studentName: text(value.studentName),
-        ...(value.periodStart === undefined ? {} : { periodStart: isoMonthStart(value.periodStart) }),
-      };
     },
   },
   {

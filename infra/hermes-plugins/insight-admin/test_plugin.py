@@ -57,11 +57,12 @@ class PluginTests(unittest.TestCase):
             "userId": "+84917583553",
         })
 
-    def test_trusts_cron_cli_and_tui_without_phone_identity(self):
+    def test_trusts_cron_cli_tui_and_desktop_without_phone_identity(self):
         for values, expected_source in (
             ({"HERMES_CRON_SESSION": "1"}, "cron"),
             ({"HERMES_SESSION_SOURCE": "cli"}, "cli"),
             ({"HERMES_SESSION_SOURCE": "tui"}, "tui"),
+            ({"HERMES_SESSION_SOURCE": "desktop"}, "desktop"),
         ):
             with self.subTest(source=expected_source):
                 self.session_values = values
@@ -160,7 +161,7 @@ class PluginTests(unittest.TestCase):
         rejected = (
             {"HERMES_SESSION_PLATFORM": "whatsapp_cloud"},
             {"HERMES_SESSION_PLATFORM": "telegram"},
-            {"HERMES_SESSION_SOURCE": "desktop"},
+            {"HERMES_SESSION_SOURCE": "desktop", "HERMES_SESSION_PLATFORM": "telegram"},
             {"HERMES_SESSION_PLATFORM": "api_server"},
             {},
             {

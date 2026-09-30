@@ -47,6 +47,16 @@ function sampleInput() {
   };
 }
 
+test("lookup accepts a bounded exact student and valid billing month only", () => {
+  const { sanitizeFeeStatementLookupInput } = require(modulePath);
+  assert.deepEqual(sanitizeFeeStatementLookupInput({ studentName: " Hung ", periodStart: "2026-09-01" }), {
+    studentName: "Hung", periodStart: "2026-09-01",
+  });
+  assert.throws(() => sanitizeFeeStatementLookupInput({ studentName: "Hung", periodStart: "2026-09-31" }), /invalid_period_start/);
+  assert.throws(() => sanitizeFeeStatementLookupInput({ studentName: "Hung", periodStart: "2026-09-15" }), /invalid_period_start/);
+  assert.throws(() => sanitizeFeeStatementLookupInput({ studentName: "Hung", periodStart: "2026-09-01", allStudents: true }), /invalid_lookup_input/);
+});
+
 test("normalizes a reconciled statement and computes the total from line items", () => {
   const { sanitizeFeeStatementInput } = require(modulePath);
   const result = sanitizeFeeStatementInput(sampleInput());

@@ -3,7 +3,7 @@ export type AgentRisk = "low" | "medium" | "high";
 export type AgentActorKind = "admin" | "contact";
 
 export type AgentActor =
-  | { kind: "admin"; profileId: string | null; externalIdHash?: string; channel: "dashboard" | "imessage" }
+  | { kind: "admin"; profileId: string | null; externalIdHash?: string; channel: "dashboard" | "imessage" | "agent_profile" }
   | {
       kind: "contact";
       contactId: string;
