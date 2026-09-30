@@ -67,6 +67,43 @@ test("rejects duplicate source rows and arithmetic that does not match duration 
   assert.throws(() => sanitizeFeeStatementInput(mismatch), /statement_amount_mismatch/);
 });
 
+test("accepts a sourced flat fee without inventing lesson hours or a teacher", () => {
+  const { sanitizeFeeStatementInput, projectPublicFeeStatement } = require(modulePath);
+  const input = sampleInput();
+  input.lineItems.push({
+    kind: "fee", label: "Test fee", amountMinor: 1000000,
+    source: { workbook: "Example Workbook", sheet: "September Fees", row: 4 },
+  });
+  const result = sanitizeFeeStatementInput(input);
+  assert.equal(result.totalMinor, 2500000);
+  assert.deepEqual(result.lineItems[2], {
+    kind: "fee", label: "Test fee", amountMinor: 1000000,
+    source: { workbook: "Example Workbook", sheet: "September Fees", row: 4 },
+  });
+  const projected = projectPublicFeeStatement({
+    id: "statement-2", statement_reference: "MIA-202608-A1B2C4", status: "published",
+    issued_at: "2026-08-31T12:00:00.000Z", paid_at: null,
+    student_name: result.studentName, billed_to_name: result.billedToName,
+    period_start: result.periodStart, period_end: result.periodEnd,
+    due_date: result.dueDate, currency: result.currency,
+    total_minor: result.totalMinor, line_items: result.lineItems,
+  });
+  assert.deepEqual(projected.lineItems[2], { kind: "fee", label: "Test fee", amountMinor: 1000000 });
+});
+
+test("rejects unsourced, duplicated, and disguised flat charges", () => {
+  const { sanitizeFeeStatementInput } = require(modulePath);
+  const input = sampleInput();
+  const fee = { kind: "fee", label: "Test fee", amountMinor: 1000000,
+    source: { workbook: "Example Workbook", sheet: "Fees", row: 4 } };
+  input.lineItems.push(fee);
+  assert.throws(() => sanitizeFeeStatementInput({ ...input, lineItems: [...input.lineItems.slice(0, 2), { kind: "fee", label: "Test fee", amountMinor: 1000000 }] }), /invalid_statement_input/);
+  assert.throws(() => sanitizeFeeStatementInput({ ...input, lineItems: [...input.lineItems.slice(0, 2), { ...fee, label: "Test\nfee" }] }), /invalid_fee_label/);
+  assert.throws(() => sanitizeFeeStatementInput({ ...input, lineItems: [...input.lineItems.slice(0, 2), { ...fee, durationMinutes: 60 }] }), /invalid_fee_item/);
+  assert.throws(() => sanitizeFeeStatementInput({ ...input, lineItems: [...input.lineItems.slice(0, 2), { ...fee, source: input.lineItems[0].source }] }), /duplicate_statement_source/);
+  assert.throws(() => sanitizeFeeStatementInput({ ...input, lineItems: [...input.lineItems.slice(0, 2), { ...fee, amountMinor: -1 }] }), /invalid_amount_minor/);
+});
+
 test("accepts honest aggregate tutor rows only when missing dates are disclosed", () => {
   const { sanitizeFeeStatementInput } = require(modulePath);
   const aggregate = sampleInput();

@@ -16,6 +16,13 @@ function month(value: string) {
 type LineItem = PublicFeeStatement["lineItems"][number];
 
 function LineItemRow({ item, periodStart, currency, nested = false }: { item: LineItem; periodStart: string; currency: string; nested?: boolean }) {
+  if (item.kind === "fee") return (
+    <article className={`${styles.item} ${nested ? styles.nestedItem : ""}`}>
+      <div><strong>{item.label}</strong></div>
+      <span className={styles.duration}>—</span>
+      <span className={styles.amount}>{formatMinorCurrency(item.amountMinor, currency)}</span>
+    </article>
+  );
   const note = parentVisibleNote(item.note);
   return (
     <article className={`${styles.item} ${nested ? styles.nestedItem : ""}`}>
@@ -78,7 +85,7 @@ export function FeeStatementReceipt({ statement }: { statement: PublicFeeStateme
             <LineItemRow
               currency={statement.currency}
               item={row.item}
-              key={`${row.item.lessonDate ?? "aggregate"}-${row.item.teacherName}-${row.sourceIndex}`}
+              key={row.item.kind === "fee" ? `fee-${row.sourceIndex}` : `${row.item.lessonDate ?? "aggregate"}-${row.item.teacherName}-${row.sourceIndex}`}
               periodStart={statement.periodStart}
             />
           ) : (

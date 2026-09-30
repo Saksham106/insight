@@ -11,6 +11,7 @@ export type FeeStatementSource = {
 };
 
 export type FeeStatementLineItem = {
+  kind?: "lesson";
   lessonDate: string | null;
   teacherName: string;
   subject: string | null;
@@ -18,6 +19,11 @@ export type FeeStatementLineItem = {
   rateMinor: number;
   amountMinor: number;
   note?: string;
+  source: FeeStatementSource;
+} | {
+  kind: "fee";
+  label: string;
+  amountMinor: number;
   source: FeeStatementSource;
 };
 
@@ -37,6 +43,8 @@ export type SanitizedFeeStatement = Omit<FeeStatementInput, "billedToName" | "du
   totalMinor: number;
 };
 
+type PublicLineItem<T> = T extends FeeStatementLineItem ? Omit<T, "source"> : never;
+
 export type PublicFeeStatement = {
   id: string;
   statementReference: string;
@@ -50,7 +58,7 @@ export type PublicFeeStatement = {
   totalMinor: number;
   issuedAt: string;
   paidAt: string | null;
-  lineItems: Array<Omit<FeeStatementLineItem, "source">>;
+  lineItems: Array<PublicLineItem<FeeStatementLineItem>>;
 };
 
 function fail(code: string): never {
@@ -111,13 +119,7 @@ export function sanitizeFeeStatementInput(input: unknown): SanitizedFeeStatement
   const sourceKeys = new Set<string>();
   const lineItems = value.lineItems.map((raw) => {
     const item = plainObject(raw);
-    const lessonDate = optionalDate(item.lessonDate, "lesson_date");
-    if (lessonDate && (lessonDate < periodStart || lessonDate > periodEnd)) fail("lesson_outside_statement_period");
-    const durationMinutes = integer(item.durationMinutes, "duration_minutes", 1, 24 * 60);
-    const rateMinor = integer(item.rateMinor, "rate_minor", 0, 1_000_000_000_000);
     const amountMinor = integer(item.amountMinor, "amount_minor", 0, 1_000_000_000_000);
-    if (amountMinor * 60 !== durationMinutes * rateMinor) fail("statement_amount_mismatch");
-
     const sourceValue = plainObject(item.source);
     const source = {
       workbook: cleanText(sourceValue.workbook, "source_workbook", 160),
@@ -128,9 +130,20 @@ export function sanitizeFeeStatementInput(input: unknown): SanitizedFeeStatement
     if (sourceKeys.has(sourceKey)) fail("duplicate_statement_source");
     sourceKeys.add(sourceKey);
 
+    if (item.kind === "fee") {
+      if (Object.keys(item).some((key) => !["kind", "label", "amountMinor", "source"].includes(key))) fail("invalid_fee_item");
+      return { kind: "fee" as const, label: cleanText(item.label, "fee_label", 120), amountMinor, source };
+    }
+    if (item.kind !== undefined && item.kind !== "lesson") fail("invalid_statement_item_kind");
+    const lessonDate = optionalDate(item.lessonDate, "lesson_date");
+    if (lessonDate && (lessonDate < periodStart || lessonDate > periodEnd)) fail("lesson_outside_statement_period");
+    const durationMinutes = integer(item.durationMinutes, "duration_minutes", 1, 24 * 60);
+    const rateMinor = integer(item.rateMinor, "rate_minor", 0, 1_000_000_000_000);
+    if (amountMinor * 60 !== durationMinutes * rateMinor) fail("statement_amount_mismatch");
     const note = optionalText(item.note, "line_item_note", 240);
     if (!lessonDate && !note) fail("aggregate_statement_note_required");
     return {
+      ...(item.kind === "lesson" ? { kind: "lesson" as const } : {}),
       lessonDate,
       teacherName: cleanText(item.teacherName, "teacher_name"),
       subject: optionalText(item.subject, "subject"),
@@ -184,7 +197,12 @@ export function projectPublicFeeStatement(row: Record<string, unknown>): PublicF
     totalMinor,
     issuedAt: cleanText(row.issued_at, "issued_at", 40),
     paidAt: optionalText(row.paid_at, "paid_at", 40),
-    lineItems: normalized.lineItems.map((item) => ({
+    lineItems: normalized.lineItems.map((item) => item.kind === "fee" ? {
+      kind: "fee" as const,
+      label: item.label,
+      amountMinor: item.amountMinor,
+    } : ({
+      ...(item.kind === "lesson" ? { kind: "lesson" as const } : {}),
       lessonDate: item.lessonDate,
       teacherName: item.teacherName,
       subject: item.subject,
