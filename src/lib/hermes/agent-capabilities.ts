@@ -62,6 +62,10 @@ const stringField = { type: "string", minLength: 1, maxLength: 500 };
 const sourceSchema = schema({
   workbook: stringField, sheet: stringField, row: { type: "integer", minimum: 1 },
 }, ["workbook", "sheet", "row"]);
+const feeSourceSchema = { oneOf: [
+  sourceSchema,
+  schema({ kind: { const: "operator" }, reference: stringField }, ["kind", "reference"]),
+] };
 const statementItemSchema = {
   oneOf: [
     schema({
@@ -74,7 +78,7 @@ const statementItemSchema = {
     }, ["lessonDate", "teacherName", "subject", "durationMinutes", "rateMinor", "amountMinor", "source"]),
     schema({
       kind: { const: "fee" }, label: stringField,
-      amountMinor: { type: "integer", minimum: 0 }, source: sourceSchema,
+      amountMinor: { type: "integer", minimum: 0 }, source: feeSourceSchema,
     }, ["kind", "label", "amountMinor", "source"]),
   ],
 };

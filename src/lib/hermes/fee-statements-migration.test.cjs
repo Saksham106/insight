@@ -31,6 +31,8 @@ test("database validates flat fees without fictional lesson hours", () => {
   const flatSql = fs.readFileSync(path.join(migrationDir, "20260930120000_allow_flat_fee_statement_charges.sql"), "utf8");
   assert.match(flatSql, /v_item ->> 'kind' = 'fee'/);
   assert.match(flatSql, /v_item ->> 'label'/);
+  assert.match(flatSql, /v_item -> 'source' ->> 'kind' = 'operator'/);
+  assert.match(flatSql, /v_item -> 'source' ->> 'reference'/);
   assert.match(flatSql, /chr\(10\)/);
   assert.match(flatSql, /chr\(13\)/);
   assert.match(flatSql, /duplicate_fee_statement_source/);

@@ -44,7 +44,22 @@ begin
     if jsonb_typeof(v_item) <> 'object'
       or jsonb_typeof(v_item -> 'amountMinor') <> 'number' or (v_item ->> 'amountMinor') !~ '^\d+$'
       or (v_item ->> 'amountMinor')::numeric not between 0 and 1000000000000
-      or jsonb_typeof(v_item -> 'source') <> 'object'
+      or jsonb_typeof(v_item -> 'source') <> 'object' then
+      raise exception 'invalid_fee_statement_line_item';
+    end if;
+
+    if v_item -> 'source' ->> 'kind' = 'operator' then
+      if v_item ->> 'kind' is distinct from 'fee'
+        or not ((v_item -> 'source') ?& array['kind','reference'])
+        or (select count(*) from jsonb_object_keys(v_item -> 'source')) <> 2
+        or jsonb_typeof(v_item -> 'source' -> 'reference') <> 'string'
+        or length(pg_catalog.btrim(v_item -> 'source' ->> 'reference')) not between 1 and 240
+        or position(chr(10) in (v_item -> 'source' ->> 'reference')) > 0
+        or position(chr(13) in (v_item -> 'source' ->> 'reference')) > 0 then
+        raise exception 'invalid_fee_statement_line_item';
+      end if;
+    elsif (v_item -> 'source') ? 'kind'
+      or (select count(*) from jsonb_object_keys(v_item -> 'source')) <> 3
       or not ((v_item -> 'source') ?& array['workbook','sheet','row'])
       or jsonb_typeof(v_item -> 'source' -> 'workbook') <> 'string'
       or length(pg_catalog.btrim(v_item -> 'source' ->> 'workbook')) not between 1 and 160
@@ -101,7 +116,8 @@ begin
 
   if exists (
     select 1 from jsonb_array_elements(p_line_items) as items(item)
-    group by item -> 'source' ->> 'workbook', item -> 'source' ->> 'sheet', item -> 'source' ->> 'row'
+    group by item -> 'source' ->> 'kind', item -> 'source' ->> 'reference',
+      item -> 'source' ->> 'workbook', item -> 'source' ->> 'sheet', item -> 'source' ->> 'row'
     having count(*) > 1
   ) then
     raise exception 'duplicate_fee_statement_source';

@@ -10,6 +10,11 @@ export type FeeStatementSource = {
   row: number;
 };
 
+export type ManualFeeSource = {
+  kind: "operator";
+  reference: string;
+};
+
 export type FeeStatementLineItem = {
   kind?: "lesson";
   lessonDate: string | null;
@@ -24,7 +29,7 @@ export type FeeStatementLineItem = {
   kind: "fee";
   label: string;
   amountMinor: number;
-  source: FeeStatementSource;
+  source: FeeStatementSource | ManualFeeSource;
 };
 
 export type FeeStatementInput = {
@@ -121,12 +126,21 @@ export function sanitizeFeeStatementInput(input: unknown): SanitizedFeeStatement
     const item = plainObject(raw);
     const amountMinor = integer(item.amountMinor, "amount_minor", 0, 1_000_000_000_000);
     const sourceValue = plainObject(item.source);
-    const source = {
-      workbook: cleanText(sourceValue.workbook, "source_workbook", 160),
-      sheet: cleanText(sourceValue.sheet, "source_sheet", 160),
-      row: integer(sourceValue.row, "source_row", 1, 1_000_000),
-    };
-    const sourceKey = `${source.workbook}\u0000${source.sheet}\u0000${source.row}`;
+    let source: FeeStatementSource | ManualFeeSource;
+    let sourceKey: string;
+    if (item.kind === "fee" && sourceValue.kind === "operator") {
+      if (Object.keys(sourceValue).some((key) => !["kind", "reference"].includes(key))) fail("invalid_fee_source");
+      source = { kind: "operator", reference: cleanText(sourceValue.reference, "fee_reference", 240) };
+      sourceKey = JSON.stringify(["operator", source.reference]);
+    } else {
+      if (sourceValue.kind !== undefined) fail("invalid_statement_source");
+      source = {
+        workbook: cleanText(sourceValue.workbook, "source_workbook", 160),
+        sheet: cleanText(sourceValue.sheet, "source_sheet", 160),
+        row: integer(sourceValue.row, "source_row", 1, 1_000_000),
+      };
+      sourceKey = JSON.stringify(["sheet", source.workbook, source.sheet, source.row]);
+    }
     if (sourceKeys.has(sourceKey)) fail("duplicate_statement_source");
     sourceKeys.add(sourceKey);
 
@@ -135,6 +149,7 @@ export function sanitizeFeeStatementInput(input: unknown): SanitizedFeeStatement
       return { kind: "fee" as const, label: cleanText(item.label, "fee_label", 120), amountMinor, source };
     }
     if (item.kind !== undefined && item.kind !== "lesson") fail("invalid_statement_item_kind");
+    if ("kind" in source) fail("invalid_statement_source");
     const lessonDate = optionalDate(item.lessonDate, "lesson_date");
     if (lessonDate && (lessonDate < periodStart || lessonDate > periodEnd)) fail("lesson_outside_statement_period");
     const durationMinutes = integer(item.durationMinutes, "duration_minutes", 1, 24 * 60);

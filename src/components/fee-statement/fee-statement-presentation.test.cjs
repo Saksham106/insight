@@ -91,6 +91,7 @@ test("grouped rows expose an hourly rate only when every class uses the same rat
   const groups = buildFeeStatementRows(items).filter((row) => row.kind === "group");
   assert.equal(groups.find((row) => row.teacherName === "Swati").rateMinor, 1500000);
   assert.equal(groups.find((row) => row.teacherName === "Anjali").rateMinor, null);
+});
 
 test("flat charges remain standalone when lesson rows are grouped", () => {
   const { buildFeeStatementRows } = presentation();

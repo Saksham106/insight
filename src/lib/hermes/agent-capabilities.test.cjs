@@ -105,6 +105,7 @@ test("normalizes a bounded fee statement lookup", () => {
   assert.throws(() => capability.normalize({ studentName: "Devon", periodStart: "2026-02-31" }), /invalid_capability_input/);
   assert.throws(() => capability.normalize({ studentName: "Devon", periodStart: "2026-08-15" }), /invalid_capability_input/);
   assert.throws(() => capability.normalize({ studentName: "Devon", includeVoided: true }), /invalid_capability_input/);
+});
 
 test("fee statement manifest teaches the agent how to supply a flat charge", () => {
   const { getCapability } = require(registryPath);
@@ -114,6 +115,7 @@ test("fee statement manifest teaches the agent how to supply a flat charge", () 
   assert.equal(item.oneOf.length, 2);
   assert.equal(item.oneOf[1].properties.kind.const, "fee");
   assert.deepEqual(item.oneOf[1].required, ["kind", "label", "amountMinor", "source"]);
+  assert.equal(item.oneOf[1].properties.source.oneOf[1].properties.kind.const, "operator");
 });
 
 test("manifest accepts legacy kindless lessons and flat fees without mixing their fields", () => {
@@ -127,6 +129,8 @@ test("manifest accepts legacy kindless lessons and flat fees without mixing thei
   assert.equal(validate({ ...base, lineItems: [lesson] }), true, JSON.stringify(validate.errors));
   const fee = { kind: "fee", label: "Test fee", amountMinor: 1000000, source: { ...source, row: 4 } };
   assert.equal(validate({ ...base, lineItems: [lesson, fee] }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...base, lineItems: [{ ...fee, source: { kind: "operator", reference: "Saksham confirmed a test fee" } }] }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...base, lineItems: [{ ...lesson, source: { kind: "operator", reference: "invalid for lesson" } }] }), false);
   assert.equal(validate({ ...base, lineItems: [{ ...fee, durationMinutes: 60 }] }), false);
 });
 
