@@ -107,6 +107,33 @@ test("normalizes a bounded fee statement lookup", () => {
   assert.throws(() => capability.normalize({ studentName: "Devon", includeVoided: true }), /invalid_capability_input/);
 });
 
+test("fee statement manifest teaches the agent how to supply a flat charge", () => {
+  const { getCapability } = require(registryPath);
+  const manifest = getCapability("fee_statement.create", 1).manifest;
+  assert.match(manifest.purpose, /flat/i);
+  const item = manifest.inputSchema.properties.lineItems.items;
+  assert.equal(item.oneOf.length, 2);
+  assert.equal(item.oneOf[1].properties.kind.const, "fee");
+  assert.deepEqual(item.oneOf[1].required, ["kind", "label", "amountMinor", "source"]);
+  assert.equal(item.oneOf[1].properties.source.oneOf[1].properties.kind.const, "operator");
+});
+
+test("manifest accepts legacy kindless lessons and flat fees without mixing their fields", () => {
+  const Ajv = require("ajv");
+  const { getCapability } = require(registryPath);
+  const manifest = getCapability("fee_statement.create", 1).manifest;
+  const validate = new Ajv({ strict: false }).compile(manifest.inputSchema);
+  const source = { workbook: "Workbook A", sheet: "September", row: 3 };
+  const base = { studentName: "Student", periodStart: "2026-09-01", periodEnd: "2026-09-30", currency: "VND" };
+  const lesson = { lessonDate: "2026-09-10", teacherName: "Swati", subject: "Maths", durationMinutes: 60, rateMinor: 500000, amountMinor: 500000, source };
+  assert.equal(validate({ ...base, lineItems: [lesson] }), true, JSON.stringify(validate.errors));
+  const fee = { kind: "fee", label: "Test fee", amountMinor: 1000000, source: { ...source, row: 4 } };
+  assert.equal(validate({ ...base, lineItems: [lesson, fee] }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...base, lineItems: [{ ...fee, source: { kind: "operator", reference: "Saksham confirmed a test fee" } }] }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...base, lineItems: [{ ...lesson, source: { kind: "operator", reference: "invalid for lesson" } }] }), false);
+  assert.equal(validate({ ...base, lineItems: [{ ...fee, durationMinutes: 60 }] }), false);
+});
+
 test("resolves exact versions and rejects unknown capabilities", () => {
   const { getCapability } = require(registryPath);
   assert.equal(getCapability("class.reminder.send", 1).manifest.name, "class.reminder.send");

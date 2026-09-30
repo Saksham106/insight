@@ -93,6 +93,16 @@ test("grouped rows expose an hourly rate only when every class uses the same rat
   assert.equal(groups.find((row) => row.teacherName === "Anjali").rateMinor, null);
 });
 
+test("flat charges remain standalone when lesson rows are grouped", () => {
+  const { buildFeeStatementRows } = presentation();
+  const items = Array.from({ length: 8 }, (_, index) => item("Ms Lan", `2026-08-${String(index + 1).padStart(2, "0")}`));
+  items.push({ kind: "fee", label: "Test fee", amountMinor: 1000000 });
+  const rows = buildFeeStatementRows(items);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].kind, "group");
+  assert.deepEqual(rows[1], { kind: "item", item: items[8], sourceIndex: 8 });
+});
+
 test("aggregate rows are never folded into dated tutor groups", () => {
   const { buildFeeStatementRows } = presentation();
   const items = [

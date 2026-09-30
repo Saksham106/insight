@@ -10,6 +10,7 @@ const sql = [
   "20260831193000_harden_academy_fee_statements.sql",
   "20260831200000_lock_fee_statement_snapshots.sql",
   "20260905120000_replace_academy_fee_statements.sql",
+  "20260930120000_allow_flat_fee_statement_charges.sql"
 ].map((file) => fs.readFileSync(path.join(migrationDir, file), "utf8")).join("\n");
 
 test("fee statements are private, service-only, token-hashed snapshots", () => {
@@ -24,6 +25,19 @@ test("fee statements are private, service-only, token-hashed snapshots", () => {
   assert.match(sql, /grant execute on function public\.create_academy_fee_statement[\s\S]*to service_role/);
   assert.doesNotMatch(sql, /grant execute[\s\S]*to anon/);
   assert.match(sql, /actor_identifier_hash text/);
+});
+
+test("database validates flat fees without fictional lesson hours", () => {
+  const flatSql = fs.readFileSync(path.join(migrationDir, "20260930120000_allow_flat_fee_statement_charges.sql"), "utf8");
+  assert.match(flatSql, /v_item ->> 'kind' = 'fee'/);
+  assert.match(flatSql, /v_item ->> 'label'/);
+  assert.match(flatSql, /v_item -> 'source' ->> 'kind' = 'operator'/);
+  assert.match(flatSql, /v_item -> 'source' ->> 'reference'/);
+  assert.match(flatSql, /chr\(10\)/);
+  assert.match(flatSql, /chr\(13\)/);
+  assert.match(flatSql, /duplicate_fee_statement_source/);
+  assert.match(flatSql, /amountMinor/);
+  assert.match(flatSql, /durationMinutes/);
 });
 
 test("statement creation binds idempotency and audit in one transaction", () => {

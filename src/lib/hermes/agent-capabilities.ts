@@ -59,12 +59,35 @@ function schema(properties: Record<string, unknown>, required: string[]) {
 }
 
 const stringField = { type: "string", minLength: 1, maxLength: 500 };
+const sourceSchema = schema({
+  workbook: stringField, sheet: stringField, row: { type: "integer", minimum: 1 },
+}, ["workbook", "sheet", "row"]);
+const feeSourceSchema = { oneOf: [
+  sourceSchema,
+  schema({ kind: { const: "operator" }, reference: stringField }, ["kind", "reference"]),
+] };
+const statementItemSchema = {
+  oneOf: [
+    schema({
+      kind: { const: "lesson" }, lessonDate: { type: ["string", "null"] },
+      teacherName: stringField, subject: { type: ["string", "null"] },
+      durationMinutes: { type: "integer", minimum: 1 },
+      rateMinor: { type: "integer", minimum: 0 },
+      amountMinor: { type: "integer", minimum: 0 },
+      note: stringField, source: sourceSchema,
+    }, ["lessonDate", "teacherName", "subject", "durationMinutes", "rateMinor", "amountMinor", "source"]),
+    schema({
+      kind: { const: "fee" }, label: stringField,
+      amountMinor: { type: "integer", minimum: 0 }, source: feeSourceSchema,
+    }, ["kind", "label", "amountMinor", "source"]),
+  ],
+};
 
 const definitions: AgentCapabilityDefinition[] = [
   {
     manifest: {
       name: "fee_statement.create", version: 1,
-      purpose: "Publish a private-link fee statement from reconciled lesson rows.",
+      purpose: "Publish a private-link fee statement from reconciled lesson rows and sourced flat charges (for example, test fees).",
       risk: "medium", schedulable: false, composable: true,
       inputSchema: schema({
         studentName: stringField,
@@ -73,7 +96,7 @@ const definitions: AgentCapabilityDefinition[] = [
         periodEnd: stringField,
         dueDate: stringField,
         currency: { type: "string", minLength: 3, maxLength: 3 },
-        lineItems: { type: "array", minItems: 1, maxItems: 100, items: { type: "object" } },
+        lineItems: { type: "array", minItems: 1, maxItems: 100, items: statementItemSchema },
       }, ["studentName", "periodStart", "periodEnd", "currency", "lineItems"]),
     },
     allowedActorKinds: ["admin"],

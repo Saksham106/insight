@@ -1,6 +1,8 @@
 import type { PublicFeeStatement } from "@/lib/hermes/fee-statements";
 
 type LineItem = PublicFeeStatement["lineItems"][number];
+type LessonItem = Exclude<LineItem, { kind: "fee" }>;
+type IndexedLesson = { item: LessonItem; sourceIndex: number };
 
 export function formatDurationHours(minutes: number) {
   const value = minutes / 60;
@@ -13,7 +15,7 @@ export type FeeStatementRow =
   | {
       kind: "group";
       teacherName: string;
-      items: Array<{ item: LineItem; sourceIndex: number }>;
+      items: IndexedLesson[];
       durationMinutes: number;
       rateMinor: number | null;
       amountMinor: number;
@@ -31,9 +33,9 @@ export function buildFeeStatementRows(lineItems: PublicFeeStatement["lineItems"]
     return lineItems.map((item, sourceIndex) => ({ kind: "item", item, sourceIndex }));
   }
 
-  const datedByTeacher = new Map<string, Array<{ item: LineItem; sourceIndex: number }>>();
+  const datedByTeacher = new Map<string, IndexedLesson[]>();
   lineItems.forEach((item, sourceIndex) => {
-    if (!item.lessonDate) return;
+    if (item.kind === "fee" || !item.lessonDate) return;
     const key = teacherKey(item.teacherName);
     const entries = datedByTeacher.get(key) ?? [];
     entries.push({ item, sourceIndex });
@@ -47,8 +49,12 @@ export function buildFeeStatementRows(lineItems: PublicFeeStatement["lineItems"]
   const rows: FeeStatementRow[] = [];
 
   lineItems.forEach((item, sourceIndex) => {
+    if (item.kind === "fee" || !item.lessonDate) {
+      rows.push({ kind: "item", item, sourceIndex });
+      return;
+    }
     const key = teacherKey(item.teacherName);
-    if (!item.lessonDate || !groupedTeachers.has(key)) {
+    if (!groupedTeachers.has(key)) {
       rows.push({ kind: "item", item, sourceIndex });
       return;
     }
