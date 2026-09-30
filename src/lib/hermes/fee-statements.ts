@@ -104,6 +104,15 @@ function integer(value: unknown, field: string, min: number, max: number): numbe
   return value as number;
 }
 
+export function sanitizeFeeStatementLookupInput(input: unknown): { studentName: string; periodStart: string } {
+  const value = plainObject(input);
+  if (Object.keys(value).length !== 2 || !("studentName" in value) || !("periodStart" in value)) fail("invalid_lookup_input");
+  const studentName = cleanText(value.studentName, "student_name");
+  const periodStart = date(value.periodStart, "period_start");
+  if (!periodStart.endsWith("-01")) fail("invalid_period_start");
+  return { studentName, periodStart };
+}
+
 export function sanitizeFeeStatementInput(input: unknown): SanitizedFeeStatement {
   const value = plainObject(input);
   const studentName = cleanText(value.studentName, "student_name");

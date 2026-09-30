@@ -53,7 +53,7 @@ function missingRequiredFields(capabilityName: string, input: unknown) {
   const required: Record<string, string[]> = {
     "fee_statement.create": ["studentName", "periodStart", "periodEnd", "currency", "lineItems"],
     "fee_statement.replace": ["correctionReason", "studentName", "periodStart", "periodEnd", "currency", "lineItems"],
-    "fee_statement.lookup": ["studentName"],
+    "fee_statement.lookup": ["studentName", "periodStart"],
     "class.one_off.create": ["title", "timezone", "startsAt", "endsAt", "localDate", "studentContactIds"],
     "class.reminder.send": ["occurrenceId", "recipientId"],
     "class.attendance.record": ["occurrenceId", "enrollmentHandle", "selectionToken", "status"],
@@ -138,7 +138,7 @@ async function evaluateOccurrenceAction(
 
 export async function evaluateAgentAction(context: AgentEvaluationContext): Promise<AgentActionDecision> {
   if (context.actor.kind === "admin" && context.actor.channel === "agent_profile"
-    && context.capabilityName !== "fee_statement.create") {
+    && !["fee_statement.create", "fee_statement.lookup"].includes(context.capabilityName)) {
     return { kind: "denied", reasonCode: "action_out_of_scope" };
   }
   let capability;

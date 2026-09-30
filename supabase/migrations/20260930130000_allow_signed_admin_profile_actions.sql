@@ -12,3 +12,9 @@ alter table public.academy_fee_statements
 alter table public.academy_fee_statements
   add constraint academy_fee_statements_source_channel_check
   check (source_channel in ('dashboard', 'imessage', 'agent_profile'));
+
+-- A lookup is not a lock. Stop two concurrent agent requests from publishing
+-- separate active statements for the same exact student and month.
+create unique index if not exists academy_fee_statement_active_student_period_idx
+  on public.academy_fee_statements (lower(btrim(student_name)), period_start)
+  where status <> 'void';

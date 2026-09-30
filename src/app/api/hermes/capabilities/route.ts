@@ -85,9 +85,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ...result, notificationDelivery });
   } catch (error) {
     const code = error instanceof Error ? error.message : "capability_service_unavailable";
-    const lookupStatus = feeStatementLookupErrorStatus(code);
-    if (lookupStatus) return response(code, lookupStatus);
-    if (["client_request_payload_mismatch", "action_execution_in_progress"].includes(code)) return response(code, 409);
+    if (feeStatementLookupErrorStatus(code)) return response(code, feeStatementLookupErrorStatus(code)!);
+    if (["client_request_payload_mismatch", "action_execution_in_progress", "statement_already_exists"].includes(code)) return response(code, 409);
     if (["evaluation_actor_mismatch", "invalid_evaluation_token", "expired_evaluation_token", "evaluation_not_found"].includes(code)) return response(code, 403);
     if (["invalid_client_request_id", "invalid_capability_request"].includes(code)) return response(code, 400);
     return response("capability_service_unavailable", 503);

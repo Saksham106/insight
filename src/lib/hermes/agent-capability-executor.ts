@@ -11,6 +11,7 @@ import type { KittyClassActor } from "./kitty-class-service";
 function dbError(error: { message?: string } | null) {
   if (!error) return;
   if (error.message?.includes("client_request_payload_mismatch")) throw new Error("client_request_payload_mismatch");
+  if (error.message?.includes("academy_fee_statement_active_student_period_idx")) throw new Error("statement_already_exists");
   throw new Error("capability_execution_unavailable");
 }
 
@@ -63,9 +64,30 @@ export async function executeAgentCapability(
 ): Promise<Record<string, unknown>> {
   if (action.capabilityVersion !== 1) throw new Error("capability_not_executable");
   if (actor.kind === "admin" && actor.channel === "agent_profile"
-    && action.capabilityName !== "fee_statement.create") throw new Error("capability_not_executable");
+    && !["fee_statement.create", "fee_statement.lookup"].includes(action.capabilityName)) throw new Error("capability_not_executable");
   const input = action.normalizedInput;
   switch (action.capabilityName) {
+    case "fee_statement.lookup": {
+      if (actor.kind !== "admin") throw new Error("capability_not_executable");
+      const { data, error } = await client.from("academy_fee_statements")
+        .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, issued_at")
+        .eq("student_name", String(input.studentName))
+        .eq("period_start", String(input.periodStart))
+        .order("issued_at", { ascending: false })
+        .limit(11);
+      dbError(error);
+      const rows = data ?? [];
+      return {
+        statements: rows.slice(0, 10).map((row) => ({
+          statementId: String(row.id), statementReference: String(row.statement_reference),
+          status: String(row.status), studentName: String(row.student_name),
+          billedToName: row.billed_to_name == null ? null : String(row.billed_to_name),
+          periodStart: String(row.period_start), periodEnd: String(row.period_end),
+          currency: String(row.currency), totalMinor: Number(row.total_minor), issuedAt: String(row.issued_at),
+        })),
+        hasMore: rows.length > 10,
+      };
+    }
     case "fee_statement.create": {
       if (actor.kind !== "admin") throw new Error("capability_not_executable");
       // Stable for one request ID so an uncertain RPC retry returns the same usable bearer URL.

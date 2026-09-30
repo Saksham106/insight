@@ -52,6 +52,7 @@ test("signed profile capability is limited to fee statements", async () => {
   const profile = { kind: "admin", profileId: null, channel: "agent_profile" };
   assert.equal((await decide(profile, "class.reminder.send", { occurrenceId: "occ-1", recipientId: "student-1" })).kind, "denied");
   assert.equal((await decide(profile, "routine.manage", { operation: "preview" })).kind, "denied");
+  assert.equal((await decide(profile, "fee_statement.lookup", { studentName: "Student", periodStart: "2026-09-01" })).kind, "allowed");
   const invoice = await decide(profile, "fee_statement.create", {
     studentName: "Student", periodStart: "2026-09-01", periodEnd: "2026-09-30", currency: "VND",
     lineItems: [{ lessonDate: "2026-09-10", teacherName: "Swati", subject: "Maths", durationMinutes: 60,

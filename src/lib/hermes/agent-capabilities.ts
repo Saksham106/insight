@@ -3,7 +3,7 @@ import type {
   AgentCapabilityDefinition,
   AgentCapabilityManifest,
 } from "./agent-capability-types";
-import { sanitizeFeeStatementInput } from "./fee-statements";
+import { sanitizeFeeStatementInput, sanitizeFeeStatementLookupInput } from "./fee-statements";
 
 function objectInput(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("invalid_capability_input");
@@ -86,6 +86,18 @@ const statementItemSchema = {
 const definitions: AgentCapabilityDefinition[] = [
   {
     manifest: {
+      name: "fee_statement.lookup", version: 1,
+      purpose: "Look up existing private fee statements for one exact student and billing month before publishing, and verify the created record afterward. Use a new clientRequestId for each fresh read (reuse only for retry); results are cached per request ID. No bearer link or source coordinates are returned.",
+      risk: "low", schedulable: false, composable: true,
+      inputSchema: schema({ studentName: stringField, periodStart: stringField }, ["studentName", "periodStart"]),
+    },
+    allowedActorKinds: ["admin"],
+    normalize(input) {
+      return sanitizeFeeStatementLookupInput(input);
+    },
+  },
+  {
+    manifest: {
       name: "fee_statement.create", version: 1,
       purpose: "Publish a private-link fee statement from reconciled lesson rows and sourced flat charges (for example, test fees).",
       risk: "medium", schedulable: false, composable: true,
@@ -134,25 +146,6 @@ const definitions: AgentCapabilityDefinition[] = [
         correctionReason: text(correctionReason),
         ...sanitizeFeeStatementInput(replacement),
       } as unknown as Record<string, unknown>;
-    },
-  },
-  {
-    manifest: {
-      name: "fee_statement.lookup", version: 1,
-      purpose: "Recover the current private fee statement link and ready-to-copy WhatsApp message.",
-      risk: "medium", schedulable: false, composable: true,
-      inputSchema: schema({
-        studentName: stringField,
-        periodStart: { type: "string", format: "date" },
-      }, ["studentName"]),
-    },
-    allowedActorKinds: ["admin"],
-    normalize(input) {
-      const value = exactInput(input, ["studentName"], ["periodStart"]);
-      return {
-        studentName: text(value.studentName),
-        ...(value.periodStart === undefined ? {} : { periodStart: isoMonthStart(value.periodStart) }),
-      };
     },
   },
   {
