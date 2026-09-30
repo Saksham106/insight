@@ -11,7 +11,6 @@ import type { KittyClassActor } from "./kitty-class-service";
 function dbError(error: { message?: string } | null) {
   if (!error) return;
   if (error.message?.includes("client_request_payload_mismatch")) throw new Error("client_request_payload_mismatch");
-  if (error.message?.includes("academy_fee_statement_active_student_period_idx")) throw new Error("statement_already_exists");
   throw new Error("capability_execution_unavailable");
 }
 
@@ -69,23 +68,60 @@ export async function executeAgentCapability(
   switch (action.capabilityName) {
     case "fee_statement.lookup": {
       if (actor.kind !== "admin") throw new Error("capability_not_executable");
-      const { data, error } = await client.from("academy_fee_statements")
-        .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, issued_at")
-        .eq("student_name", String(input.studentName))
-        .eq("period_start", String(input.periodStart))
-        .order("issued_at", { ascending: false })
-        .limit(11);
+      if (actor.channel === "agent_profile") {
+        const { data, error } = await client.from("academy_fee_statements")
+          .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, issued_at")
+          .eq("student_name", String(input.studentName))
+          .eq("period_start", String(input.periodStart))
+          .order("issued_at", { ascending: false })
+          .limit(11);
+        dbError(error);
+        const rows = data ?? [];
+        return {
+          statements: rows.slice(0, 10).map((row) => ({
+            statementId: String(row.id), statementReference: String(row.statement_reference),
+            status: String(row.status), studentName: String(row.student_name),
+            billedToName: row.billed_to_name == null ? null : String(row.billed_to_name),
+            periodStart: String(row.period_start), periodEnd: String(row.period_end),
+            currency: String(row.currency), totalMinor: Number(row.total_minor), issuedAt: String(row.issued_at),
+          })),
+          hasMore: rows.length > 10,
+        };
+      }
+      let query = client.from("academy_fee_statements")
+        .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, client_request_id, public_token_hash, issued_at");
+      query = input.statementId
+        ? query.eq("id", String(input.statementId))
+        : query.ilike("student_name", exactIlikePattern(String(input.studentName)));
+      query = query.in("status", ["published", "paid"])
+        .order("period_start", { ascending: false })
+        .order("issued_at", { ascending: false });
+      if (input.periodStart) query = query.eq("period_start", String(input.periodStart));
+      const { data, error } = await query.limit(3);
       dbError(error);
-      const rows = data ?? [];
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      if (rows.length === 0) throw new Error("fee_statement_not_found");
+      if (rows.length > 1 && (input.periodStart || rows[0].period_start === rows[1].period_start)) {
+        throw new Error("fee_statement_lookup_ambiguous");
+      }
+      const statement = rows[0];
+      const publicLink = feeStatementPublicUrl(String(statement.client_request_id));
+      if (publicLink.tokenHash !== statement.public_token_hash) throw new Error("fee_statement_link_unrecoverable");
+      const studentName = String(statement.student_name);
+      const periodStart = String(statement.period_start);
+      const status = String(statement.status);
+      const totalMinor = Number(statement.total_minor);
+      const currency = String(statement.currency);
+      const amount = formatMinorCurrency(totalMinor, currency);
+      const paymentSummary = status === "paid"
+        ? `The total is ${amount}, and it has been marked paid`
+        : `The total due is ${amount}`;
       return {
-        statements: rows.slice(0, 10).map((row) => ({
-          statementId: String(row.id), statementReference: String(row.statement_reference),
-          status: String(row.status), studentName: String(row.student_name),
-          billedToName: row.billed_to_name == null ? null : String(row.billed_to_name),
-          periodStart: String(row.period_start), periodEnd: String(row.period_end),
-          currency: String(row.currency), totalMinor: Number(row.total_minor), issuedAt: String(row.issued_at),
-        })),
-        hasMore: rows.length > 10,
+        statementId: String(statement.id), statementReference: String(statement.statement_reference),
+        studentName, billedToName: statement.billed_to_name ? String(statement.billed_to_name) : null,
+        periodStart, periodEnd: String(statement.period_end), totalMinor, currency, status,
+        publicUrl: publicLink.url,
+        whatsappMessage: `Hi, here is ${studentName}'s fee statement for ${feeStatementMonthLabel(periodStart)}. ${paymentSummary}: ${publicLink.url}`,
       };
     }
     case "fee_statement.create": {

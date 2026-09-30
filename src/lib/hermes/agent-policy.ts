@@ -53,7 +53,7 @@ function missingRequiredFields(capabilityName: string, input: unknown) {
   const required: Record<string, string[]> = {
     "fee_statement.create": ["studentName", "periodStart", "periodEnd", "currency", "lineItems"],
     "fee_statement.replace": ["correctionReason", "studentName", "periodStart", "periodEnd", "currency", "lineItems"],
-    "fee_statement.lookup": ["studentName", "periodStart"],
+    "fee_statement.lookup": ["studentName"],
     "class.one_off.create": ["title", "timezone", "startsAt", "endsAt", "localDate", "studentContactIds"],
     "class.reminder.send": ["occurrenceId", "recipientId"],
     "class.attendance.record": ["occurrenceId", "enrollmentHandle", "selectionToken", "status"],
@@ -150,6 +150,11 @@ export async function evaluateAgentAction(context: AgentEvaluationContext): Prom
   if (!capability.allowedActorKinds.includes(context.actor.kind)) return { kind: "denied", reasonCode: "action_out_of_scope" };
 
   const missingFields = missingRequiredFields(context.capabilityName, context.proposedInput);
+  if (context.actor.kind === "admin" && context.actor.channel === "agent_profile"
+    && context.capabilityName === "fee_statement.lookup"
+    && context.proposedInput && typeof context.proposedInput === "object"
+    && !Array.isArray(context.proposedInput)
+    && !("periodStart" in context.proposedInput)) missingFields.push("periodStart");
   if (missingFields.length) return { kind: "needs_clarification", missingFields, reasonCode: "missing_required_fields" };
 
   let normalizedInput: Record<string, unknown>;

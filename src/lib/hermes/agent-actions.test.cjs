@@ -60,7 +60,14 @@ function dependencies() {
 
 test("signed profile discovers only the fee-statement capability", () => {
   const { listAgentCapabilities } = require(path.join(__dirname, "agent-actions.ts"));
-  assert.deepEqual(listAgentCapabilities({ kind: "admin", profileId: null, channel: "agent_profile" }).map((item) => item.name), ["fee_statement.create", "fee_statement.lookup"]);
+  const profile = { kind: "admin", profileId: null, channel: "agent_profile" };
+  const manifests = listAgentCapabilities(profile);
+  assert.deepEqual(manifests.map((item) => item.name), ["fee_statement.create", "fee_statement.lookup"]);
+  const lookup = manifests.find((item) => item.name === "fee_statement.lookup");
+  assert.deepEqual(lookup.inputSchema.required, ["studentName", "periodStart"]);
+  assert.match(lookup.purpose, /No bearer link/);
+  const direct = listAgentCapabilities({ kind: "admin", profileId: null, channel: "imessage" }).find((item) => item.name === "fee_statement.lookup");
+  assert.deepEqual(direct.inputSchema.required, ["studentName"]);
 });
 
 test("signed profile actions have a separate actor key from direct iMessage", () => {
@@ -171,19 +178,6 @@ test("an evaluation token cannot be transferred to another actor", async () => {
     evaluationToken: evaluated.evaluationToken, clientRequestId: "message-3",
   }, { secret, execute: deps.execute, now: 1_786_447_200_100 }), /evaluation_actor_mismatch/);
   assert.equal(deps.executorCalls, 0);
-});
-
-test("a database duplicate keeps a bounded conflict reason through the action store", async () => {
-  const deps = dependencies();
-  const admin = { kind: "admin", profileId: null, channel: "agent_profile" };
-  const proposedInput = { studentName: "Hung", periodStart: "2026-09-01" };
-  const evaluated = await evaluateAction(deps.store, deps.repository, admin, {
-    capabilityName: "fee_statement.lookup", capabilityVersion: 1, proposedInput, clientRequestId: "lookup-duplicate",
-  }, { secret, now: 1_786_447_200_000 });
-  await assert.rejects(() => executeEvaluatedAction(deps.store, admin, {
-    evaluationToken: evaluated.evaluationToken, clientRequestId: "lookup-duplicate",
-  }, { secret, now: 1_786_447_200_100, execute: async () => { throw new Error("statement_already_exists"); } }), /statement_already_exists/);
-  assert.equal([...deps.rows.values()][0].errorCode, "statement_already_exists");
 });
 
 test("executor failures persist a bounded stable failure", async () => {

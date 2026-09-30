@@ -14,29 +14,6 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 
 const { executeAgentCapability } = require(path.join(__dirname, "agent-capability-executor.ts"));
 
-test("duplicate active student-month is reported as a conflict, not a retryable outage", async () => {
-  const oldSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
-  const oldUrl = process.env.NEXT_PUBLIC_APP_URL;
-  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
-  process.env.NEXT_PUBLIC_APP_URL = "https://academy.example";
-  const client = {
-    async rpc() { return { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint academy_fee_statement_active_student_period_idx" } }; },
-    from() { return { select() { return { eq() { return this; }, async maybeSingle() { return { data: null, error: null }; } }; } }; },
-  };
-  try {
-    await assert.rejects(() => executeAgentCapability(client, { kind: "admin", profileId: null, channel: "agent_profile" }, {
-      capabilityName: "fee_statement.create", capabilityVersion: 1, clientRequestId: "second-statement",
-      normalizedInput: { studentName: "Hung", periodStart: "2026-09-01", periodEnd: "2026-09-30", currency: "VND", totalMinor: 1000000,
-        lineItems: [{ kind: "fee", label: "Test fee", amountMinor: 1000000, source: { workbook: "Fees", sheet: "Sep", row: 1 } }] },
-    }), /statement_already_exists/);
-  } finally {
-    if (oldSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
-    else process.env.ACADEMY_AGENT_EVALUATION_SECRET = oldSecret;
-    if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
-    else process.env.NEXT_PUBLIC_APP_URL = oldUrl;
-  }
-});
-
 test("signed profile lookup reads only the requested student and month for duplicate checks", async () => {
   const filters = [];
   const client = { from(table) {

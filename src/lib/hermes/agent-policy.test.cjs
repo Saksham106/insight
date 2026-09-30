@@ -51,6 +51,9 @@ async function decide(agentActor, capabilityName, proposedInput, repo = reposito
 test("signed profile capability is limited to fee statements", async () => {
   const profile = { kind: "admin", profileId: null, channel: "agent_profile" };
   assert.equal((await decide(profile, "class.reminder.send", { occurrenceId: "occ-1", recipientId: "student-1" })).kind, "denied");
+  assert.deepEqual(await decide(profile, "fee_statement.lookup", { studentName: "Student" }), {
+    kind: "needs_clarification", missingFields: ["periodStart"], reasonCode: "missing_required_fields",
+  });
   assert.equal((await decide(profile, "routine.manage", { operation: "preview" })).kind, "denied");
   assert.equal((await decide(profile, "fee_statement.lookup", { studentName: "Student", periodStart: "2026-09-01" })).kind, "allowed");
   const invoice = await decide(profile, "fee_statement.create", {

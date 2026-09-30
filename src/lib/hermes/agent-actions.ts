@@ -107,7 +107,12 @@ function claimsForRow(row: AgentActionRow): AgentEvaluationClaims {
 export function listAgentCapabilities(actor: AgentActor) {
   const manifests = listCapabilityManifests(actor.kind);
   return actor.kind === "admin" && actor.channel === "agent_profile"
-    ? manifests.filter((item) => ["fee_statement.create", "fee_statement.lookup"].includes(item.name))
+    ? manifests.filter((item) => ["fee_statement.create", "fee_statement.lookup"].includes(item.name)).map((item) =>
+      item.name === "fee_statement.lookup" ? {
+        ...item,
+        purpose: "Check existing statements for one exact student and billing month before publishing; use a fresh clientRequestId for post-create read-back. No bearer link is returned.",
+        inputSchema: { ...item.inputSchema, required: ["studentName", "periodStart"] },
+      } : item)
     : manifests;
 }
 
@@ -281,8 +286,7 @@ export async function executeEvaluatedAction(
       throw new Error("action_execution_retryable");
     }
     const code = error instanceof Error ? error.message : "action_execution_failed";
-    const safeCode = feeStatementLookupErrorStatus(code) || code === "statement_already_exists"
-      ? code : "action_execution_failed";
+    const safeCode = feeStatementLookupErrorStatus(code) ? code : "action_execution_failed";
     await store.fail(row.id, safeCode);
     throw new Error(safeCode);
   }
