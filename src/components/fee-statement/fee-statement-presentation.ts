@@ -11,7 +11,7 @@ export function formatDurationHours(minutes: number) {
 }
 
 export type FeeStatementRow =
-  | { kind: "item"; item: LineItem; sourceIndex: number }
+  | { kind: "item"; item: LineItem; sourceIndex: number; classDates?: string[] }
   | {
       kind: "group";
       teacherName: string;
@@ -23,14 +23,41 @@ export type FeeStatementRow =
 
 const LONG_STATEMENT_THRESHOLD = 8;
 const GROUP_MINIMUM = 2;
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+export function parseAggregateLessonDates(note: string | undefined, periodStart: string): string[] {
+  if (!note || !/^\d{4}-\d{2}-\d{2}$/.test(periodStart)) return [];
+  const period = new Date(`${periodStart}T00:00:00Z`);
+  if (Number.isNaN(period.valueOf()) || period.toISOString().slice(0, 10) !== periodStart) return [];
+  const month = Number(periodStart.slice(5, 7));
+  const name = MONTHS[month - 1];
+  const match = note.match(new RegExp(`\\b(?:${name}|${name.slice(0, 3)})\\s*(?:classes\\s+(?:on\\s+)?)?([0-9]+(?:\\s*(?:,|and)\\s*[0-9]+)*\\s*)(?=[;.]|$)`, "i"));
+  if (!match) return [];
+  const prefix = note.slice(0, match.index).split(/[;.]/).at(-1) ?? "";
+  if (/cancel(?:led|ed|lation)?|excluded|not\s+(?:held|taken|provided)/i.test(prefix)) return [];
+  const tokens = match[1].split(/,|\band\b/i).map((value) => value.trim());
+  if (tokens.some((token) => !/^\d{1,2}$/.test(token))) return [];
+  const year = Number(periodStart.slice(0, 4));
+  const dates = tokens.map((token) => {
+    const day = Number(token);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  });
+  return dates.every(Boolean) ? [...new Set(dates as string[])].sort() : [];
+}
 
 function teacherKey(value: string) {
   return value.trim().toLocaleLowerCase("en-US");
 }
 
-export function buildFeeStatementRows(lineItems: PublicFeeStatement["lineItems"]): FeeStatementRow[] {
+export function buildFeeStatementRows(lineItems: PublicFeeStatement["lineItems"], periodStart?: string): FeeStatementRow[] {
+  const rowItem = (item: LineItem, sourceIndex: number): FeeStatementRow => ({
+    kind: "item", item, sourceIndex,
+    ...(item.kind !== "fee" && !item.lessonDate && periodStart ? { classDates: parseAggregateLessonDates(item.note, periodStart) } : {}),
+  });
   if (lineItems.length < LONG_STATEMENT_THRESHOLD) {
-    return lineItems.map((item, sourceIndex) => ({ kind: "item", item, sourceIndex }));
+    return lineItems.map(rowItem);
   }
 
   const datedByTeacher = new Map<string, IndexedLesson[]>();
@@ -50,12 +77,12 @@ export function buildFeeStatementRows(lineItems: PublicFeeStatement["lineItems"]
 
   lineItems.forEach((item, sourceIndex) => {
     if (item.kind === "fee" || !item.lessonDate) {
-      rows.push({ kind: "item", item, sourceIndex });
+      rows.push(rowItem(item, sourceIndex));
       return;
     }
     const key = teacherKey(item.teacherName);
     if (!groupedTeachers.has(key)) {
-      rows.push({ kind: "item", item, sourceIndex });
+      rows.push(rowItem(item, sourceIndex));
       return;
     }
     if (emitted.has(key)) return;
