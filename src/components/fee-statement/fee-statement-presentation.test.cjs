@@ -123,6 +123,32 @@ test("source-unavailable aggregate copy is hidden while useful parent notes rema
   assert.equal(parentVisibleNote(undefined), null);
 });
 
+test("aggregate note dates are parsed conservatively for expandable details", () => {
+  const { parseAggregateLessonDates } = presentation();
+  assert.deepEqual(parseAggregateLessonDates("Sep 6, 7, 13, 14, 20, 21, 27, 28; cancelled dates excluded", "2026-09-01"), ["2026-09-06", "2026-09-07", "2026-09-13", "2026-09-14", "2026-09-20", "2026-09-21", "2026-09-27", "2026-09-28"]);
+  assert.deepEqual(parseAggregateLessonDates("Swati Sep7,8; source rows25,32", "2026-09-01"), ["2026-09-07", "2026-09-08"]);
+  assert.deepEqual(parseAggregateLessonDates("Sep 31, 32; source rows 25", "2026-09-01"), []);
+  assert.deepEqual(parseAggregateLessonDates("Sep 10 and 17; 2 hours total.", "2026-09-01"), ["2026-09-10", "2026-09-17"]);
+  assert.deepEqual(parseAggregateLessonDates("Cancelled Sep 10, 17; no classes taken.", "2026-09-01"), []);
+  assert.deepEqual(parseAggregateLessonDates("Sep 10; source rows 25", "2026-13-01"), []);
+  assert.deepEqual(parseAggregateLessonDates("Sep 10; source rows 25", "2026-09-31"), []);
+  assert.deepEqual(parseAggregateLessonDates("Includes sibling discount; no date detail", "2026-09-01"), []);
+});
+
+test("aggregate row exposes expandable date-only class evidence", () => {
+ const { buildFeeStatementRows } = presentation();
+ const rows = buildFeeStatementRows([item("Swati", null, 480, 12000000, "Swati Sep7,8,15; advance retained")], "2026-09-01");
+ assert.deepEqual(rows[0].classDates, ["2026-09-07", "2026-09-08", "2026-09-15"]);
+ assert.equal(rows[0].kind, "item");
+});
+
+test("receipt renders accessible aggregate details and prints expanded dates", () => {
+ const receipt = fs.readFileSync(path.join(__dirname, "fee-statement-receipt.tsx"), "utf8");
+ const css = fs.readFileSync(path.join(__dirname, "fee-statement-receipt.module.css"), "utf8");
+ assert.match(receipt, /<details/); assert.match(receipt, /<summary/); assert.match(receipt, /Dates included/);
+ assert.match(css, /\.aggregateDetails/); assert.match(css, /@media print[\s\S]*?\.aggregateDetails/);
+});
+
 test("bank QR is offered only for unpaid VND statements", () => {
   const { canOfferBankQr } = presentation();
   assert.equal(canOfferBankQr("published", "VND"), true);

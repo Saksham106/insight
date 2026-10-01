@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { PublicFeeStatement } from "@/lib/hermes/fee-statements";
 import { formatMinorCurrency } from "@/lib/format-minor-currency";
 
@@ -46,7 +47,7 @@ function LineItemRow({ item, periodStart, currency, nested = false }: { item: Li
 export function FeeStatementReceipt({ statement }: { statement: PublicFeeStatement }) {
   const paid = statement.status === "paid";
   const offerBankQr = canOfferBankQr(statement.status, statement.currency);
-  const rows = buildFeeStatementRows(statement.lineItems);
+  const rows = buildFeeStatementRows(statement.lineItems, statement.periodStart);
 
   return (
     <main className={styles.page}>
@@ -82,12 +83,41 @@ export function FeeStatementReceipt({ statement }: { statement: PublicFeeStateme
         <div className={styles.items}>
           <div className={styles.itemHead} aria-hidden="true"><span>Class</span><span>Time</span><span>Amount</span></div>
           {rows.map((row) => row.kind === "item" ? (
-            <LineItemRow
-              currency={statement.currency}
-              item={row.item}
-              key={row.item.kind === "fee" ? `fee-${row.sourceIndex}` : `${row.item.lessonDate ?? "aggregate"}-${row.item.teacherName}-${row.sourceIndex}`}
-              periodStart={statement.periodStart}
-            />
+            <Fragment key={`item-${row.sourceIndex}`}>
+              {row.item.kind !== "fee" && row.classDates?.length ? (
+                <details className={`${styles.itemGroup} ${styles.aggregateDetails}`}>
+                  <summary className={styles.groupSummary}>
+                    <div>
+                      <strong>{row.classDates.length} class dates with {row.item.teacherName}</strong>
+                      <small>{row.item.subject ?? "Tutoring"} · {month(statement.periodStart)}</small>
+                      <small className={styles.calculation}>
+                        {formatDurationHours(row.item.durationMinutes)} × {formatMinorCurrency(row.item.rateMinor, statement.currency)} per hour = {formatMinorCurrency(row.item.amountMinor, statement.currency)}
+                      </small>
+                      <small>Dates included — tap to see individual classes</small>
+                    </div>
+                    <span className={styles.duration}>{formatDurationHours(row.item.durationMinutes)}</span>
+                    <span className={styles.amount}>{formatMinorCurrency(row.item.amountMinor, statement.currency)}</span>
+                  </summary>
+                  <div className={styles.groupItems}>
+                    {row.classDates.map((date) => (
+                      <article className={`${styles.item} ${styles.nestedItem}`} key={date}>
+                        <div>
+                          <time dateTime={date}>{day(date)}</time>
+                          <div className={styles.classLine}>
+                            <strong>{row.item.kind === "fee" ? "" : row.item.subject ?? "Tutoring"}</strong>
+                            <small>with {row.item.kind === "fee" ? "" : row.item.teacherName}</small>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                    <small className={styles.note}>Hours and fees above are the combined total; a per-class breakdown was not recorded on this statement.</small>
+                    {parentVisibleNote(row.item.note) ? <small className={styles.note}>{parentVisibleNote(row.item.note)}</small> : null}
+                  </div>
+                </details>
+              ) : (
+                <LineItemRow currency={statement.currency} item={row.item} periodStart={statement.periodStart} />
+              )}
+            </Fragment>
           ) : (
             <details className={styles.itemGroup} key={`group-${row.teacherName}`}>
               <summary className={styles.groupSummary}>
