@@ -62,10 +62,10 @@ test("signed profile discovers only the fee-statement capability", () => {
   const { listAgentCapabilities } = require(path.join(__dirname, "agent-actions.ts"));
   const profile = { kind: "admin", profileId: null, channel: "agent_profile" };
   const manifests = listAgentCapabilities(profile);
-  assert.deepEqual(manifests.map((item) => item.name), ["fee_statement.create", "fee_statement.lookup"]);
+  assert.deepEqual(manifests.map((item) => item.name), ["fee_statement.adjust", "fee_statement.create", "fee_statement.lookup"]);
   const lookup = manifests.find((item) => item.name === "fee_statement.lookup");
   assert.deepEqual(lookup.inputSchema.required, ["studentName", "periodStart"]);
-  assert.match(lookup.purpose, /No bearer link/);
+  assert.match(lookup.purpose, /private payment link/i);
   const direct = listAgentCapabilities({ kind: "admin", profileId: null, channel: "imessage" }).find((item) => item.name === "fee_statement.lookup");
   assert.deepEqual(direct.inputSchema.required, ["studentName"]);
 });

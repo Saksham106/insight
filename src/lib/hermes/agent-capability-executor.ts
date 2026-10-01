@@ -16,6 +16,32 @@ function dbError(error: { message?: string } | null) {
   throw new Error("capability_execution_unavailable");
 }
 
+function adjustmentError(error: { message?: string; code?: string }) {
+  const message = error.message ?? "";
+  if (/network|timeout|fetch/i.test(message)) throw new Error("capability_execution_uncertain");
+  if (error.code === "23505") throw new Error("fee_statement_adjustment_duplicate_reference");
+  const guards: Record<string, string> = {
+    stale_fee_statement_adjustments: "fee_statement_adjustment_stale",
+    advance_exceeds_current_due: "fee_statement_adjustment_exceeds_balance",
+    fee_statement_ineligible: "fee_statement_adjustment_forbidden",
+    ineligible_fee_statement_actor: "fee_statement_adjustment_forbidden",
+    fee_statement_adjustment_limit: "fee_statement_adjustment_limit",
+    invalid_fee_statement_balance: "invalid_fee_statement_balance",
+    fee_statement_not_found: "fee_statement_not_found",
+  };
+  for (const [source, code] of Object.entries(guards)) if (message.includes(source)) throw new Error(code);
+  dbError(error);
+}
+
+function adjustmentRequestUuid(actor: AgentActor, requestId: string) {
+  const identity = actor.kind === "contact" ? actor.contactId : `${actor.channel}:${actor.profileId ?? actor.externalIdHash ?? "primary"}`;
+  const bytes = createHash("sha256").update(`fee-statement-adjustment:v1:${identity}:${requestId}`).digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x80;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function idempotencyKey(clientRequestId: string) {
   return clientRequestId.length <= 194
     ? `agent:${clientRequestId}`
@@ -65,14 +91,14 @@ export async function executeAgentCapability(
 ): Promise<Record<string, unknown>> {
   if (action.capabilityVersion !== 1) throw new Error("capability_not_executable");
   if (actor.kind === "admin" && actor.channel === "agent_profile"
-    && !["fee_statement.create", "fee_statement.lookup"].includes(action.capabilityName)) throw new Error("capability_not_executable");
+    && !["fee_statement.create", "fee_statement.lookup", "fee_statement.adjust"].includes(action.capabilityName)) throw new Error("capability_not_executable");
   const input = action.normalizedInput;
   switch (action.capabilityName) {
     case "fee_statement.lookup": {
       if (actor.kind !== "admin") throw new Error("capability_not_executable");
       if (actor.channel === "agent_profile") {
         const { data, error } = await client.from("academy_fee_statements")
-          .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, issued_at, adjustment_rows:academy_fee_statement_adjustments(id,kind,label,amount_minor,created_at)")
+          .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, client_request_id, public_token_hash, issued_at, adjustment_rows:academy_fee_statement_adjustments(id,kind,label,amount_minor,created_at)")
           .eq("student_name", String(input.studentName))
           .eq("period_start", String(input.periodStart))
           .order("issued_at", { ascending: false })
@@ -80,14 +106,24 @@ export async function executeAgentCapability(
         dbError(error);
         const rows = attachFeeStatementBalances(data ?? []);
         return {
-          statements: rows.slice(0, 10).map((row) => ({
+          statements: rows.slice(0, 10).map((row) => {
+            const status = String(row.status);
+            const published = status === "published" || status === "paid";
+            const link = published ? feeStatementPublicUrl(String(row.client_request_id)) : null;
+            if (link && link.tokenHash !== row.public_token_hash) throw new Error("fee_statement_link_unrecoverable");
+            const periodStart = String(row.period_start);
+            const currency = String(row.currency);
+            const balance = row.balance;
+            const amount = formatMinorCurrency(balance.amountDueMinor, currency);
+            return ({
             statementId: String(row.id), statementReference: String(row.statement_reference),
-            status: String(row.status), studentName: String(row.student_name),
+            status, studentName: String(row.student_name),
             billedToName: row.billed_to_name == null ? null : String(row.billed_to_name),
-            periodStart: String(row.period_start), periodEnd: String(row.period_end),
-            currency: String(row.currency), totalMinor: Number(row.total_minor), issuedAt: String(row.issued_at),
-            ...(row.balance.version ? { amountDueMinor: row.balance.amountDueMinor, balance: row.balance } : {}),
-          })),
+            periodStart, periodEnd: String(row.period_end),
+            currency, totalMinor: Number(row.total_minor), issuedAt: String(row.issued_at),
+            amountDueMinor: balance.amountDueMinor, balance,
+            ...(link ? { publicUrl: link.url, whatsappMessage: feeStatementWhatsAppMessage({ studentName: String(row.student_name), month: feeStatementMonthLabel(periodStart), amount, url: link.url, status, nothingToPay: balance.amountDueMinor === 0 }) } : {}),
+          }); }),
           hasMore: rows.length > 10,
         };
       }
@@ -171,6 +207,47 @@ export async function executeAgentCapability(
         status: String(record.status),
         publicUrl: publicLink.url,
       };
+    }
+    case "fee_statement.adjust": {
+      if (actor.kind !== "admin") throw new Error("capability_not_executable");
+      const profileId = actor.profileId ?? (["agent_profile", "imessage"].includes(actor.channel) ? process.env.HERMES_ADMIN_PROFILE_ID : undefined);
+      if (!profileId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(profileId)) throw new Error("fee_statement_adjustment_forbidden");
+      const requestId = adjustmentRequestUuid(actor, action.clientRequestId);
+      let rpcResult: Awaited<ReturnType<typeof client.rpc>>;
+      try {
+        rpcResult = await client.rpc("add_academy_fee_statement_adjustment", {
+          p_statement_id: String(input.statementId), p_kind: String(input.kind), p_label: String(input.label),
+          p_amount_minor: Number(input.amountMinor), p_reference: String(input.reference), p_expected_version: Number(input.expectedVersion),
+          p_client_request_id: requestId, p_actor_profile_id: profileId,
+        });
+      } catch {
+        throw new Error("capability_execution_uncertain");
+      }
+      const { data, error } = rpcResult;
+      if (error) adjustmentError(error);
+      const adjustment = Array.isArray(data) ? data[0] : data;
+      if (!adjustment || typeof adjustment.id !== "string") throw new Error("capability_execution_uncertain");
+      const { data: verified, error: readError } = await client.from("academy_fee_statement_adjustments")
+        .select("id,statement_id,kind,label,amount_minor,reference,actor_profile_id,client_request_id").eq("id", String(adjustment.id))
+        .eq("statement_id", String(input.statementId)).eq("kind", String(input.kind))
+        .eq("label", String(input.label)).eq("amount_minor", Number(input.amountMinor))
+        .eq("reference", String(input.reference)).eq("actor_profile_id", profileId).eq("client_request_id", requestId).maybeSingle();
+      if (readError || !verified) throw new Error("capability_execution_uncertain");
+      const { data: statement, error: statementError } = await client.from("academy_fee_statements")
+        .select("id,statement_reference,status,student_name,period_start,currency,total_minor,client_request_id,public_token_hash,adjustment_rows:academy_fee_statement_adjustments(id,kind,label,amount_minor,created_at)")
+        .eq("id", String(input.statementId)).maybeSingle();
+      if (statementError || !statement) throw new Error("capability_execution_uncertain");
+      if (!["published", "paid"].includes(String(statement.status))) throw new Error("fee_statement_adjustment_forbidden");
+      const link = feeStatementPublicUrl(String(statement.client_request_id));
+      if (link.tokenHash !== statement.public_token_hash) throw new Error("fee_statement_link_unrecoverable");
+      const [withBalance] = attachFeeStatementBalances([statement]);
+      const balance = withBalance.balance;
+      const amount = formatMinorCurrency(balance.amountDueMinor, String(statement.currency));
+      return { statementId: String(input.statementId), adjustmentId: String(verified.id),
+        statementReference: String(statement.statement_reference), kind: String(verified.kind),
+        label: String(verified.label), amountMinor: Number(verified.amount_minor), currency: String(statement.currency),
+        balance, amountDueMinor: balance.amountDueMinor, publicUrl: link.url,
+        whatsappMessage: feeStatementWhatsAppMessage({ studentName: String(statement.student_name), month: feeStatementMonthLabel(String(statement.period_start)), amount, url: link.url, status: String(statement.status), nothingToPay: balance.amountDueMinor === 0 }) };
     }
     case "fee_statement.replace": {
       if (actor.kind !== "admin") throw new Error("capability_not_executable");
