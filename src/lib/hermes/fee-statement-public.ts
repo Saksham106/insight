@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { calculateFeeStatementBalance, loadFeeStatementAdjustments } from "./fee-statement-adjustments";
 import { projectPublicFeeStatement, statementTokenHash, type PublicFeeStatement } from "./fee-statements";
 
 export async function loadPublicFeeStatement(token: string, client: SupabaseClient): Promise<PublicFeeStatement | null> {
@@ -12,5 +13,10 @@ export async function loadPublicFeeStatement(token: string, client: SupabaseClie
     .maybeSingle();
 
   if (error) throw new Error("fee_statement_unavailable");
-  return data ? projectPublicFeeStatement(data as Record<string, unknown>) : null;
+  if (!data) return null;
+  const statement = projectPublicFeeStatement(data as Record<string, unknown>);
+  const adjustments = await loadFeeStatementAdjustments(client, statement.id);
+  return adjustments.length
+    ? { ...statement, adjustments, balance: calculateFeeStatementBalance(statement.totalMinor, adjustments) }
+    : statement;
 }

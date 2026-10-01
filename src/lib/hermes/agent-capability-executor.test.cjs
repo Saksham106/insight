@@ -300,8 +300,21 @@ test("recovers the latest current fee statement and ready-to-copy WhatsApp messa
       publicUrl: privateLink.url,
       whatsappMessage: `Hi, here is Devon's fee statement for August 2026. The total due is ₫24,000,000: ${privateLink.url}`,
     });
-    assert.deepEqual(calls[1], ["select", "id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, client_request_id, public_token_hash, issued_at"]);
+    assert.deepEqual(calls[1], ["select", "id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, client_request_id, public_token_hash, issued_at, adjustment_rows:academy_fee_statement_adjustments(id,kind,label,amount_minor,created_at)"]);
     assert.deepEqual(calls[2], ["ilike", "student_name", "Devon"]);
+    rows[0].adjustment_rows = [
+      { id: "fee", kind: "extra_fee", label: "Test", amount_minor: 1000000, created_at: "2026-10-01T00:00:00Z" },
+      { id: "advance", kind: "advance", label: "Paid", amount_minor: 5000000, created_at: "2026-10-01T00:00:00Z" },
+    ];
+    const adjusted = await executeAgentCapability(client, actor, { capabilityName: "fee_statement.lookup", capabilityVersion: 1, normalizedInput: { studentName: "Devon" }, clientRequestId: "lookup-adjusted" });
+    assert.equal(adjusted.amountDueMinor, 20000000);
+    assert.equal(adjusted.totalMinor, 24000000);
+    assert.match(adjusted.whatsappMessage, /₫20,000,000/);
+    rows[0].adjustment_rows[1].amount_minor = 25000000;
+    const covered = await executeAgentCapability(client, actor, { capabilityName: "fee_statement.lookup", capabilityVersion: 1, normalizedInput: { studentName: "Devon" }, clientRequestId: "lookup-covered" });
+    assert.equal(covered.amountDueMinor, 0);
+    assert.match(covered.whatsappMessage, /nothing is due/);
+    assert.doesNotMatch(covered.whatsappMessage, /screenshot|total due is/);
   } finally {
     if (originalSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET;
     else process.env.ACADEMY_AGENT_EVALUATION_SECRET = originalSecret;

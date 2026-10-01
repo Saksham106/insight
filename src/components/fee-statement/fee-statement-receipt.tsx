@@ -46,7 +46,9 @@ function LineItemRow({ item, periodStart, currency, nested = false }: { item: Li
 
 export function FeeStatementReceipt({ statement }: { statement: PublicFeeStatement }) {
   const paid = statement.status === "paid";
-  const offerBankQr = canOfferBankQr(statement.status, statement.currency);
+  const balance = statement.balance;
+  const nothingToPay = !paid && balance?.amountDueMinor === 0;
+  const offerBankQr = !nothingToPay && canOfferBankQr(statement.status, statement.currency);
   const rows = buildFeeStatementRows(statement.lineItems, statement.periodStart);
 
   return (
@@ -61,7 +63,7 @@ export function FeeStatementReceipt({ statement }: { statement: PublicFeeStateme
             <p className={styles.eyebrow}>MyInsightAcademy</p>
             <h1 id="statement-title">Fee statement</h1>
           </div>
-          <span className={`${styles.status} ${paid ? styles.paid : ""}`}>{paid ? "Paid" : "Payment due"}</span>
+          <span className={`${styles.status} ${paid ? styles.paid : nothingToPay ? styles.paid : ""}`}>{paid ? "Paid" : nothingToPay ? "Covered by advance" : "Payment due"}</span>
         </div>
 
         <div className={styles.intro}>
@@ -77,9 +79,10 @@ export function FeeStatementReceipt({ statement }: { statement: PublicFeeStateme
           {statement.dueDate ? <div><dt>Due</dt><dd>{day(statement.dueDate)}</dd></div> : null}
         </dl>
 
-        {offerBankQr ? <BankQrPayment amountMinor={statement.totalMinor} currency={statement.currency} placement="top" /> : null}
+        {offerBankQr ? <BankQrPayment amountMinor={balance?.amountDueMinor ?? statement.totalMinor} currency={statement.currency} placement="top" /> : null}
 
         <div className={styles.rule} aria-hidden="true" />
+        {balance ? <h2 className={styles.chargeHeading}>Classes and original charges</h2> : null}
         <div className={styles.items}>
           <div className={styles.itemHead} aria-hidden="true"><span>Class</span><span>Time</span><span>Amount</span></div>
           {rows.map((row) => row.kind === "item" ? (
@@ -148,15 +151,22 @@ export function FeeStatementReceipt({ statement }: { statement: PublicFeeStateme
           ))}
         </div>
 
-        <div className={styles.totalRow}>
+        {balance ? <>
+          <div className={styles.balanceRow}><span>Classes and original charges</span><strong>{formatMinorCurrency(balance.baseMinor, statement.currency)}</strong></div>
+          <div className={styles.balanceBlock}><p><span>Extra fees</span><strong>{formatMinorCurrency(balance.extraFeesMinor, statement.currency)}</strong></p>{statement.adjustments?.filter((item) => item.kind === "extra_fee").map((item) => <p className={styles.adjustmentLine} key={item.id}><span>{item.label}</span><span>{formatMinorCurrency(item.amountMinor, statement.currency)}</span></p>)}</div>
+          <div className={styles.balanceRow}><span>Total charges</span><strong>{formatMinorCurrency(balance.grossMinor, statement.currency)}</strong></div>
+          <div className={styles.balanceBlock}><p><span>Advance already received</span><strong>−{formatMinorCurrency(balance.advancesMinor, statement.currency)}</strong></p>{statement.adjustments?.filter((item) => item.kind === "advance").map((item) => <p className={styles.adjustmentLine} key={item.id}><span>{item.label}</span><span>−{formatMinorCurrency(item.amountMinor, statement.currency)}</span></p>)}</div>
+          <div className={styles.totalRow}><span>{paid ? "Total paid" : nothingToPay ? "Nothing to pay" : "Amount due"}</span><strong>{formatMinorCurrency(balance.amountDueMinor, statement.currency)}</strong></div>
+          {nothingToPay ? <p className={styles.coveredNote}>Covered by advance — no further payment is needed.</p> : null}
+        </> : <div className={styles.totalRow}>
           <span>{paid ? "Total paid" : "Total due"}</span>
           <strong>{formatMinorCurrency(statement.totalMinor, statement.currency)}</strong>
-        </div>
+        </div>}
 
-        {offerBankQr ? <BankQrPayment amountMinor={statement.totalMinor} currency={statement.currency} placement="bottom" /> : null}
+        {offerBankQr ? <BankQrPayment amountMinor={balance?.amountDueMinor ?? statement.totalMinor} currency={statement.currency} placement="bottom" /> : null}
 
         <footer>
-          <p>{paid ? "Thank you — this statement is marked as paid." : "Please use the usual payment method agreed with MyInsightAcademy."}</p>
+          <p>{paid ? "Thank you — this statement is marked as paid." : nothingToPay ? "No further payment is needed." : "Please use the usual payment method agreed with MyInsightAcademy."}</p>
           <span>Questions? Reply to the message that brought you here.</span>
         </footer>
       </section>

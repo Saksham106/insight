@@ -5,6 +5,8 @@ import { formatMinorCurrency } from "../format-minor-currency";
 import type { AgentActor } from "./agent-capability-types";
 import { manageAgentRoutine } from "./agent-routines";
 import { feeStatementPublicUrl } from "./fee-statement-link";
+import { attachFeeStatementBalances } from "./fee-statement-admin";
+import { feeStatementWhatsAppMessage } from "./fee-statement-whatsapp";
 import { executeKittyClassTool } from "./kitty-class-tools";
 import type { KittyClassActor } from "./kitty-class-service";
 
@@ -70,13 +72,13 @@ export async function executeAgentCapability(
       if (actor.kind !== "admin") throw new Error("capability_not_executable");
       if (actor.channel === "agent_profile") {
         const { data, error } = await client.from("academy_fee_statements")
-          .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, issued_at")
+          .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, issued_at, adjustment_rows:academy_fee_statement_adjustments(id,kind,label,amount_minor,created_at)")
           .eq("student_name", String(input.studentName))
           .eq("period_start", String(input.periodStart))
           .order("issued_at", { ascending: false })
           .limit(11);
         dbError(error);
-        const rows = data ?? [];
+        const rows = attachFeeStatementBalances(data ?? []);
         return {
           statements: rows.slice(0, 10).map((row) => ({
             statementId: String(row.id), statementReference: String(row.statement_reference),
@@ -84,12 +86,13 @@ export async function executeAgentCapability(
             billedToName: row.billed_to_name == null ? null : String(row.billed_to_name),
             periodStart: String(row.period_start), periodEnd: String(row.period_end),
             currency: String(row.currency), totalMinor: Number(row.total_minor), issuedAt: String(row.issued_at),
+            ...(row.balance.version ? { amountDueMinor: row.balance.amountDueMinor, balance: row.balance } : {}),
           })),
           hasMore: rows.length > 10,
         };
       }
       let query = client.from("academy_fee_statements")
-        .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, client_request_id, public_token_hash, issued_at");
+        .select("id, statement_reference, status, student_name, billed_to_name, period_start, period_end, currency, total_minor, client_request_id, public_token_hash, issued_at, adjustment_rows:academy_fee_statement_adjustments(id,kind,label,amount_minor,created_at)");
       query = input.statementId
         ? query.eq("id", String(input.statementId))
         : query.ilike("student_name", exactIlikePattern(String(input.studentName)));
@@ -112,7 +115,8 @@ export async function executeAgentCapability(
       const status = String(statement.status);
       const totalMinor = Number(statement.total_minor);
       const currency = String(statement.currency);
-      const amount = formatMinorCurrency(totalMinor, currency);
+      const [{ balance }] = attachFeeStatementBalances([{ total_minor: totalMinor, adjustment_rows: statement.adjustment_rows as Record<string, unknown>[] | undefined }]);
+      const amount = formatMinorCurrency(balance.amountDueMinor, currency);
       const paymentSummary = status === "paid"
         ? `The total is ${amount}, and it has been marked paid`
         : `The total due is ${amount}`;
@@ -121,7 +125,10 @@ export async function executeAgentCapability(
         studentName, billedToName: statement.billed_to_name ? String(statement.billed_to_name) : null,
         periodStart, periodEnd: String(statement.period_end), totalMinor, currency, status,
         publicUrl: publicLink.url,
-        whatsappMessage: `Hi, here is ${studentName}'s fee statement for ${feeStatementMonthLabel(periodStart)}. ${paymentSummary}: ${publicLink.url}`,
+        ...(balance.version ? { amountDueMinor: balance.amountDueMinor, balance } : {}),
+        whatsappMessage: balance.version
+          ? feeStatementWhatsAppMessage({ studentName, month: feeStatementMonthLabel(periodStart), amount, url: publicLink.url, status, nothingToPay: balance.amountDueMinor === 0 })
+          : `Hi, here is ${studentName}'s fee statement for ${feeStatementMonthLabel(periodStart)}. ${paymentSummary}: ${publicLink.url}`,
       };
     }
     case "fee_statement.create": {
@@ -239,7 +246,8 @@ export async function executeAgentCapability(
       const status = String(statement.status);
       const totalMinor = Number(statement.total_minor);
       const currency = String(statement.currency);
-      const amount = formatMinorCurrency(totalMinor, currency);
+      const [{ balance }] = attachFeeStatementBalances([{ total_minor: totalMinor, adjustment_rows: statement.adjustment_rows as Record<string, unknown>[] | undefined }]);
+      const amount = formatMinorCurrency(balance.amountDueMinor, currency);
       const paymentSummary = status === "paid"
         ? `The total is ${amount}, and it has been marked paid`
         : `The total due is ${amount}`;
@@ -254,7 +262,10 @@ export async function executeAgentCapability(
         currency,
         status,
         publicUrl: publicLink.url,
-        whatsappMessage: `Hi, here is ${studentName}'s fee statement for ${feeStatementMonthLabel(periodStart)}. ${paymentSummary}: ${publicLink.url}`,
+        ...(balance.version ? { amountDueMinor: balance.amountDueMinor, balance } : {}),
+        whatsappMessage: balance.version
+          ? feeStatementWhatsAppMessage({ studentName, month: feeStatementMonthLabel(periodStart), amount, url: publicLink.url, status, nothingToPay: balance.amountDueMinor === 0 })
+          : `Hi, here is ${studentName}'s fee statement for ${feeStatementMonthLabel(periodStart)}. ${paymentSummary}: ${publicLink.url}`,
       };
     }
     case "class.reminder.send": {

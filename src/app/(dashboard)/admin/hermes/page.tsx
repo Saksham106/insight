@@ -2,6 +2,7 @@ import { HermesAssistantDashboard } from "@/components/admin/hermes-assistant-da
 import { parseHermesTab } from "@/components/admin/hermes-dashboard-shared";
 import { requireRole } from "@/lib/auth/require-role";
 import { loadAdminLessonCycles } from "@/lib/hermes/lesson-ledger-admin";
+import { attachFeeStatementBalances } from "@/lib/hermes/fee-statement-admin";
 import { collectKittyAttentionOccurrenceIds, KITTY_UPCOMING_CLASS_LIMIT, loadKittyAdminAttentionIssues } from "@/lib/hermes/kitty-class-admin";
 import {
   attachAndSortConversationSummaries,
@@ -79,7 +80,7 @@ export default async function HermesAdminPage({
         .limit(12),
       supabase
         .from("academy_fee_statements")
-        .select("id, statement_reference, student_name, billed_to_name, period_start, period_end, currency, total_minor, status, issued_at, paid_at, voided_at")
+        .select("id, statement_reference, student_name, billed_to_name, period_start, period_end, currency, total_minor, status, issued_at, paid_at, voided_at, adjustment_rows:academy_fee_statement_adjustments(id,kind,label,amount_minor,created_at)")
         .order("issued_at", { ascending: false })
         .limit(500),
       loadConversationSummaries(supabase)
@@ -255,7 +256,7 @@ export default async function HermesAdminPage({
       lessonLedgerError={
         lessonResult.error ? "Lesson ledger temporarily unavailable." : null
       }
-      statements={statements.data ?? []}
+      statements={attachFeeStatementBalances(statements.data ?? [])}
       settlements={settlements.data ?? []}
       loadError={contacts.error || cases.error || approvals.error || messages.error || settlements.error || statements.error || classUpcomingOccurrences.error || classHistoryOccurrences.error || classSeries.error || classNotificationIssues.error || classAttentionResult.error || classChangeRequestedOccurrences.error || classAttentionOccurrences.error || relationshipRows.error || enrollmentRows.error || participantRows.error ? "Some Kitty information could not be loaded." : null}
       classOccurrences={classOccurrences}

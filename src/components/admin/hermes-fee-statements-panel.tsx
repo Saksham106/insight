@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatMinorCurrency } from "@/lib/format-minor-currency";
 import { feeStatementWhatsAppMessage } from "@/lib/hermes/fee-statement-whatsapp";
+import type { FeeStatementAdjustment, FeeStatementBalance } from "@/lib/hermes/fee-statement-adjustments";
+import { FeeStatementAdjustmentForm } from "./fee-statement-adjustment-form";
 
 import {
   Empty,
@@ -80,6 +82,8 @@ export function HermesFeeStatementsPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [adjustmentOpen, setAdjustmentOpen] = useState<string | null>(null);
+  const [adjustedStatements, setAdjustedStatements] = useState<Record<string, { adjustments: FeeStatementAdjustment[]; balance: FeeStatementBalance }>>({});
 
   const months = useMemo(
     () => [...new Set(statements.map((item) => item.period_start.slice(0, 7)))].sort().reverse(),
@@ -116,7 +120,9 @@ export function HermesFeeStatementsPanel({
         opened?.location.replace(url);
         setNotice(`Opened ${statement.student_name}'s statement.`);
       } else {
-        const amount = formatMinorCurrency(statement.total_minor, statement.currency);
+        const currentAdjustment = adjustedStatements[statement.id] ?? (statement.balance ? { adjustments: statement.adjustments ?? [], balance: statement.balance } : undefined);
+        const netDue = currentAdjustment?.balance.amountDueMinor ?? statement.total_minor;
+        const amount = formatMinorCurrency(netDue, statement.currency);
         const text = action === "whatsapp"
           ? feeStatementWhatsAppMessage({
             studentName: statement.student_name,
@@ -124,6 +130,7 @@ export function HermesFeeStatementsPanel({
             amount,
             url,
             status: statement.status,
+            nothingToPay: statement.status === "published" && netDue === 0,
           })
           : url;
         await copyToClipboard(text);
@@ -210,6 +217,9 @@ export function HermesFeeStatementsPanel({
             <div style={{ display: "grid", gap: "10px" }}>
               {visible.map((statement) => {
                 const inactive = statement.status === "void";
+                const adjustment = adjustedStatements[statement.id] ?? (statement.balance ? { adjustments: statement.adjustments ?? [], balance: statement.balance } : undefined);
+                const dueMinor = adjustment?.balance.amountDueMinor ?? statement.total_minor;
+                const editable = statement.status === "published";
                 return (
                   <article
                     key={statement.id}
@@ -225,8 +235,8 @@ export function HermesFeeStatementsPanel({
                         </p>
                       </div>
                       <div style={{ textAlign: "right" }}>
-                        <strong className="text-navy">{formatMinorCurrency(statement.total_minor, statement.currency)}</strong>
-                        <p className="text-xs text-muted" style={{ marginTop: "3px", textTransform: "capitalize" }}>{statement.status}</p>
+                        <strong className="text-navy">{formatMinorCurrency(adjustment?.balance.grossMinor ?? statement.total_minor, statement.currency)}</strong>
+                        <p className="text-xs text-muted" style={{ marginTop: "3px", textTransform: "capitalize" }}>{statement.status}{adjustment?.balance ? ` · ${formatMinorCurrency(dueMinor, statement.currency)} due` : ""}</p>
                       </div>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -257,6 +267,19 @@ export function HermesFeeStatementsPanel({
                         <MessageCircle size={15} /> {busy === `${statement.id}:whatsapp` ? "Copying…" : "Copy WhatsApp message"}
                       </Button>
                     </div>
+                    {editable ? <div style={{ display: "grid", gap: 10 }}>
+                      {adjustment?.adjustments.map((entry) => <p className="text-xs text-muted" key={entry.id} style={{ margin: 0 }}>{entry.kind === "advance" ? "Advance received" : "Extra fee"}: {entry.label} · {entry.kind === "advance" ? "−" : ""}{formatMinorCurrency(entry.amountMinor, statement.currency)}</p>)}
+                      {adjustmentOpen === statement.id ? <FeeStatementAdjustmentForm
+                        statementId={statement.id}
+                        currency={statement.currency}
+                        onCancel={() => setAdjustmentOpen(null)}
+                        onSaved={(adjustments, balance) => {
+                          setAdjustedStatements((current) => ({ ...current, [statement.id]: { adjustments, balance } }));
+                          setAdjustmentOpen(null);
+                          setNotice(`Invoice balance updated for ${statement.student_name}.`);
+                        }}
+                      /> : <Button disabled={busy !== null} onClick={() => setAdjustmentOpen(statement.id)} size="sm" type="button" variant="secondary">Add fee / advance</Button>}
+                    </div> : null}
                   </article>
                 );
               })}
