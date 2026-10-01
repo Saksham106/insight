@@ -150,3 +150,15 @@ test("reminder normalization accepts identifiers but never rendered prose", () =
   });
   assert.throws(() => capability.normalize({ occurrenceId: "occ-1", recipientId: "student-1", classDescription: "Chemistry with Anjali" }), /invalid_capability_input/);
 });
+
+
+test("normalizes bounded fee adjustments and requires confirmation for advances", () => {
+  const { getCapability } = require(registryPath);
+  const capability = getCapability("fee_statement.adjust", 1);
+  const base = { statementId: "11111111-1111-4111-8111-111111111111", kind: "extra_fee", label: "Exam fee", amountMinor: 500, reference: "Parent confirmed", expectedVersion: 2 };
+  assert.deepEqual(capability.normalize(base), base);
+  assert.throws(() => capability.normalize({ ...base, kind: "advance" }), /advance_payment_confirmation_required/);
+  assert.equal(capability.normalize({ ...base, kind: "advance", paymentReceivedConfirmed: true }).kind, "advance");
+  assert.throws(() => capability.normalize({ ...base, amountMinor: 0 }), /invalid_capability_input/);
+  assert.throws(() => capability.normalize({ ...base, amountMinor: 1_000_000_000_001 }), /invalid_capability_input/);
+});

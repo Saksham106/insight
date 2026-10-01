@@ -107,10 +107,10 @@ function claimsForRow(row: AgentActionRow): AgentEvaluationClaims {
 export function listAgentCapabilities(actor: AgentActor) {
   const manifests = listCapabilityManifests(actor.kind);
   return actor.kind === "admin" && actor.channel === "agent_profile"
-    ? manifests.filter((item) => ["fee_statement.create", "fee_statement.lookup"].includes(item.name)).map((item) =>
+    ? manifests.filter((item) => ["fee_statement.create", "fee_statement.lookup", "fee_statement.adjust"].includes(item.name)).map((item) =>
       item.name === "fee_statement.lookup" ? {
         ...item,
-        purpose: "Check existing statements for one exact student and billing month before publishing; use a fresh clientRequestId for post-create read-back. No bearer link is returned.",
+        purpose: "Find the exact student's statement for one billing month and return its current private payment link and ready-to-copy WhatsApp message.",
         inputSchema: { ...item.inputSchema, required: ["studentName", "periodStart"] },
       } : item)
     : manifests;
@@ -201,7 +201,7 @@ function boundedResult(value: Record<string, unknown>) {
 
 export function feeStatementLookupErrorStatus(code: string) {
   if (code === "fee_statement_not_found") return 404;
-  if (["fee_statement_lookup_ambiguous", "fee_statement_link_unrecoverable"].includes(code)) return 409;
+  if (["fee_statement_lookup_ambiguous", "fee_statement_link_unrecoverable", "fee_statement_adjustment_stale", "fee_statement_adjustment_exceeds_balance", "fee_statement_adjustment_forbidden", "fee_statement_adjustment_duplicate_reference", "fee_statement_adjustment_limit", "invalid_fee_statement_balance"].includes(code)) return 409;
   return null;
 }
 

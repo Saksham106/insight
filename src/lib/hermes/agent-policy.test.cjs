@@ -62,6 +62,8 @@ test("signed profile capability is limited to fee statements", async () => {
       rateMinor: 500000, amountMinor: 500000, source: { workbook: "School", sheet: "September", row: 2 } }],
   });
   assert.equal(invoice.kind, "allowed");
+  assert.equal((await decide(profile, "fee_statement.adjust", { statementId: "11111111-1111-4111-8111-111111111111", kind: "extra_fee", label: "Exam fee", amountMinor: 100, reference: "Confirmed", expectedVersion: 0 })).kind, "allowed");
+  assert.equal((await decide(actor("student-1", "student"), "fee_statement.adjust", {})).kind, "denied");
 });
 
 test("allows routine teacher and student actions only inside verified relationships", async () => {

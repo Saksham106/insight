@@ -127,5 +127,17 @@ class DefaultInsightProfileTests(unittest.TestCase):
         self.assertIn("never as a wrapper to carry a message", skill)
 
 
+    def test_invoice_details_live_in_the_finance_skill_not_agent_bootstrap(self):
+        agents = (PROFILE_DIR / "AGENTS.md").read_text()
+        reference = PROFILE_DIR / "skills" / "teacher-finance-sheet-operations" / "references" / "fee-statement-adjustment-capabilities.md"
+        self.assertIn("teacher-finance-sheet-operations", agents)
+        self.assertIn(reference.name, agents)
+        self.assertNotIn("fee_statement.adjust", agents)
+        self.assertNotIn("paymentReceivedConfirmed", agents)
+        instructions = reference.read_text()
+        for required in ("fee_statement.adjust", "expectedVersion", "paymentReceivedConfirmed:true", "existing private links", "explicit recipient-and-content"):
+            self.assertIn(required, instructions)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,7 @@ import type {
   AgentCapabilityManifest,
 } from "./agent-capability-types";
 import { sanitizeFeeStatementInput } from "./fee-statements";
+import { sanitizeFeeStatementAdjustmentInput } from "./fee-statement-adjustments";
 
 function objectInput(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("invalid_capability_input");
@@ -84,6 +85,31 @@ const statementItemSchema = {
 };
 
 const definitions: AgentCapabilityDefinition[] = [
+  {
+    manifest: {
+      name: "fee_statement.adjust", version: 1,
+      purpose: "Add a sourced extra fee or confirmed payment advance to a current fee statement.",
+      risk: "medium", schedulable: false, composable: false,
+      inputSchema: schema({
+        statementId: { type: "string", format: "uuid" }, kind: { type: "string", enum: ["extra_fee", "advance"] },
+        label: { type: "string", minLength: 1, maxLength: 120 }, amountMinor: { type: "integer", minimum: 1, maximum: 1000000000000 },
+        reference: stringField, expectedVersion: { type: "integer", minimum: 0, maximum: 100 }, paymentReceivedConfirmed: { type: "boolean" },
+      }, ["statementId", "kind", "label", "amountMinor", "reference", "expectedVersion"]),
+    },
+    allowedActorKinds: ["admin"],
+    normalize(input) {
+      const value = exactInput(input, ["statementId", "kind", "label", "amountMinor", "reference", "expectedVersion"], ["paymentReceivedConfirmed"]);
+      if (value.kind === "advance" && value.paymentReceivedConfirmed !== true) throw new Error("advance_payment_confirmation_required");
+      let sanitized;
+      try { sanitized = sanitizeFeeStatementAdjustmentInput({
+        kind: value.kind, label: value.label, amountMinor: value.amountMinor, reference: value.reference,
+        expectedVersion: value.expectedVersion, clientRequestId: "00000000-0000-4000-8000-000000000000",
+      }); } catch { throw new Error("invalid_capability_input"); }
+      return { statementId: uuid(value.statementId), kind: sanitized.kind, label: sanitized.label,
+        amountMinor: sanitized.amountMinor, reference: sanitized.reference, expectedVersion: sanitized.expectedVersion,
+        ...(value.kind === "advance" ? { paymentReceivedConfirmed: true } : {}) };
+    },
+  },
   {
     manifest: {
       name: "fee_statement.lookup", version: 1,

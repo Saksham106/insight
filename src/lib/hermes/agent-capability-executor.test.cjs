@@ -15,20 +15,27 @@ require.extensions[".ts"] = function compileTypeScript(module, filename) {
 const { executeAgentCapability } = require(path.join(__dirname, "agent-capability-executor.ts"));
 
 test("signed profile lookup reads only the requested student and month for duplicate checks", async () => {
+  const oldSecret = process.env.ACADEMY_AGENT_EVALUATION_SECRET;
+  const oldUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.ACADEMY_AGENT_EVALUATION_SECRET = "test-only-fee-statement-token-secret-that-is-long-enough";
+  process.env.NEXT_PUBLIC_APP_URL = "https://academy.example";
   const filters = [];
   const client = { from(table) {
     assert.equal(table, "academy_fee_statements");
     return { select(fields) {
-      assert.equal(fields.includes("public_token_hash"), false);
+      assert.equal(fields.includes("public_token_hash"), true);
       return { eq(key, value) {
         filters.push([key, value]); return this;
       }, order(key, options) {
         assert.equal(key, "issued_at"); assert.equal(options.ascending, false); return this;
       }, async limit(n) {
         assert.equal(n, 11);
+        const { feeStatementPublicUrl } = require(path.join(__dirname, "fee-statement-link.ts"));
+        const link = feeStatementPublicUrl("signed-profile-link");
         return { data: [{ id: "statement-1", statement_reference: "MIA-202609-ABC123", status: "published",
           student_name: "Hung", billed_to_name: "Parent", period_start: "2026-09-01", period_end: "2026-09-30",
-          currency: "VND", total_minor: 14875000, issued_at: "2026-09-30T12:00:00Z" }], error: null };
+          currency: "VND", total_minor: 14875000, client_request_id: "signed-profile-link", public_token_hash: link.tokenHash,
+          issued_at: "2026-09-30T12:00:00Z" }], error: null };
       } };
     } };
   } };
@@ -40,8 +47,14 @@ test("signed profile lookup reads only the requested student and month for dupli
   assert.equal(result.statements.length, 1);
   assert.equal(result.statements[0].statementId, "statement-1");
   assert.equal(result.statements[0].totalMinor, 14875000);
+  assert.equal(result.statements[0].balance.version, 0);
+  assert.equal(result.statements[0].amountDueMinor, 14875000);
+  assert.match(result.statements[0].publicUrl, /^https:\/\//);
+  assert.match(result.statements[0].whatsappMessage, /Hung/);
   assert.equal(result.hasMore, false);
   assert.equal(JSON.stringify(result).includes("public_token"), false);
+  if (oldSecret === undefined) delete process.env.ACADEMY_AGENT_EVALUATION_SECRET; else process.env.ACADEMY_AGENT_EVALUATION_SECRET = oldSecret;
+  if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL; else process.env.NEXT_PUBLIC_APP_URL = oldUrl;
 });
 
 test("signed profile publishes only fee statements with its own audit channel", async () => {

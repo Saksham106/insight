@@ -266,6 +266,13 @@ export function HermesFeeStatementsPanel({
                       >
                         <MessageCircle size={15} /> {busy === `${statement.id}:whatsapp` ? "Copying…" : "Copy WhatsApp message"}
                       </Button>
+                      {editable ? <Button
+                        disabled={busy !== null || adjustmentOpen === statement.id}
+                        onClick={() => setAdjustmentOpen(statement.id)}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >Add fee / advance</Button> : null}
                     </div>
                     {editable ? <div style={{ display: "grid", gap: 10 }}>
                       {adjustment?.adjustments.map((entry) => <p className="text-xs text-muted" key={entry.id} style={{ margin: 0 }}>{entry.kind === "advance" ? "Advance received" : "Extra fee"}: {entry.label} · {entry.kind === "advance" ? "−" : ""}{formatMinorCurrency(entry.amountMinor, statement.currency)}</p>)}
@@ -278,7 +285,7 @@ export function HermesFeeStatementsPanel({
                           setAdjustmentOpen(null);
                           setNotice(`Invoice balance updated for ${statement.student_name}.`);
                         }}
-                      /> : <Button disabled={busy !== null} onClick={() => setAdjustmentOpen(statement.id)} size="sm" type="button" variant="secondary">Add fee / advance</Button>}
+                      /> : null}
                     </div> : null}
                   </article>
                 );
