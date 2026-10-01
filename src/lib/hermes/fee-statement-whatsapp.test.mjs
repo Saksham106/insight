@@ -16,6 +16,13 @@ test('published statement preserves original details and asks for payment proof 
   );
 });
 
+test('covered published statement explains that no payment is due', () => {
+  assert.equal(
+    feeStatementWhatsAppMessage({ ...statement, amount: '0 VND', status: 'published', nothingToPay: true }),
+    "Hi, here is Hung's fee statement for September 2026. The full balance is covered by a confirmed advance; nothing is due: https://example.test/statement/private-link",
+  );
+});
+
 test('paid statement keeps its marked-paid message without asking for a second payment', () => {
   assert.equal(
     feeStatementWhatsAppMessage({ ...statement, status: 'paid' }),

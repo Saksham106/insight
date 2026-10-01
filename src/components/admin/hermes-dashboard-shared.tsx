@@ -1,3 +1,4 @@
+import type { FeeStatementAdjustment, FeeStatementBalance } from "@/lib/hermes/fee-statement-adjustments";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export interface HermesContactIdentity {
@@ -79,6 +80,8 @@ export interface HermesFeeStatementSummary {
   issued_at: string;
   paid_at: string | null;
   voided_at: string | null;
+  adjustments?: FeeStatementAdjustment[];
+  balance?: FeeStatementBalance;
 }
 
 export interface HermesSettlementCycle {

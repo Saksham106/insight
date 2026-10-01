@@ -166,6 +166,13 @@
 .bankDetails dd { margin: 0; color: #162d51; font: 650 .8rem/1.25 var(--font-geist-mono); overflow-wrap: anywhere; }
 .paymentHelp { max-width: 23rem; margin: .85rem auto 0; color: #526176; font-size: .84rem; line-height: 1.5; text-align: center; }
 .totalRow { grid-template-columns: 1fr auto; gap: 1rem; margin: 1.4rem -.45rem 0; padding: 1.2rem .65rem; border-top: 2px solid #172e53; border-bottom: 1px solid #172e53; }
+.chargeHeading { margin: 0 0 .8rem; color: #667284; font: 700 .72rem/1.2 var(--font-geist-mono); letter-spacing: .08em; text-transform: uppercase; }
+.balanceRow, .balanceBlock > p { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: 0; padding: .65rem .2rem; border-top: 1px solid #ebe3d4; font-size: .86rem; }
+.balanceRow strong, .balanceBlock strong { font: 700 .95rem/1.2 var(--font-geist-mono); }
+.balanceBlock { border-top: 1px solid #ebe3d4; }
+.balanceBlock > p:first-child { border-top: 0; font-weight: 650; }
+.balanceBlock .adjustmentLine { padding: .2rem .2rem .45rem .8rem; color: #667284; font-size: .8rem; }
+.coveredNote { margin: .8rem 0 0; color: #276342; font-size: .85rem; font-weight: 650; text-align: right; }
 .totalRow span { font-size: .85rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .totalRow strong { font: 700 clamp(1.35rem, 4vw, 1.85rem)/1 var(--font-bricolage); }
 .receipt footer { margin-top: 2.3rem; text-align: center; color: #667284; font-size: .82rem; }

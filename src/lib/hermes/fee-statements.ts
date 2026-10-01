@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { FeeStatementAdjustment, FeeStatementBalance } from "./fee-statement-adjustments";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURRENCY = /^[A-Z]{3}$/;
@@ -64,6 +65,8 @@ export type PublicFeeStatement = {
   issuedAt: string;
   paidAt: string | null;
   lineItems: Array<PublicLineItem<FeeStatementLineItem>>;
+  adjustments?: FeeStatementAdjustment[];
+  balance?: FeeStatementBalance;
 };
 
 function fail(code: string): never {
